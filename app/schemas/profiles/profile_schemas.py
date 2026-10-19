@@ -1,0 +1,149 @@
+"""Business / worker profile schemas (Figma "Business profile", "Worker profile", "Go online")."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.constants.profiles.profile_route_strings import MSG_COORDINATES_PAIR
+
+VerificationStatus = Literal["pending", "verified", "rejected"]
+
+Latitude = Field(ge=-90, le=90)
+Longitude = Field(ge=-180, le=180)
+
+
+class _CoordinatesPair(BaseModel):
+    @model_validator(mode="after")
+    def _both_or_neither(self):  # type: ignore[no-untyped-def]
+        if (self.latitude is None) != (self.longitude is None):  # type: ignore[attr-defined]
+            raise ValueError(MSG_COORDINATES_PAIR)
+        return self
+
+
+class BusinessProfileResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    business_name: str
+    category_slug: str | None = None
+    category_name: str | None = None
+    logo_url: str | None = None
+    address_text: str
+    locality: str
+    latitude: float | None = None
+    longitude: float | None = None
+    verification_status: VerificationStatus
+    verification_note: str | None = None
+    verified_at: datetime | None = None
+    rating_avg: float
+    rating_count: int
+    owner_name: str
+    phone: str
+
+
+class BusinessProfilePatch(_CoordinatesPair):
+    model_config = ConfigDict(extra="forbid")
+
+    business_name: str | None = Field(default=None, min_length=1, max_length=160)
+    category_slug: str | None = Field(default=None, max_length=64)
+    logo_url: str | None = Field(default=None, max_length=2000)
+    address_text: str | None = Field(default=None, max_length=500)
+    locality: str | None = Field(default=None, max_length=160)
+    latitude: float | None = Latitude
+    longitude: float | None = Longitude
+
+
+class WorkerProfileResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    full_name: str
+    photo_url: str | None = None
+    phone: str
+    address_text: str
+    locality: str
+    latitude: float | None = None
+    longitude: float | None = None
+    category_slugs: list[str]
+    verification_status: VerificationStatus
+    verification_note: str | None = None
+    verified_at: datetime | None = None
+    is_available: bool
+    availability_changed_at: datetime | None = None
+    rating_avg: float
+    rating_count: int
+    completed_shift_count: int
+
+
+class WorkerProfilePatch(_CoordinatesPair):
+    model_config = ConfigDict(extra="forbid")
+
+    address_text: str | None = Field(default=None, max_length=500)
+    locality: str | None = Field(default=None, max_length=160)
+    latitude: float | None = Latitude
+    longitude: float | None = Longitude
+    category_slugs: list[str] | None = Field(default=None, max_length=20)
+
+
+class WorkerPublicProfile(BaseModel):
+    """What a business sees about an applicant or booked worker."""
+
+    id: UUID
+    full_name: str
+    photo_url: str | None = None
+    locality: str
+    category_slugs: list[str]
+    verification_status: VerificationStatus
+    rating_avg: float
+    rating_count: int
+    completed_shift_count: int
+    member_since: datetime
+    recent_reviews: list[ReviewSnippet] = Field(default_factory=list)
+
+
+class ReviewSnippet(BaseModel):
+    stars: int
+    tags: list[str]
+    review: str
+    rater_name: str
+    created_at: datetime
+
+
+class AvailabilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_available: bool
+    latitude: float | None = Latitude
+    longitude: float | None = Longitude
+    accuracy_m: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class LocationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: float = Latitude
+    longitude: float = Longitude
+    accuracy_m: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class AvailabilityResponse(BaseModel):
+    is_available: bool
+    availability_changed_at: datetime | None = None
+    location_recorded_at: datetime | None = None
+
+
+class VerificationDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["verified", "rejected"]
+    note: str | None = Field(default=None, max_length=500)
+
+
+class VerificationQueue(BaseModel):
+    workers: list[WorkerProfileResponse]
+    businesses: list[BusinessProfileResponse]
+
+
+WorkerPublicProfile.model_rebuild()

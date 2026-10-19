@@ -1,0 +1,37 @@
+# Virtual environments
+.venv/
+venv/
+
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+
+# Local environment files (copy .env.example)
+.env
+.env.dev
+.env.preprod
+.env.prod
+.env.test
+
+# Uploaded media (local storage provider)
+media/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/

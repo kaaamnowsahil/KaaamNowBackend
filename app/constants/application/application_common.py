@@ -1,0 +1,43 @@
+"""Shared HTTP path segments, path params, and Swagger helpers."""
+
+from __future__ import annotations
+
+from typing import Final
+
+API_V1: Final[str] = "/api/v1"
+
+# --- Path segments ---
+SEGMENT_AUTH: Final[str] = "/auth"
+SEGMENT_ME: Final[str] = "/me"
+SEGMENT_CATALOG: Final[str] = "/catalog"
+SEGMENT_BUSINESS: Final[str] = "/business"
+SEGMENT_WORKER: Final[str] = "/worker"
+SEGMENT_WORKERS: Final[str] = "/workers"
+SEGMENT_ASSIGNMENTS: Final[str] = "/assignments"
+SEGMENT_PAYMENTS: Final[str] = "/payments"
+SEGMENT_NOTIFICATIONS: Final[str] = "/notifications"
+SEGMENT_CONTENT: Final[str] = "/content"
+SEGMENT_SUPPORT: Final[str] = "/support"
+SEGMENT_ADMIN: Final[str] = "/admin"
+
+PATH_ROOT: Final[str] = "/"
+PATH_HEALTH: Final[str] = "/health"
+PATH_MEDIA: Final[str] = "/media"
+
+# --- OpenAPI tags ---
+OPENAPI_TAG_HEALTH: Final[str] = "health"
+
+# --- Swagger summary role suffixes ---
+SWAGGER_ROLE_PUBLIC: Final[str] = "Public"
+SWAGGER_ROLE_ANY_USER: Final[str] = "Any signed-in user"
+SWAGGER_ROLE_BUSINESS: Final[str] = "Business"
+SWAGGER_ROLE_WORKER: Final[str] = "Worker"
+SWAGGER_ROLE_PARTICIPANT: Final[str] = "Shift participant"
+SWAGGER_ROLE_ADMIN: Final[str] = "Admin"
+
+
+def swagger_summary(title: str, *roles: str) -> str:
+    """``"List Shifts · Business"`` style summaries so Swagger shows who may call."""
+    if not roles:
+        return title
+    return f"{title} · {' / '.join(roles)}"
