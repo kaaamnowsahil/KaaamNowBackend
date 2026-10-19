@@ -55,7 +55,9 @@ async def set_active_role(body: ActiveRoleRequest, user: CurrentUser) -> MeRespo
 @router.post(
     PATH_ROLES,
     response_model=OtpVerifyResponse,
-    summary=swagger_summary("Add Business or Worker role (returns new tokens)", SWAGGER_ROLE_ANY_USER),
+    summary=swagger_summary(
+        "Add Business or Worker role (returns new tokens)", SWAGGER_ROLE_ANY_USER
+    ),
 )
 async def add_role(body: AddRoleRequest, user: CurrentUser) -> OtpVerifyResponse:
     return await user_service.add_role(user, body.role)

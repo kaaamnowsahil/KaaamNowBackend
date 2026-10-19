@@ -20,7 +20,12 @@ from app.constants.profiles.profile_route_strings import (
     WORKER_ROUTE_PREFIX,
     WORKERS_ROUTE_PREFIX,
 )
-from app.dependencies import RequireShiftsRead, RequireWorkWrite, RequireWorkerProfileWrite
+from app.dependencies import (
+    RequireShiftsRead,
+    RequireWorkerProfileRead,
+    RequireWorkerProfileWrite,
+    RequireWorkWrite,
+)
 from app.schemas.profiles.profile_schemas import (
     AvailabilityRequest,
     AvailabilityResponse,
@@ -40,7 +45,7 @@ workers_router = APIRouter(prefix=WORKERS_ROUTE_PREFIX, tags=[OPENAPI_TAG_WORKER
     response_model=WorkerProfileResponse,
     summary=swagger_summary("Get worker profile", SWAGGER_ROLE_WORKER),
 )
-async def get_profile(user: RequireWorkerProfileWrite) -> WorkerProfileResponse:
+async def get_profile(user: RequireWorkerProfileRead) -> WorkerProfileResponse:
     return await profile_service.get_worker_profile(user)
 
 

@@ -117,6 +117,9 @@ MIN_SHIFT_MINUTES: Final[int] = 60
 MAX_SHIFT_HOURS: Final[int] = 16
 MAX_SCHEDULE_AHEAD_DAYS: Final[int] = 60
 LIVE_START_TOLERANCE_MINUTES: Final[int] = 30
+TRAVEL_OPENS_HOURS_BEFORE: Final[int] = 3
+MESSAGES_PAGE_LIMIT: Final[int] = 200
+SCHEDULED_NOTIFY_BATCH_SIZE: Final[int] = 500
 
 # --- Messages ---
 MSG_SHIFT_NOT_FOUND: Final[str] = "Shift not found."

@@ -22,7 +22,10 @@ from app.utils.clock import utc_now
 
 
 def _payload(kind: str, data: dict[str, Any] | None) -> dict[str, Any]:
-    return {"kind": kind, **{k: str(v) if isinstance(v, UUID) else v for k, v in (data or {}).items()}}
+    return {
+        "kind": kind,
+        **{k: str(v) if isinstance(v, UUID) else v for k, v in (data or {}).items()},
+    }
 
 
 async def notify(

@@ -1,0 +1,149 @@
+"""Integration harness: real Postgres (``kaamnow_test`` recreated per run) + in-process ASGI."""
+
+from __future__ import annotations
+
+import itertools
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
+from uuid import UUID
+
+import asyncpg
+import httpx
+import pytest
+import pytest_asyncio
+
+from app.config.settings import load_settings
+from app.services.auth import auth_service
+
+TEST_OTP = "123456"
+BUSINESS_LAT, BUSINESS_LNG = 28.6315, 77.2167  # Connaught Place
+NEAR_LAT, NEAR_LNG = 28.6330, 77.2180  # ~200 m away
+
+_phone_counter = itertools.count(1)
+
+
+def next_phone() -> str:
+    return f"+9190000{next(_phone_counter):05d}"
+
+
+async def _recreate_database(url: str) -> None:
+    parts = urlsplit(url)
+    db_name = parts.path.lstrip("/")
+    admin_url = urlunsplit(parts._replace(path="/postgres"))
+    conn = await asyncpg.connect(admin_url)
+    try:
+        await conn.execute(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)')
+    finally:
+        await conn.close()
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def app_client() -> AsyncIterator[httpx.AsyncClient]:
+    settings = load_settings()
+    await _recreate_database(settings.database_url)
+    auth_service.new_numeric_code = lambda _length: TEST_OTP  # type: ignore[assignment]
+
+    from app.kaamnow_api_server import kaamnow_api_application as app
+
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def db() -> AsyncIterator[asyncpg.Connection]:
+    conn = await asyncpg.connect(load_settings().database_url)
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+@dataclass
+class Actor:
+    phone: str
+    user_id: UUID
+    headers: dict[str, str]
+    profile_id: UUID | None = None
+
+
+async def login(client: httpx.AsyncClient, phone: str | None = None) -> Actor:
+    phone = phone or next_phone()
+    sent = await client.post("/api/v1/auth/otp/send", json={"phone": phone})
+    assert sent.status_code == 200, sent.text
+    verified = await client.post("/api/v1/auth/otp/verify", json={"phone": phone, "code": TEST_OTP})
+    assert verified.status_code == 200, verified.text
+    body = verified.json()
+    return Actor(
+        phone=phone,
+        user_id=UUID(body["me"]["id"]),
+        headers={"Authorization": f"Bearer {body['tokens']['access_token']}"},
+    )
+
+
+async def add_role(client: httpx.AsyncClient, actor: Actor, role: str) -> None:
+    resp = await client.post("/api/v1/me/roles", json={"role": role}, headers=actor.headers)
+    assert resp.status_code == 200, resp.text
+    actor.headers = {"Authorization": f"Bearer {resp.json()['tokens']['access_token']}"}
+
+
+@pytest.fixture
+def make_business(app_client: httpx.AsyncClient):  # type: ignore[no-untyped-def]
+    async def _make(name: str = "Cafe Bloom") -> Actor:
+        actor = await login(app_client)
+        await app_client.patch("/api/v1/me", json={"full_name": "Owner"}, headers=actor.headers)
+        await add_role(app_client, actor, "business")
+        resp = await app_client.patch(
+            "/api/v1/business/profile",
+            json={
+                "business_name": name,
+                "category_slug": "hospitality",
+                "address_text": "Block A, Connaught Place",
+                "locality": "Connaught Place",
+                "latitude": BUSINESS_LAT,
+                "longitude": BUSINESS_LNG,
+            },
+            headers=actor.headers,
+        )
+        assert resp.status_code == 200, resp.text
+        actor.profile_id = UUID(resp.json()["id"])
+        return actor
+
+    return _make
+
+
+@pytest.fixture
+def make_worker(app_client: httpx.AsyncClient, db: asyncpg.Connection):  # type: ignore[no-untyped-def]
+    async def _make(name: str = "Aarav", *, online: bool = True) -> Actor:
+        actor = await login(app_client)
+        await app_client.patch("/api/v1/me", json={"full_name": name}, headers=actor.headers)
+        await add_role(app_client, actor, "worker")
+        resp = await app_client.patch(
+            "/api/v1/worker/profile",
+            json={
+                "locality": "Connaught Place",
+                "latitude": NEAR_LAT,
+                "longitude": NEAR_LNG,
+                "category_slugs": ["hospitality", "house-help"],
+            },
+            headers=actor.headers,
+        )
+        assert resp.status_code == 200, resp.text
+        actor.profile_id = UUID(resp.json()["id"])
+        await db.execute(
+            "UPDATE worker_profiles SET verification_status = 'verified', verified_at = now() "
+            "WHERE id = $1",
+            actor.profile_id,
+        )
+        if online:
+            resp = await app_client.put(
+                "/api/v1/worker/availability",
+                json={"is_available": True, "latitude": NEAR_LAT, "longitude": NEAR_LNG},
+                headers=actor.headers,
+            )
+            assert resp.status_code == 200, resp.text
+        return actor
+
+    return _make

@@ -46,9 +46,7 @@ async def get_business_profile_by_user(
     return await conn.fetchrow(GET_BUSINESS_PROFILE_BY_USER, user_id)
 
 
-async def get_business_profile(
-    conn: asyncpg.Connection, profile_id: UUID
-) -> asyncpg.Record | None:
+async def get_business_profile(conn: asyncpg.Connection, profile_id: UUID) -> asyncpg.Record | None:
     return await conn.fetchrow(GET_BUSINESS_PROFILE_BY_ID, profile_id)
 
 

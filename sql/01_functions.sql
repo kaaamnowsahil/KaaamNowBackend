@@ -21,3 +21,20 @@ BEGIN
     END IF;
 END
 $fn$;
+
+-- Great-circle distance in km (matches app/utils/geo.py::haversine_km).
+CREATE OR REPLACE FUNCTION kn_haversine_km(
+    lat1 DOUBLE PRECISION,
+    lng1 DOUBLE PRECISION,
+    lat2 DOUBLE PRECISION,
+    lng2 DOUBLE PRECISION
+) RETURNS DOUBLE PRECISION
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $fn$
+    SELECT 2 * 6371.0088 * asin(sqrt(least(1.0,
+        power(sin(radians(lat2 - lat1) / 2), 2)
+        + cos(radians(lat1)) * cos(radians(lat2)) * power(sin(radians(lng2 - lng1) / 2), 2)
+    )))
+$fn$;

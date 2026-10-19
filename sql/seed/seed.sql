@@ -17,12 +17,36 @@ INSERT INTO languages (code, english_name, native_name, sort_order) VALUES
     ('ur', 'Urdu',      'اردو',      12)
 ON CONFLICT (code) DO NOTHING;
 
--- Figma "Work type" / "Business type" chips
+-- Figma "Work type" / "Business type" chips, plus unorganised-sector daily work.
 INSERT INTO work_categories (slug, name, icon, sort_order) VALUES
-    ('hospitality', 'Hospitality', 'coffee',   1),
-    ('retail',      'Retail',      'shopping-bag', 2),
-    ('events',      'Events',      'calendar', 3),
-    ('delivery',    'Delivery',    'truck',    4)
+    ('hospitality',      'Hospitality',              'coffee',        1),
+    ('retail',           'Retail',                   'shopping-bag',  2),
+    ('events',           'Events',                   'calendar',      3),
+    ('delivery',         'Delivery',                 'truck',         4),
+    ('house-help',       'House Help / Maid',        'home',          5),
+    ('cooking',          'Cook',                     'chef-hat',      6),
+    ('cleaning',         'Cleaning',                 'sparkles',      7),
+    ('babysitting',      'Babysitting / Nanny',      'baby',          8),
+    ('elder-care',       'Elder Care',               'heart-handshake', 9),
+    ('driver',           'Driver',                   'car',           10),
+    ('security',         'Security Guard',           'shield',        11),
+    ('construction',     'Construction Labour',      'hard-hat',      12),
+    ('loading',          'Loading / Unloading',      'package',       13),
+    ('warehouse',        'Warehouse Helper',         'warehouse',     14),
+    ('gardening',        'Gardening',                'leaf',          15),
+    ('painting',         'Painter',                  'paintbrush',    16),
+    ('plumbing',         'Plumber',                  'wrench',        17),
+    ('electrician',      'Electrician',              'zap',           18),
+    ('carpentry',        'Carpenter',                'hammer',        19),
+    ('tailoring',        'Tailoring',                'scissors',      20),
+    ('laundry',          'Laundry / Ironing',        'shirt',         21),
+    ('kitchen-helper',   'Kitchen Helper',           'utensils',      22),
+    ('waiter',           'Waiter / Server',          'concierge-bell', 23),
+    ('shop-helper',      'Shop Helper',              'store',         24),
+    ('office-boy',       'Office Assistant / Peon',  'briefcase',     25),
+    ('car-wash',         'Car Wash',                 'droplets',      26),
+    ('pet-care',         'Pet Care',                 'paw-print',     27),
+    ('other',            'Other',                    'more-horizontal', 99)
 ON CONFLICT (slug) DO NOTHING;
 
 -- OWNER DECISION: Figma shows an illustrative 5% fee paid by the business on top of worker pay.

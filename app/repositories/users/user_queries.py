@@ -34,7 +34,8 @@ SELECT {_USER_COLUMNS},
             WHERE r.user_id = u.id AND r.status = 'active'),
            ARRAY[]::varchar[]
        ) AS roles,
-       bp.id AS business_profile_id, bp.business_name, bp.verification_status AS business_verification,
+       bp.id AS business_profile_id, bp.business_name,
+       bp.verification_status AS business_verification,
        wp.id AS worker_profile_id, wp.verification_status AS worker_verification, wp.is_available
 FROM users u
 LEFT JOIN business_profiles bp ON bp.user_id = u.id

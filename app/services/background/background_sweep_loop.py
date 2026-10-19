@@ -28,19 +28,19 @@ def _jobs() -> list[tuple[str, SweepJob]]:
     from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
     from app.services.notifications.notification_sweeps import deliver_pending_pushes
     from app.services.shifts.shift_sweeps import (
-        expand_live_search_radius,
+        close_scheduled_recruiting,
         expire_live_offers,
         expire_selection_confirmations,
         finish_live_searches,
-        mark_scheduled_shifts_started,
+        refresh_live_searches,
     )
 
     return [
         ("expire_live_offers", expire_live_offers),
-        ("expand_live_search_radius", expand_live_search_radius),
+        ("refresh_live_searches", refresh_live_searches),
         ("finish_live_searches", finish_live_searches),
         ("expire_selection_confirmations", expire_selection_confirmations),
-        ("mark_scheduled_shifts_started", mark_scheduled_shifts_started),
+        ("close_scheduled_recruiting", close_scheduled_recruiting),
         ("expire_stale_payments", expire_stale_payments),
         ("advance_processing_withdrawals", advance_processing_withdrawals),
         ("deliver_pending_pushes", deliver_pending_pushes),

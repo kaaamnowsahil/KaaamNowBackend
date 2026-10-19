@@ -76,7 +76,9 @@ RequireBusinessProfileRead = Annotated[
 RequireBusinessProfileWrite = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_BUSINESS_PROFILE, ACTION_WRITE))
 ]
-RequireShiftsRead = Annotated[AuthenticatedUser, Depends(require_access(RESOURCE_SHIFTS, ACTION_READ))]
+RequireShiftsRead = Annotated[
+    AuthenticatedUser, Depends(require_access(RESOURCE_SHIFTS, ACTION_READ))
+]
 RequireShiftsWrite = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_SHIFTS, ACTION_WRITE))
 ]
@@ -93,7 +95,9 @@ RequireWorkerProfileWrite = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_WORKER_PROFILE, ACTION_WRITE))
 ]
 RequireWorkRead = Annotated[AuthenticatedUser, Depends(require_access(RESOURCE_WORK, ACTION_READ))]
-RequireWorkWrite = Annotated[AuthenticatedUser, Depends(require_access(RESOURCE_WORK, ACTION_WRITE))]
+RequireWorkWrite = Annotated[
+    AuthenticatedUser, Depends(require_access(RESOURCE_WORK, ACTION_WRITE))
+]
 RequireEarningsRead = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_EARNINGS, ACTION_READ))
 ]

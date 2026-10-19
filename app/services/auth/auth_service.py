@@ -84,7 +84,9 @@ async def _consume_otp(phone: str, code: str) -> None:
             if challenge["attempts"] >= settings.otp_max_attempts:
                 raise too_many_requests("otp_attempts_exceeded", MSG_OTP_ATTEMPTS_EXCEEDED)
             matched = otp_code_matches(settings.jwt_secret_key, phone, code, challenge["code_hash"])
-            await auth_repository.record_otp_attempt(conn, challenge["id"], matched=matched, now=now)
+            await auth_repository.record_otp_attempt(
+                conn, challenge["id"], matched=matched, now=now
+            )
     if not matched:
         raise bad_request("otp_invalid", MSG_OTP_INVALID)
 
