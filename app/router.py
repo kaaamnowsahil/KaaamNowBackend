@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from app.routes.admin.admin_crud_router import router as admin_crud_router
 from app.routes.attendance.attendance_router import business_router as attendance_business_router
 from app.routes.attendance.attendance_router import worker_router as attendance_worker_router
 from app.routes.auth.auth_router import router as auth_router
@@ -35,6 +36,7 @@ _ROUTERS = (
     worker_profile_router,
     workers_router,
     admin_verification_router,
+    admin_crud_router,
     business_shifts_router,
     worker_shifts_router,
     assignments_router,

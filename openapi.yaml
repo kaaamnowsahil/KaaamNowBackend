@@ -906,6 +906,292 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/resources:
+    get:
+      tags:
+      - admin data
+      summary: Admin resources & columns · Admin
+      operationId: list_resources_api_v1_admin_resources_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminResourceList'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/metrics/overview:
+    get:
+      tags:
+      - admin data
+      summary: Dashboard overview metrics · Admin
+      operationId: metrics_overview_api_v1_admin_metrics_overview_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMetricsOverview'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/{resource}/export.csv:
+    get:
+      tags:
+      - admin data
+      summary: Export filtered list as CSV · Admin
+      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
+        on searchable columns), sort (field or -field). Any other query param is an
+        exact-match filter on a filterable column (use the literal `null` to match
+        NULL). Composite keys in paths are joined with '',''.'
+      operationId: export_records_api_v1_admin__resource__export_csv_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: sort
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/{resource}:
+    get:
+      tags:
+      - admin data
+      summary: List / search / filter records · Admin
+      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
+        on searchable columns), sort (field or -field). Any other query param is an
+        exact-match filter on a filterable column (use the literal `null` to match
+        NULL). Composite keys in paths are joined with '',''.'
+      operationId: list_records_api_v1_admin__resource__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: sort
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRecordPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - admin data
+      summary: Create record · Admin
+      operationId: create_record_api_v1_admin__resource__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Record Api V1 Admin  Resource  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/{resource}/{record_id}:
+    get:
+      tags:
+      - admin data
+      summary: Get record · Admin
+      operationId: get_record_api_v1_admin__resource___record_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Record Api V1 Admin  Resource   Record Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - admin data
+      summary: Update record (partial) · Admin
+      operationId: update_record_api_v1_admin__resource___record_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Update Record Api V1 Admin  Resource   Record Id  Patch
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - admin data
+      summary: Delete record (soft or hard per resource) · Admin
+      operationId: delete_record_api_v1_admin__resource___record_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/business/dashboard:
     get:
       tags:
@@ -2931,6 +3217,239 @@ components:
       required:
       - role
       title: AddRoleRequest
+    AdminColumn:
+      properties:
+        name:
+          type: string
+          title: Name
+        data_type:
+          type: string
+          title: Data Type
+          examples:
+          - character varying
+        udt_name:
+          type: string
+          title: Udt Name
+          examples:
+          - varchar
+        nullable:
+          type: boolean
+          title: Nullable
+        has_default:
+          type: boolean
+          title: Has Default
+        max_length:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Length
+        primary_key:
+          type: boolean
+          title: Primary Key
+        read_only:
+          type: boolean
+          title: Read Only
+        writable_on_create:
+          type: boolean
+          title: Writable On Create
+        writable_on_update:
+          type: boolean
+          title: Writable On Update
+        searchable:
+          type: boolean
+          title: Searchable
+        filterable:
+          type: boolean
+          title: Filterable
+        sortable:
+          type: boolean
+          title: Sortable
+      type: object
+      required:
+      - name
+      - data_type
+      - udt_name
+      - nullable
+      - has_default
+      - primary_key
+      - read_only
+      - writable_on_create
+      - writable_on_update
+      - searchable
+      - filterable
+      - sortable
+      title: AdminColumn
+    AdminCount:
+      properties:
+        key:
+          type: string
+          title: Key
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - key
+      - count
+      title: AdminCount
+    AdminMetricsOverview:
+      properties:
+        users_total:
+          type: integer
+          title: Users Total
+        users_active:
+          type: integer
+          title: Users Active
+        workers_total:
+          type: integer
+          title: Workers Total
+        workers_by_verification:
+          items:
+            $ref: '#/components/schemas/AdminCount'
+          type: array
+          title: Workers By Verification
+        businesses_total:
+          type: integer
+          title: Businesses Total
+        businesses_by_verification:
+          items:
+            $ref: '#/components/schemas/AdminCount'
+          type: array
+          title: Businesses By Verification
+        shifts_total:
+          type: integer
+          title: Shifts Total
+        shifts_by_status:
+          items:
+            $ref: '#/components/schemas/AdminCount'
+          type: array
+          title: Shifts By Status
+        open_support_tickets:
+          type: integer
+          title: Open Support Tickets
+        pending_withdrawals:
+          type: integer
+          title: Pending Withdrawals
+        pending_withdrawals_minor:
+          type: integer
+          title: Pending Withdrawals Minor
+        total_paid_out_minor:
+          type: integer
+          title: Total Paid Out Minor
+          description: Sum of paid withdrawals (paise).
+        invoiced_paid_minor:
+          type: integer
+          title: Invoiced Paid Minor
+          description: Sum of paid invoice totals (paise).
+        platform_fees_minor:
+          type: integer
+          title: Platform Fees Minor
+          description: Platform fee revenue on paid invoices.
+        payments_succeeded_minor:
+          type: integer
+          title: Payments Succeeded Minor
+        currency:
+          type: string
+          title: Currency
+          default: INR
+      type: object
+      required:
+      - users_total
+      - users_active
+      - workers_total
+      - workers_by_verification
+      - businesses_total
+      - businesses_by_verification
+      - shifts_total
+      - shifts_by_status
+      - open_support_tickets
+      - pending_withdrawals
+      - pending_withdrawals_minor
+      - total_paid_out_minor
+      - invoiced_paid_minor
+      - platform_fees_minor
+      - payments_succeeded_minor
+      title: AdminMetricsOverview
+    AdminRecordPage:
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: AdminRecordPage
+    AdminResourceInfo:
+      properties:
+        name:
+          type: string
+          title: Name
+          examples:
+          - work_categories
+        table:
+          type: string
+          title: Table
+        primary_key:
+          items:
+            type: string
+          type: array
+          title: Primary Key
+        operations:
+          items:
+            type: string
+          type: array
+          title: Operations
+          description: Allowed writes (read is always allowed).
+        delete_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Delete Mode
+          description: soft | hard | null when delete is disabled.
+        default_sort:
+          type: string
+          title: Default Sort
+        columns:
+          items:
+            $ref: '#/components/schemas/AdminColumn'
+          type: array
+          title: Columns
+      type: object
+      required:
+      - name
+      - table
+      - primary_key
+      - operations
+      - delete_mode
+      - default_sort
+      - columns
+      title: AdminResourceInfo
+    AdminResourceList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AdminResourceInfo'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: AdminResourceList
     ApplicantItem:
       properties:
         application_id:
