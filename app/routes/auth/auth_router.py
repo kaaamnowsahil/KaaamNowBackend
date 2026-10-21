@@ -1,4 +1,4 @@
-"""Phone OTP login (Figma "Welcome back" / "Verify your phone") and token lifecycle."""
+"""Phone OTP / Firebase login (Figma "Welcome back" / "Verify your phone") and tokens."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from app.constants.application.application_common import (
 from app.constants.auth.auth_route_strings import (
     AUTH_ROUTE_PREFIX,
     OPENAPI_TAG_AUTH,
+    PATH_FIREBASE_VERIFY,
     PATH_LOGOUT,
     PATH_OTP_SEND,
     PATH_OTP_VERIFY,
@@ -19,6 +20,7 @@ from app.constants.auth.auth_route_strings import (
 )
 from app.dependencies import CurrentUser
 from app.schemas.auth.auth_schemas import (
+    FirebaseVerifyRequest,
     OtpSendRequest,
     OtpSendResponse,
     OtpVerifyRequest,
@@ -48,6 +50,15 @@ async def send_otp(body: OtpSendRequest, request: Request) -> OtpSendResponse:
 )
 async def verify_otp(body: OtpVerifyRequest) -> OtpVerifyResponse:
     return await auth_service.verify_otp(body.phone, body.code)
+
+
+@router.post(
+    PATH_FIREBASE_VERIFY,
+    response_model=OtpVerifyResponse,
+    summary=swagger_summary("Sign in with a Firebase phone-auth ID token", SWAGGER_ROLE_PUBLIC),
+)
+async def verify_firebase(body: FirebaseVerifyRequest) -> OtpVerifyResponse:
+    return await auth_service.verify_firebase(body.id_token)
 
 
 @router.post(

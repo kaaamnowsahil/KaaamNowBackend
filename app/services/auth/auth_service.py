@@ -1,4 +1,4 @@
-"""Phone OTP login, refresh-token rotation and logout."""
+"""Phone OTP / Firebase phone login, refresh-token rotation and logout."""
 
 from __future__ import annotations
 
@@ -12,8 +12,10 @@ from app.constants.auth.auth_route_strings import (
     MSG_OTP_COOLDOWN,
     MSG_OTP_INVALID,
     MSG_OTP_RATE_LIMITED,
+    MSG_OTP_SENT_BY_FIREBASE,
     MSG_REFRESH_INVALID,
     MSG_REFRESH_REUSED,
+    OTP_PROVIDER_FIREBASE,
 )
 from app.db.pool import get_pool
 from app.exceptions.api_errors import (
@@ -27,6 +29,7 @@ from app.repositories.users import user_repository
 from app.schemas.auth.auth_schemas import OtpSendResponse, OtpVerifyResponse, TokenPair
 from app.security.jwt_tokens import hash_refresh_token
 from app.services.auth.domain.token_issuer import issue_token_pair
+from app.services.auth.sources.firebase_token_verifier import verify_firebase_phone_token
 from app.services.auth.sources.otp_sender_factory import get_otp_sender
 from app.services.auth.validation.auth_validation_pipeline import (
     hash_otp_code,
@@ -40,6 +43,8 @@ from app.utils.references import new_numeric_code
 
 async def send_otp(phone: str, request_ip: str | None) -> OtpSendResponse:
     settings = load_settings()
+    if settings.otp_provider == OTP_PROVIDER_FIREBASE:
+        raise bad_request("otp_sent_by_firebase", MSG_OTP_SENT_BY_FIREBASE)
     phone = normalize_phone(phone)
     now = utc_now()
     code = new_numeric_code(settings.otp_length)
@@ -94,6 +99,15 @@ async def _consume_otp(phone: str, code: str) -> None:
 async def verify_otp(phone: str, code: str) -> OtpVerifyResponse:
     phone = normalize_phone(phone)
     await _consume_otp(phone, code)
+    return await _sign_in(phone)
+
+
+async def verify_firebase(id_token: str) -> OtpVerifyResponse:
+    phone = normalize_phone(await verify_firebase_phone_token(id_token))
+    return await _sign_in(phone)
+
+
+async def _sign_in(phone: str) -> OtpVerifyResponse:
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             user = await user_repository.upsert_user_by_phone(conn, phone)
