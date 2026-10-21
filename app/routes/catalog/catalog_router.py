@@ -10,6 +10,7 @@ from app.constants.application.application_common import SWAGGER_ROLE_PUBLIC, sw
 from app.constants.catalog.catalog_route_strings import (
     CATALOG_ROUTE_PREFIX,
     OPENAPI_TAG_CATALOG,
+    PATH_BUSINESS_TYPES,
     PATH_FEE_POLICY,
     PATH_LANGUAGES,
     PATH_PAYMENT_METHODS,
@@ -17,6 +18,7 @@ from app.constants.catalog.catalog_route_strings import (
     PATH_WORK_CATEGORIES,
 )
 from app.schemas.catalog.catalog_schemas import (
+    BusinessType,
     FeePolicy,
     Language,
     PaymentMethod,
@@ -35,6 +37,15 @@ router = APIRouter(prefix=CATALOG_ROUTE_PREFIX, tags=[OPENAPI_TAG_CATALOG])
 )
 async def work_categories() -> list[WorkCategory]:
     return await catalog_service.list_work_categories()
+
+
+@router.get(
+    PATH_BUSINESS_TYPES,
+    response_model=list[BusinessType],
+    summary=swagger_summary("Business types", SWAGGER_ROLE_PUBLIC),
+)
+async def business_types() -> list[BusinessType]:
+    return await catalog_service.list_business_types()
 
 
 @router.get(

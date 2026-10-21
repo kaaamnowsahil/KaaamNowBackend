@@ -11,7 +11,7 @@ LIMIT 1
 """
 
 LIST_FAQS = """
-SELECT id, question, answer
+SELECT id, slug, question, answer
 FROM faq_entries
 WHERE is_active AND audience IN ($1, 'all')
   AND ($2::text IS NULL

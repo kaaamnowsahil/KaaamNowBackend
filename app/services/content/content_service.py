@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from app.config.settings import load_settings
+from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_WORKER
 from app.constants.content.content_route_strings import (
     MSG_CONTENT_NOT_FOUND,
     MSG_SUPPORT_SHIFT_NOT_FOUND,
@@ -13,6 +16,7 @@ from app.exceptions.api_errors import not_found
 from app.repositories.content import content_repository
 from app.schemas.content.content_schemas import (
     ContentPage,
+    ContentSection,
     FaqItem,
     FaqList,
     SupportTicketCreate,
@@ -20,13 +24,42 @@ from app.schemas.content.content_schemas import (
 )
 from app.security.authenticated_user import AuthenticatedUser
 
+_SECTION_HEADING = re.compile(r"^##\s+(.+)$", re.MULTILINE)
+_NON_SLUG_CHARS = re.compile(r"[^a-z0-9]+")
+
+
+def support_emails() -> list[str]:
+    return [e.strip() for e in load_settings().support_email.split(",") if e.strip()]
+
+
+def resolve_audience(audience: str | None, user: AuthenticatedUser | None) -> str:
+    """Explicit query wins; otherwise a business-only account sees business copy."""
+    if audience is not None:
+        return audience
+    if user is not None and user.has_role(ROLE_BUSINESS) and not user.has_role(ROLE_WORKER):
+        return ROLE_BUSINESS
+    return ROLE_WORKER
+
+
+def split_sections(body_markdown: str) -> list[ContentSection]:
+    headings = list(_SECTION_HEADING.finditer(body_markdown))
+    sections = []
+    for index, match in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(body_markdown)
+        title = match.group(1).strip()
+        section_id = _NON_SLUG_CHARS.sub("-", title.lower()).strip("-")
+        body = body_markdown[match.end() : end].strip()
+        sections.append(ContentSection(id=section_id, title=title, body=body))
+    return sections
+
 
 async def get_terms(audience: str) -> ContentPage:
     async with get_pool().acquire() as conn:
         row = await content_repository.get_content_page(conn, SLUG_TERMS, audience)
     if row is None:
         raise not_found("content_not_found", MSG_CONTENT_NOT_FOUND)
-    return ContentPage.model_validate(dict(row))
+    data = dict(row)
+    return ContentPage(**data, sections=split_sections(data["body_markdown"]))
 
 
 async def list_faqs(audience: str, search: str | None) -> FaqList:
@@ -36,6 +69,7 @@ async def list_faqs(audience: str, search: str | None) -> FaqList:
     return FaqList(
         items=[FaqItem.model_validate(dict(r)) for r in rows],
         support_email=load_settings().support_email,
+        support_emails=support_emails(),
     )
 
 
@@ -55,4 +89,6 @@ async def create_ticket(
             message=body.message.strip(),
             shift_id=body.shift_id,
         )
-    return SupportTicketResponse(**dict(row), support_email=load_settings().support_email)
+    return SupportTicketResponse(
+        **dict(row), support_email=load_settings().support_email, support_emails=support_emails()
+    )

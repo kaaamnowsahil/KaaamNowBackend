@@ -46,7 +46,20 @@ INSERT INTO work_categories (slug, name, icon, sort_order) VALUES
     ('office-boy',       'Office Assistant / Peon',  'briefcase',     25),
     ('car-wash',         'Car Wash',                 'droplets',      26),
     ('pet-care',         'Pet Care',                 'paw-print',     27),
+    ('cook',             'Cook (Hotel / Restaurant)', 'chef-hat',     28),
+    ('hotel-staff',      'Hotel Staff',              'bed',           29),
     ('other',            'Other',                    'more-horizontal', 99)
+ON CONFLICT (slug) DO NOTHING;
+
+-- App business signup "Business type" chips.
+INSERT INTO business_types (slug, name, icon, sort_order) VALUES
+    ('hospitality', 'Hospitality',       'coffee',          1),
+    ('retail',      'Retail',            'shopping-bag',    2),
+    ('events',      'Events',            'calendar',        3),
+    ('delivery',    'Delivery',          'truck',           4),
+    ('household',   'Household',         'home',            5),
+    ('office',      'Office',            'briefcase',       6),
+    ('other',       'Other',             'more-horizontal', 99)
 ON CONFLICT (slug) DO NOTHING;
 
 -- OWNER DECISION: Figma shows an illustrative 5% fee paid by the business on top of worker pay.
@@ -87,3 +100,7 @@ INSERT INTO faq_entries (audience, question, answer, sort_order) VALUES
     ('business', 'How are ratings calculated?',
      'Your rating is the average of the stars workers give you after each completed shift.', 5)
 ON CONFLICT (audience, question) DO NOTHING;
+
+UPDATE faq_entries
+SET slug = left(trim(BOTH '-' FROM lower(regexp_replace(question, '[^a-zA-Z0-9]+', '-', 'g'))), 64)
+WHERE slug IS NULL;

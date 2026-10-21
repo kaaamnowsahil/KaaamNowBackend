@@ -10,6 +10,7 @@ CATALOG_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_CATALOG}"
 OPENAPI_TAG_CATALOG: Final[str] = "catalog"
 
 PATH_WORK_CATEGORIES: Final[str] = "/work-categories"
+PATH_BUSINESS_TYPES: Final[str] = "/business-types"
 PATH_LANGUAGES: Final[str] = "/languages"
 PATH_RATING_TAGS: Final[str] = "/rating-tags"
 PATH_PAYMENT_METHODS: Final[str] = "/payment-methods"
@@ -47,4 +48,5 @@ RATING_TAGS: Final[dict[str, tuple[str, ...]]] = {
 }
 
 MSG_CATEGORY_UNKNOWN: Final[str] = "Unknown work category."
+MSG_BUSINESS_TYPE_UNKNOWN: Final[str] = "Unknown business type."
 MSG_NO_ACTIVE_FEE_POLICY: Final[str] = "No active platform fee policy is configured."

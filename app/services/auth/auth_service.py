@@ -5,28 +5,45 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID
 
+import asyncpg
+
 from app.config.settings import load_settings
+from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_WORKER
 from app.constants.auth.auth_route_strings import (
+    INTENT_SIGN_IN,
+    INTENT_SIGN_UP,
     MSG_ACCOUNT_DISABLED,
+    MSG_ACCOUNT_NOT_FOUND,
     MSG_OTP_ATTEMPTS_EXCEEDED,
     MSG_OTP_COOLDOWN,
     MSG_OTP_INVALID,
     MSG_OTP_RATE_LIMITED,
     MSG_OTP_SENT_BY_FIREBASE,
+    MSG_PHONE_REGISTERED,
     MSG_REFRESH_INVALID,
     MSG_REFRESH_REUSED,
     OTP_PROVIDER_FIREBASE,
 )
+from app.constants.users.user_route_strings import MSG_LANGUAGE_UNKNOWN
 from app.db.pool import get_pool
 from app.exceptions.api_errors import (
     AuthenticationError,
     bad_request,
+    conflict,
     forbidden,
+    not_found,
     too_many_requests,
 )
 from app.repositories.auth import auth_repository
+from app.repositories.profiles import profile_repository
 from app.repositories.users import user_repository
-from app.schemas.auth.auth_schemas import OtpSendResponse, OtpVerifyResponse, TokenPair
+from app.schemas.auth.auth_schemas import (
+    OtpSendResponse,
+    OtpVerifyResponse,
+    PhoneCheckResponse,
+    SignupRequest,
+    TokenPair,
+)
 from app.security.jwt_tokens import hash_refresh_token
 from app.services.auth.domain.token_issuer import issue_token_pair
 from app.services.auth.sources.firebase_token_verifier import verify_firebase_phone_token
@@ -36,16 +53,45 @@ from app.services.auth.validation.auth_validation_pipeline import (
     normalize_phone,
     otp_code_matches,
 )
+from app.services.catalog import catalog_service
 from app.services.users import user_service
+from app.utils.address import resolve_locality
 from app.utils.clock import utc_now
 from app.utils.references import new_numeric_code
 
 
-async def send_otp(phone: str, request_ip: str | None) -> OtpSendResponse:
+async def _is_registered(conn: asyncpg.Connection, phone: str) -> bool:
+    row = await user_repository.get_phone_status(conn, phone)
+    return row is not None and bool(row["roles"])
+
+
+async def _enforce_intent(phone: str, intent: str | None) -> None:
+    if intent is None:
+        return
+    async with get_pool().acquire() as conn:
+        registered = await _is_registered(conn, phone)
+    if intent == INTENT_SIGN_IN and not registered:
+        raise not_found("account_not_found", MSG_ACCOUNT_NOT_FOUND)
+    if intent == INTENT_SIGN_UP and registered:
+        raise conflict("phone_registered", MSG_PHONE_REGISTERED)
+
+
+async def check_phone(phone: str) -> PhoneCheckResponse:
+    phone = normalize_phone(phone)
+    async with get_pool().acquire() as conn:
+        row = await user_repository.get_phone_status(conn, phone)
+    roles = list(row["roles"]) if row is not None else []
+    return PhoneCheckResponse(phone=phone, registered=bool(roles), roles=roles)
+
+
+async def send_otp(
+    phone: str, request_ip: str | None, intent: str | None = None
+) -> OtpSendResponse:
     settings = load_settings()
     if settings.otp_provider == OTP_PROVIDER_FIREBASE:
         raise bad_request("otp_sent_by_firebase", MSG_OTP_SENT_BY_FIREBASE)
     phone = normalize_phone(phone)
+    await _enforce_intent(phone, intent)
     now = utc_now()
     code = new_numeric_code(settings.otp_length)
     async with get_pool().acquire() as conn:
@@ -96,15 +142,119 @@ async def _consume_otp(phone: str, code: str) -> None:
         raise bad_request("otp_invalid", MSG_OTP_INVALID)
 
 
-async def verify_otp(phone: str, code: str) -> OtpVerifyResponse:
+async def verify_otp(phone: str, code: str, intent: str | None = None) -> OtpVerifyResponse:
     phone = normalize_phone(phone)
     await _consume_otp(phone, code)
+    await _enforce_intent(phone, intent)
     return await _sign_in(phone)
 
 
-async def verify_firebase(id_token: str) -> OtpVerifyResponse:
+async def verify_firebase(id_token: str, intent: str | None = None) -> OtpVerifyResponse:
     phone = normalize_phone(await verify_firebase_phone_token(id_token))
+    await _enforce_intent(phone, intent)
     return await _sign_in(phone)
+
+
+async def signup(body: SignupRequest) -> OtpVerifyResponse:
+    """Verify the phone (SMS OTP or Firebase) and create user + role + profile atomically."""
+    async with get_pool().acquire() as conn:
+        if body.language_code and not await user_repository.language_is_active(
+            conn, body.language_code
+        ):
+            raise bad_request("language_unknown", MSG_LANGUAGE_UNKNOWN)
+        if body.worker is not None:
+            category_ids = await catalog_service.resolve_category_ids(
+                conn, body.worker.work_type_slugs
+            )
+        if body.business is not None:
+            business_type_id = await catalog_service.resolve_business_type_id(
+                conn, body.business.business_type_slug
+            )
+            category_id = (
+                await catalog_service.resolve_category_id(conn, body.business.category_slug)
+                if body.business.category_slug
+                else None
+            )
+
+    if body.id_token is not None:
+        phone = normalize_phone(await verify_firebase_phone_token(body.id_token))
+        await _enforce_intent(phone, INTENT_SIGN_UP)
+    else:
+        phone = normalize_phone(body.phone or "")
+        await _enforce_intent(phone, INTENT_SIGN_UP)
+        await _consume_otp(phone, body.code or "")
+
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            user = await user_repository.upsert_user_by_phone(conn, phone)
+            if user is None:
+                user = await user_repository.upsert_user_by_phone(conn, phone)
+            if not user["is_active"]:
+                raise forbidden("account_disabled", MSG_ACCOUNT_DISABLED)
+            if await user_repository.list_active_roles(conn, user["id"]):
+                raise conflict("phone_registered", MSG_PHONE_REGISTERED)
+            user_id = user["id"]
+            if body.worker is not None:
+                worker = body.worker
+                await user_repository.update_user_fields(
+                    conn,
+                    user_id,
+                    full_name=worker.full_name.strip(),
+                    email_set=worker.email is not None,
+                    email=worker.email,
+                    language_code=body.language_code,
+                    theme_preference=None,
+                )
+                await user_repository.grant_role(conn, user_id, ROLE_WORKER)
+                await profile_repository.ensure_worker_profile(conn, user_id)
+                await profile_repository.update_worker_profile(
+                    conn,
+                    user_id,
+                    address_text=worker.address_text.strip(),
+                    locality=resolve_locality(worker.address_text, worker.locality),
+                    latitude=worker.latitude,
+                    longitude=worker.longitude,
+                    age=worker.age,
+                )
+                profile = await profile_repository.get_worker_profile_by_user(conn, user_id)
+                await profile_repository.replace_worker_categories(
+                    conn, profile["id"], category_ids
+                )
+                role = ROLE_WORKER
+            else:
+                business = body.business
+                assert business is not None
+                await user_repository.update_user_fields(
+                    conn,
+                    user_id,
+                    full_name=business.contact_name.strip(),
+                    email_set=business.email is not None,
+                    email=business.email,
+                    language_code=body.language_code,
+                    theme_preference=None,
+                )
+                await user_repository.grant_role(conn, user_id, ROLE_BUSINESS)
+                await profile_repository.ensure_business_profile(conn, user_id)
+                await profile_repository.update_business_profile(
+                    conn,
+                    user_id,
+                    business_name=business.business_name.strip(),
+                    category_id=category_id,
+                    logo_url=None,
+                    address_text=business.address_text.strip(),
+                    locality=resolve_locality(business.address_text, business.locality),
+                    latitude=business.latitude,
+                    longitude=business.longitude,
+                    contact_name=business.contact_name.strip(),
+                    email=business.email,
+                    business_type_id=business_type_id,
+                )
+                role = ROLE_BUSINESS
+            await user_repository.set_active_role(conn, user_id, role)
+            await user_repository.touch_last_login(conn, user_id, utc_now())
+            tokens, _ = await issue_token_pair(conn, user_id=user_id, phone=phone)
+            me = await user_service.build_me(conn, user_id)
+    return OtpVerifyResponse(tokens=tokens, is_new_user=True, needs_role_selection=False, me=me)
 
 
 async def _sign_in(phone: str) -> OtpVerifyResponse:

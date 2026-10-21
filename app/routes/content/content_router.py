@@ -19,7 +19,7 @@ from app.constants.content.content_route_strings import (
     PATH_TICKETS,
     SUPPORT_ROUTE_PREFIX,
 )
-from app.dependencies import CurrentUser
+from app.dependencies import CurrentUser, OptionalUser
 from app.schemas.content.content_schemas import (
     Audience,
     ContentPage,
@@ -38,8 +38,8 @@ support_router = APIRouter(prefix=SUPPORT_ROUTE_PREFIX, tags=[OPENAPI_TAG_SUPPOR
     response_model=ContentPage,
     summary=swagger_summary("Terms & Conditions", SWAGGER_ROLE_PUBLIC),
 )
-async def terms(audience: Audience = Query(...)) -> ContentPage:
-    return await content_service.get_terms(audience)
+async def terms(user: OptionalUser, audience: Audience | None = None) -> ContentPage:
+    return await content_service.get_terms(content_service.resolve_audience(audience, user))
 
 
 @router.get(
@@ -48,10 +48,11 @@ async def terms(audience: Audience = Query(...)) -> ContentPage:
     summary=swagger_summary("FAQ & Help", SWAGGER_ROLE_PUBLIC),
 )
 async def faqs(
-    audience: Audience = Query(...),
+    user: OptionalUser,
+    audience: Audience | None = None,
     q: str | None = Query(default=None, max_length=FAQ_SEARCH_MAX_LENGTH),
 ) -> FaqList:
-    return await content_service.list_faqs(audience, q)
+    return await content_service.list_faqs(content_service.resolve_audience(audience, user), q)
 
 
 @support_router.post(

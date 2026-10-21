@@ -31,6 +31,7 @@ from app.repositories.earnings.earnings_queries import (
     PENDING_PAY,
     SET_DEFAULT_ACCOUNT,
     SET_WITHDRAWAL_PROCESSING,
+    UPDATE_PAYOUT_ACCOUNT,
 )
 
 
@@ -96,6 +97,31 @@ async def get_payout_account(
     conn: asyncpg.Connection, account_id: UUID, worker_profile_id: UUID
 ) -> asyncpg.Record | None:
     return await conn.fetchrow(GET_PAYOUT_ACCOUNT, account_id, worker_profile_id)
+
+
+async def update_payout_account(
+    conn: asyncpg.Connection,
+    account_id: UUID,
+    worker_profile_id: UUID,
+    *,
+    upi_id: str | None,
+    paytm_phone: str | None,
+    bank_account_number: str | None,
+    bank_ifsc: str | None,
+    account_holder_name: str | None,
+    details_changed: bool,
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(
+        UPDATE_PAYOUT_ACCOUNT,
+        account_id,
+        worker_profile_id,
+        upi_id,
+        paytm_phone,
+        bank_account_number,
+        bank_ifsc,
+        account_holder_name,
+        details_changed,
+    )
 
 
 async def count_active_accounts(conn: asyncpg.Connection, worker_profile_id: UUID) -> int:

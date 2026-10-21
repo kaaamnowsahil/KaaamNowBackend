@@ -22,5 +22,9 @@ CREATE TABLE IF NOT EXISTS worker_profiles (
         CHECK (verification_status IN ('pending', 'verified', 'rejected'))
 );
 
+-- App signup "Age" (Figma worker step 2).
+ALTER TABLE worker_profiles ADD COLUMN IF NOT EXISTS age SMALLINT
+    CONSTRAINT worker_profiles_age_chk CHECK (age IS NULL OR age BETWEEN 18 AND 70);
+
 CREATE INDEX IF NOT EXISTS worker_profiles_home_geo_idx
     ON worker_profiles (latitude, longitude) WHERE verification_status = 'verified';

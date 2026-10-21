@@ -14,6 +14,13 @@ class WorkCategory(BaseModel):
     icon: str
 
 
+class BusinessType(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    icon: str
+
+
 class Language(BaseModel):
     code: str
     english_name: str

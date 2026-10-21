@@ -22,6 +22,8 @@ OPENAPI_TAG_WORKER_PROFILE: Final[str] = "worker profile"
 OPENAPI_TAG_ADMIN: Final[str] = "admin"
 
 PATH_PROFILE: Final[str] = "/profile"
+PATH_PROFILE_LOGO: Final[str] = "/profile/logo"
+LOGO_STORAGE_FOLDER: Final[str] = "logos"
 PATH_AVAILABILITY: Final[str] = "/availability"
 PATH_LOCATION: Final[str] = "/location"
 PATH_WORKER_BY_ID: Final[str] = "/{worker_profile_id}"

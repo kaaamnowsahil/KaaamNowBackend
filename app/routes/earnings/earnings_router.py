@@ -23,6 +23,7 @@ from app.schemas.earnings.earnings_schemas import (
     EarningsSummary,
     LedgerPage,
     PayoutAccountCreate,
+    PayoutAccountPatch,
     PayoutAccountResponse,
     WithdrawalCreate,
     WithdrawalPage,
@@ -83,6 +84,17 @@ async def add_account(
 )
 async def set_default(account_id: UUID, user: RequireEarningsWrite) -> PayoutAccountResponse:
     return await earnings_service.set_default_account(user, account_id)
+
+
+@router.patch(
+    PATH_PAYOUT_ACCOUNT,
+    response_model=PayoutAccountResponse,
+    summary=swagger_summary("Edit payout account", SWAGGER_ROLE_WORKER),
+)
+async def update_account(
+    account_id: UUID, body: PayoutAccountPatch, user: RequireEarningsWrite
+) -> PayoutAccountResponse:
+    return await earnings_service.update_payout_account(user, account_id, body)
 
 
 @router.delete(

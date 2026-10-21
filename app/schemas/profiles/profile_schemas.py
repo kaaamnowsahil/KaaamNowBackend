@@ -12,8 +12,14 @@ from app.constants.profiles.profile_route_strings import MSG_COORDINATES_PAIR
 
 VerificationStatus = Literal["pending", "verified", "rejected"]
 
+EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+WORKER_MIN_AGE = 18
+WORKER_MAX_AGE = 70
+
 Latitude = Field(ge=-90, le=90)
 Longitude = Field(ge=-180, le=180)
+OptionalLatitude = Field(default=None, ge=-90, le=90)
+OptionalLongitude = Field(default=None, ge=-180, le=180)
 
 
 class _CoordinatesPair(BaseModel):
@@ -41,6 +47,10 @@ class BusinessProfileResponse(BaseModel):
     rating_avg: float
     rating_count: int
     owner_name: str
+    contact_name: str
+    email: str | None = None
+    business_type_slug: str | None = None
+    business_type_name: str | None = None
     phone: str
 
 
@@ -48,18 +58,23 @@ class BusinessProfilePatch(_CoordinatesPair):
     model_config = ConfigDict(extra="forbid")
 
     business_name: str | None = Field(default=None, min_length=1, max_length=160)
+    contact_name: str | None = Field(default=None, min_length=1, max_length=120)
+    email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
+    business_type_slug: str | None = Field(default=None, max_length=64)
     category_slug: str | None = Field(default=None, max_length=64)
     logo_url: str | None = Field(default=None, max_length=2000)
     address_text: str | None = Field(default=None, max_length=500)
     locality: str | None = Field(default=None, max_length=160)
-    latitude: float | None = Latitude
-    longitude: float | None = Longitude
+    latitude: float | None = OptionalLatitude
+    longitude: float | None = OptionalLongitude
 
 
 class WorkerProfileResponse(BaseModel):
     id: UUID
     user_id: UUID
     full_name: str
+    email: str | None = None
+    age: int | None = None
     photo_url: str | None = None
     phone: str
     address_text: str
@@ -80,10 +95,13 @@ class WorkerProfileResponse(BaseModel):
 class WorkerProfilePatch(_CoordinatesPair):
     model_config = ConfigDict(extra="forbid")
 
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
+    email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
+    age: int | None = Field(default=None, ge=WORKER_MIN_AGE, le=WORKER_MAX_AGE)
     address_text: str | None = Field(default=None, max_length=500)
     locality: str | None = Field(default=None, max_length=160)
-    latitude: float | None = Latitude
-    longitude: float | None = Longitude
+    latitude: float | None = OptionalLatitude
+    longitude: float | None = OptionalLongitude
     category_slugs: list[str] | None = Field(default=None, max_length=20)
 
 
@@ -115,8 +133,8 @@ class AvailabilityRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_available: bool
-    latitude: float | None = Latitude
-    longitude: float | None = Longitude
+    latitude: float | None = OptionalLatitude
+    longitude: float | None = OptionalLongitude
     accuracy_m: int | None = Field(default=None, ge=0, le=100_000)
 
 
