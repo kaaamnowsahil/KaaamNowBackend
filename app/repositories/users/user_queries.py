@@ -19,6 +19,17 @@ SELECT {_USER_COLUMNS}, false AS created FROM users u
 WHERE u.phone = $1 AND NOT EXISTS (SELECT 1 FROM inserted)
 """
 
+GET_PHONE_STATUS = """
+SELECT u.id, u.is_active,
+       COALESCE(
+           (SELECT array_agg(r.role ORDER BY r.role) FROM user_roles r
+            WHERE r.user_id = u.id AND r.status = 'active'),
+           ARRAY[]::varchar[]
+       ) AS roles
+FROM users u
+WHERE u.phone = $1
+"""
+
 TOUCH_LAST_LOGIN = "UPDATE users SET last_login_at = $2 WHERE id = $1"
 
 GET_USER_BY_ID = f"SELECT {_USER_COLUMNS} FROM users u WHERE u.id = $1"

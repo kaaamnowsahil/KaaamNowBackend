@@ -11,3 +11,8 @@ CREATE TABLE IF NOT EXISTS faq_entries (
     CONSTRAINT faq_entries_audience_question_uid UNIQUE (audience, question),
     CONSTRAINT faq_entries_audience_chk CHECK (audience IN ('worker', 'business', 'all'))
 );
+
+-- Stable id the app uses for expand/collapse state and deep links.
+ALTER TABLE faq_entries ADD COLUMN IF NOT EXISTS slug VARCHAR(64);
+CREATE UNIQUE INDEX IF NOT EXISTS faq_entries_audience_slug_uid
+    ON faq_entries (audience, slug) WHERE slug IS NOT NULL;

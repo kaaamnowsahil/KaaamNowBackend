@@ -22,5 +22,10 @@ CREATE TABLE IF NOT EXISTS business_profiles (
         CHECK (verification_status IN ('pending', 'verified', 'rejected'))
 );
 
+-- App signup "Contact person", "Email" and "Business type" (Figma business step 2).
+ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS contact_name VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS email VARCHAR(254);
+ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS business_type_id UUID;
+
 CREATE INDEX IF NOT EXISTS business_profiles_verification_idx
     ON business_profiles (verification_status);

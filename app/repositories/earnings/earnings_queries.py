@@ -61,7 +61,7 @@ LIMIT $2 OFFSET $3
 
 _ACCOUNT_COLUMNS = """
 id, account_type, upi_id, paytm_phone, bank_account_number, bank_ifsc, account_holder_name,
-is_default, created_at
+is_default, is_verified, verified_at, created_at
 """
 
 LIST_PAYOUT_ACCOUNTS = f"""
@@ -86,6 +86,20 @@ INSERT INTO payout_accounts (
     account_holder_name, is_default
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING {_ACCOUNT_COLUMNS}
+"""
+
+UPDATE_PAYOUT_ACCOUNT = f"""
+UPDATE payout_accounts SET
+    upi_id = COALESCE($3, upi_id),
+    paytm_phone = COALESCE($4, paytm_phone),
+    bank_account_number = COALESCE($5, bank_account_number),
+    bank_ifsc = COALESCE($6, bank_ifsc),
+    account_holder_name = COALESCE($7, account_holder_name),
+    is_verified = CASE WHEN $8::boolean THEN false ELSE is_verified END,
+    verified_at = CASE WHEN $8::boolean THEN NULL ELSE verified_at END,
+    updated_at = now()
+WHERE id = $1 AND worker_profile_id = $2 AND is_active
 RETURNING {_ACCOUNT_COLUMNS}
 """
 

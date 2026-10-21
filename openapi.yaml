@@ -106,6 +106,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/phone/check:
+    post:
+      tags:
+      - auth
+      summary: Is this phone already registered? · Public
+      operationId: check_phone_api_v1_auth_phone_check_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneCheckRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneCheckResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/signup:
+    post:
+      tags:
+      - auth
+      summary: Register in one call (OTP or Firebase token + role + profile) · Public
+      operationId: signup_api_v1_auth_signup_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/auth/token/refresh:
     post:
       tags:
@@ -344,6 +394,22 @@ paths:
                   $ref: '#/components/schemas/WorkCategory'
                 type: array
                 title: Response Work Categories Api V1 Catalog Work Categories Get
+  /api/v1/catalog/business-types:
+    get:
+      tags:
+      - catalog
+      summary: Business types · Public
+      operationId: business_types_api_v1_catalog_business_types_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/BusinessType'
+                type: array
+                title: Response Business Types Api V1 Catalog Business Types Get
   /api/v1/catalog/languages:
     get:
       tags:
@@ -553,6 +619,33 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/BusinessProfilePatch'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/business/profile/logo:
+    post:
+      tags:
+      - business profile
+      summary: Upload business logo · Business
+      operationId: upload_logo_api_v1_business_profile_logo_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_logo_api_v1_business_profile_logo_post'
         required: true
       responses:
         '200':
@@ -2492,6 +2585,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/worker/payout-accounts/{account_id}:
+    patch:
+      tags:
+      - earnings
+      summary: Edit payout account · Worker
+      operationId: update_account_api_v1_worker_payout_accounts__account_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Account Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayoutAccountPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutAccountResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
       - earnings
@@ -2679,15 +2806,19 @@ paths:
       - content
       summary: Terms & Conditions · Public
       operationId: terms_api_v1_content_terms_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: audience
         in: query
-        required: true
+        required: false
         schema:
-          enum:
-          - worker
-          - business
-          type: string
+          anyOf:
+          - enum:
+            - worker
+            - business
+            type: string
+          - type: 'null'
           title: Audience
       responses:
         '200':
@@ -2708,15 +2839,19 @@ paths:
       - content
       summary: FAQ & Help · Public
       operationId: faqs_api_v1_content_faqs_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: audience
         in: query
-        required: true
+        required: false
         schema:
-          enum:
-          - worker
-          - business
-          type: string
+          anyOf:
+          - enum:
+            - worker
+            - business
+            type: string
+          - type: 'null'
           title: Audience
       - name: q
         in: query
@@ -3142,8 +3277,6 @@ components:
       type: object
       required:
       - is_available
-      - latitude
-      - longitude
       title: AvailabilityRequest
     AvailabilityResponse:
       properties:
@@ -3166,6 +3299,16 @@ components:
       required:
       - is_available
       title: AvailabilityResponse
+    Body_upload_logo_api_v1_business_profile_logo_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_logo_api_v1_business_profile_logo_post
     Body_upload_photo_api_v1_me_photo_post:
       properties:
         file:
@@ -3216,6 +3359,26 @@ components:
             minLength: 1
           - type: 'null'
           title: Business Name
+        contact_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        business_type_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Business Type Slug
         category_slug:
           anyOf:
           - type: string
@@ -3256,9 +3419,6 @@ components:
           title: Longitude
       additionalProperties: false
       type: object
-      required:
-      - latitude
-      - longitude
       title: BusinessProfilePatch
     BusinessProfileResponse:
       properties:
@@ -3331,6 +3491,24 @@ components:
         owner_name:
           type: string
           title: Owner Name
+        contact_name:
+          type: string
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        business_type_slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Type Slug
+        business_type_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Type Name
         phone:
           type: string
           title: Phone
@@ -3345,6 +3523,7 @@ components:
       - rating_avg
       - rating_count
       - owner_name
+      - contact_name
       - phone
       title: BusinessProfileResponse
     BusinessProfileSummary:
@@ -3365,6 +3544,28 @@ components:
       - business_name
       - verification_status
       title: BusinessProfileSummary
+    BusinessType:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        slug:
+          type: string
+          title: Slug
+        name:
+          type: string
+          title: Name
+        icon:
+          type: string
+          title: Icon
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - icon
+      title: BusinessType
     CheckInRequest:
       properties:
         latitude:
@@ -3445,6 +3646,12 @@ components:
         body_markdown:
           type: string
           title: Body Markdown
+        sections:
+          items:
+            $ref: '#/components/schemas/ContentSection'
+          type: array
+          title: Sections
+          description: body_markdown split on '## ' headings.
         effective_date:
           type: string
           format: date
@@ -3462,6 +3669,23 @@ components:
       - effective_date
       - updated_at
       title: ContentPage
+    ContentSection:
+      properties:
+        id:
+          type: string
+          title: Id
+        title:
+          type: string
+          title: Title
+        body:
+          type: string
+          title: Body
+      type: object
+      required:
+      - id
+      - title
+      - body
+      title: ContentSection
     ConvertToScheduledRequest:
       properties:
         starts_at:
@@ -3641,6 +3865,11 @@ components:
           type: string
           format: uuid
           title: Id
+        slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Slug
         question:
           type: string
           title: Question
@@ -3663,10 +3892,17 @@ components:
         support_email:
           type: string
           title: Support Email
+          description: Comma-separated; prefer support_emails.
+        support_emails:
+          items:
+            type: string
+          type: array
+          title: Support Emails
       type: object
       required:
       - items
       - support_email
+      - support_emails
       title: FaqList
     FeePolicy:
       properties:
@@ -3708,6 +3944,13 @@ components:
           minLength: 20
           title: Id Token
           description: Firebase Auth ID token.
+        intent:
+          anyOf:
+          - type: string
+            const: sign_in
+          - type: 'null'
+          title: Intent
+          description: 'sign_in: 404 instead of creating a new account.'
       additionalProperties: false
       type: object
       required:
@@ -4338,6 +4581,16 @@ components:
           title: Phone
           examples:
           - '+919876543210'
+        intent:
+          anyOf:
+          - type: string
+            enum:
+            - sign_in
+            - sign_up
+          - type: 'null'
+          title: Intent
+          description: 'sign_in: 404 if no account. sign_up: 409 if the number already
+            has one.'
       additionalProperties: false
       type: object
       required:
@@ -4377,6 +4630,13 @@ components:
           title: Code
           examples:
           - '123456'
+        intent:
+          anyOf:
+          - type: string
+            const: sign_in
+          - type: 'null'
+          title: Intent
+          description: 'sign_in: 404 instead of creating a new account.'
       additionalProperties: false
       type: object
       required:
@@ -4671,6 +4931,49 @@ components:
       required:
       - account_type
       title: PayoutAccountCreate
+    PayoutAccountPatch:
+      properties:
+        upi_id:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,63}$
+          - type: 'null'
+          title: Upi Id
+        paytm_phone:
+          anyOf:
+          - type: string
+            pattern: ^\+?\d{10,15}$
+          - type: 'null'
+          title: Paytm Phone
+        bank_account_number:
+          anyOf:
+          - type: string
+            pattern: ^\d{9,18}$
+          - type: 'null'
+          title: Bank Account Number
+        bank_ifsc:
+          anyOf:
+          - type: string
+            pattern: ^[A-Z]{4}0[A-Z0-9]{6}$
+          - type: 'null'
+          title: Bank Ifsc
+        account_holder_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Account Holder Name
+        make_default:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Make Default
+      additionalProperties: false
+      type: object
+      title: PayoutAccountPatch
+      description: Edit details of a saved account; the type cannot change. Edits
+        clear verification.
     PayoutAccountResponse:
       properties:
         id:
@@ -4714,6 +5017,16 @@ components:
         is_default:
           type: boolean
           title: Is Default
+        is_verified:
+          type: boolean
+          title: Is Verified
+          default: false
+        verified_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Verified At
         created_at:
           type: string
           format: date-time
@@ -4727,6 +5040,39 @@ components:
       - is_default
       - created_at
       title: PayoutAccountResponse
+    PhoneCheckRequest:
+      properties:
+        phone:
+          type: string
+          maxLength: 20
+          minLength: 8
+          title: Phone
+          examples:
+          - '+919876543210'
+      additionalProperties: false
+      type: object
+      required:
+      - phone
+      title: PhoneCheckRequest
+    PhoneCheckResponse:
+      properties:
+        phone:
+          type: string
+          title: Phone
+        registered:
+          type: boolean
+          title: Registered
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+      type: object
+      required:
+      - phone
+      - registered
+      - roles
+      title: PhoneCheckResponse
     RatingCreate:
       properties:
         stars:
@@ -5527,6 +5873,181 @@ components:
       - created_at
       title: ShiftResponse
       description: Business view of one shift.
+    SignupBusinessDetails:
+      properties:
+        business_name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Business Name
+        contact_name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        address_text:
+          type: string
+          maxLength: 500
+          minLength: 3
+          title: Address Text
+        locality:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Locality
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+        business_type_slug:
+          type: string
+          maxLength: 64
+          title: Business Type Slug
+        category_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Category Slug
+      additionalProperties: false
+      type: object
+      required:
+      - business_name
+      - contact_name
+      - address_text
+      - business_type_slug
+      title: SignupBusinessDetails
+      description: App business signup step 2 ("Tell us about your business").
+    SignupRequest:
+      properties:
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 20
+            minLength: 8
+          - type: 'null'
+          title: Phone
+        code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 4
+            pattern: ^\d+$
+          - type: 'null'
+          title: Code
+        id_token:
+          anyOf:
+          - type: string
+            maxLength: 4096
+            minLength: 20
+          - type: 'null'
+          title: Id Token
+        role:
+          type: string
+          enum:
+          - business
+          - worker
+          title: Role
+        language_code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 2
+          - type: 'null'
+          title: Language Code
+        worker:
+          anyOf:
+          - $ref: '#/components/schemas/SignupWorkerDetails'
+          - type: 'null'
+        business:
+          anyOf:
+          - $ref: '#/components/schemas/SignupBusinessDetails'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - role
+      title: SignupRequest
+      description: 'One-call registration: proves the phone and creates the account
+        + role profile.'
+    SignupWorkerDetails:
+      properties:
+        full_name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        age:
+          type: integer
+          maximum: 70.0
+          minimum: 18.0
+          title: Age
+        address_text:
+          type: string
+          maxLength: 500
+          minLength: 3
+          title: Address Text
+        locality:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Locality
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+        work_type_slugs:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          minItems: 1
+          title: Work Type Slugs
+      additionalProperties: false
+      type: object
+      required:
+      - full_name
+      - age
+      - address_text
+      - work_type_slugs
+      title: SignupWorkerDetails
+      description: App worker signup step 2 ("Tell us about you").
     SupportTicketCreate:
       properties:
         topic:
@@ -5584,6 +6105,11 @@ components:
         support_email:
           type: string
           title: Support Email
+        support_emails:
+          items:
+            type: string
+          type: array
+          title: Support Emails
       type: object
       required:
       - id
@@ -5592,6 +6118,7 @@ components:
       - status
       - created_at
       - support_email
+      - support_emails
       title: SupportTicketResponse
     TokenPair:
       properties:
@@ -5882,6 +6409,27 @@ components:
       title: WorkCategory
     WorkerProfilePatch:
       properties:
+        full_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        age:
+          anyOf:
+          - type: integer
+            maximum: 70.0
+            minimum: 18.0
+          - type: 'null'
+          title: Age
         address_text:
           anyOf:
           - type: string
@@ -5918,9 +6466,6 @@ components:
           title: Category Slugs
       additionalProperties: false
       type: object
-      required:
-      - latitude
-      - longitude
       title: WorkerProfilePatch
     WorkerProfileResponse:
       properties:
@@ -5935,6 +6480,16 @@ components:
         full_name:
           type: string
           title: Full Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        age:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Age
         photo_url:
           anyOf:
           - type: string

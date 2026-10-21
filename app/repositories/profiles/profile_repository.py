@@ -61,6 +61,9 @@ async def update_business_profile(
     locality: str | None,
     latitude: float | None,
     longitude: float | None,
+    contact_name: str | None = None,
+    email: str | None = None,
+    business_type_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         UPDATE_BUSINESS_PROFILE,
@@ -72,6 +75,9 @@ async def update_business_profile(
         locality,
         latitude,
         longitude,
+        contact_name,
+        email,
+        business_type_id,
     )
 
 
@@ -93,8 +99,11 @@ async def update_worker_profile(
     locality: str | None,
     latitude: float | None,
     longitude: float | None,
+    age: int | None = None,
 ) -> None:
-    await conn.execute(UPDATE_WORKER_PROFILE, user_id, address_text, locality, latitude, longitude)
+    await conn.execute(
+        UPDATE_WORKER_PROFILE, user_id, address_text, locality, latitude, longitude, age
+    )
 
 
 async def replace_worker_categories(

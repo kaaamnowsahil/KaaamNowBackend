@@ -10,6 +10,7 @@ import asyncpg
 from app.repositories.users.user_queries import (
     DEACTIVATE_DEVICE,
     GET_ME,
+    GET_PHONE_STATUS,
     GET_USER_BY_ID,
     LANGUAGE_IS_ACTIVE,
     LIST_ACTIVE_PUSH_TOKENS,
@@ -27,6 +28,10 @@ from app.repositories.users.user_queries import (
 async def upsert_user_by_phone(conn: asyncpg.Connection, phone: str) -> asyncpg.Record:
     """Return the user row plus ``created`` (True on first login)."""
     return await conn.fetchrow(UPSERT_USER_BY_PHONE, phone)
+
+
+async def get_phone_status(conn: asyncpg.Connection, phone: str) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_PHONE_STATUS, phone)
 
 
 async def touch_last_login(conn: asyncpg.Connection, user_id: UUID, now: datetime) -> None:
