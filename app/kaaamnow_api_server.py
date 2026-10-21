@@ -1,4 +1,4 @@
-"""KaamNow API process: app factory + uvicorn entrypoint."""
+"""KaaamNow API process: app factory + uvicorn entrypoint."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.router import register_routes
 from app.services.users.sources.photo_storage import media_root
 
 
-def create_kaamnow_api_application() -> FastAPI:
+def create_kaaamnow_api_application() -> FastAPI:
     configure_application_logging()
     settings = load_settings()
     app = FastAPI(
@@ -37,10 +37,10 @@ def create_kaamnow_api_application() -> FastAPI:
     return app
 
 
-kaamnow_api_application = create_kaamnow_api_application()
+kaaamnow_api_application = create_kaaamnow_api_application()
 
 
-def start_kaamnow_api_server() -> None:
+def start_kaaamnow_api_server() -> None:
     settings = load_settings()
     uvicorn.run(
         UVICORN_APP_IMPORT_PATH,
@@ -52,4 +52,4 @@ def start_kaamnow_api_server() -> None:
 
 
 if __name__ == "__main__":
-    start_kaamnow_api_server()
+    start_kaaamnow_api_server()

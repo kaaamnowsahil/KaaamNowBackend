@@ -1,4 +1,4 @@
-"""Integration harness: real Postgres (``kaamnow_test`` recreated per run) + in-process ASGI."""
+"""Integration harness: real Postgres (``kaaamnow_test`` recreated per run) + in-process ASGI."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ async def app_client() -> AsyncIterator[httpx.AsyncClient]:
     await _recreate_database(settings.database_url)
     auth_service.new_numeric_code = lambda _length: TEST_OTP  # type: ignore[assignment]
 
-    from app.kaamnow_api_server import kaamnow_api_application as app
+    from app.kaaamnow_api_server import kaaamnow_api_application as app
 
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)

@@ -30,7 +30,7 @@ _DEV_ONLY_PROVIDERS: dict[str, str] = {
 }
 
 
-class KaamNowSettings(BaseSettings):
+class KaaamNowSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=resolve_env_file(),
         env_file_encoding=ENCODING_UTF8,
@@ -60,7 +60,7 @@ class KaamNowSettings(BaseSettings):
 
     # --- Auth (self-issued JWT after phone OTP) ---
     jwt_secret_key: str
-    jwt_issuer: str = "kaamnow"
+    jwt_issuer: str = "kaaamnow"
     jwt_access_minutes: int = Field(default=15, ge=1)
     jwt_refresh_days: int = Field(default=30, ge=1)
 
@@ -95,8 +95,8 @@ class KaamNowSettings(BaseSettings):
     payment_provider: str = "fake"
     payment_expiry_seconds: int = 300
     payment_webhook_secret: str = ""
-    upi_payee_vpa: str = "kaamnow@upi"
-    upi_payee_name: str = "KaamNow"
+    upi_payee_vpa: str = "kaaamnow@upi"
+    upi_payee_name: str = "KaaamNow"
     payout_provider: str = "fake"
     min_withdrawal_minor: int = 10000
 
@@ -105,7 +105,7 @@ class KaamNowSettings(BaseSettings):
     media_dir: str = ""
     media_base_url: str = "/media"
     max_photo_bytes: int = 5 * 1024 * 1024
-    support_email: str = "support@kaamnow.app"
+    support_email: str = "sumit.pandey@kaaamnow.in,sahil.shrivastava@kaaamnow.in"
 
     @field_validator("database_url")
     @classmethod
@@ -143,8 +143,8 @@ class KaamNowSettings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
-def load_settings() -> KaamNowSettings:
-    return KaamNowSettings()  # type: ignore[call-arg]
+def load_settings() -> KaaamNowSettings:
+    return KaaamNowSettings()  # type: ignore[call-arg]
 
 
-__all__ = ["KaamNowSettings", "load_settings"]
+__all__ = ["KaaamNowSettings", "load_settings"]

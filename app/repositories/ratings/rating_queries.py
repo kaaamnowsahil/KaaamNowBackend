@@ -19,7 +19,9 @@ ORDER BY created_at
 
 LIST_RECENT_REVIEWS_FOR_USER = """
 SELECT r.stars, r.tags, r.review, r.created_at,
-       COALESCE(NULLIF(bp.business_name, ''), NULLIF(u.full_name, ''), 'KaamNow user') AS rater_name
+       COALESCE(
+           NULLIF(bp.business_name, ''), NULLIF(u.full_name, ''), 'KaaamNow user'
+       ) AS rater_name
 FROM ratings r
 JOIN users u ON u.id = r.rater_user_id
 LEFT JOIN business_profiles bp

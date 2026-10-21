@@ -112,7 +112,7 @@ async def set_active_role(user: AuthenticatedUser, role: str) -> MeResponse:
 
 
 async def add_role(user: AuthenticatedUser, role: str) -> OtpVerifyResponse:
-    """Figma "How will you use KaamNow?": grant role, create its profile, switch to it.
+    """Figma "How will you use KaaamNow?": grant role, create its profile, switch to it.
 
     Returns fresh tokens because the access token embeds the role list.
     """

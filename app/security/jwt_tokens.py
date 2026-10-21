@@ -13,7 +13,7 @@ from uuid import UUID
 
 import jwt
 
-from app.config.settings import KaamNowSettings
+from app.config.settings import KaaamNowSettings
 from app.constants.auth.auth_route_strings import (
     MSG_TOKEN_EXPIRED,
     MSG_TOKEN_INVALID,
@@ -28,7 +28,7 @@ _REFRESH_TOKEN_BYTES = 48
 
 
 def issue_access_token(
-    settings: KaamNowSettings, *, user_id: UUID, phone: str, roles: list[str]
+    settings: KaaamNowSettings, *, user_id: UUID, phone: str, roles: list[str]
 ) -> tuple[str, int]:
     """Return ``(jwt, expires_in_seconds)``."""
     now = utc_now()
@@ -45,7 +45,7 @@ def issue_access_token(
     return jwt.encode(claims, settings.jwt_secret_key, algorithm=_ALGORITHM), expires_in
 
 
-def verify_access_token(token: str, settings: KaamNowSettings) -> AuthenticatedUser:
+def verify_access_token(token: str, settings: KaaamNowSettings) -> AuthenticatedUser:
     try:
         claims = jwt.decode(
             token,

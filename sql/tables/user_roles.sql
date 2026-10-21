@@ -1,4 +1,4 @@
--- Roles granted to a user (Figma "How will you use KaamNow?").
+-- Roles granted to a user (Figma "How will you use KaaamNow?").
 CREATE TABLE IF NOT EXISTS user_roles (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL,

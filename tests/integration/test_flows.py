@@ -384,13 +384,13 @@ async def test_payment_webhook_signature(app_client: httpx.AsyncClient) -> None:
     signed = await app_client.post(
         f"{API}/payments/webhooks/fake",
         content=payload,
-        headers={"x-kaamnow-signature": signature, "content-type": "application/json"},
+        headers={"x-kaaamnow-signature": signature, "content-type": "application/json"},
     )
     assert signed.status_code == 200, signed.text
     replay = await app_client.post(
         f"{API}/payments/webhooks/fake",
         content=payload,
-        headers={"x-kaamnow-signature": signature, "content-type": "application/json"},
+        headers={"x-kaaamnow-signature": signature, "content-type": "application/json"},
     )
     assert replay.json()["duplicate"] is True
 

@@ -1,8 +1,8 @@
 [project]
-name = "kaamnow-api"
+name = "kaaamnow-api"
 # Packaging / pip metadata only — API runtime version is APP_VERSION.
 version = "1.0.0"
-description = "KaamNow shift-staffing API (FastAPI + asyncpg + PostgreSQL)"
+description = "KaaamNow shift-staffing API (FastAPI + asyncpg + PostgreSQL)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -25,7 +25,7 @@ dev = [
 ]
 
 [project.scripts]
-kaamnow-api = "app.kaamnow_api_server:start_kaamnow_api_server"
+kaaamnow-api = "app.kaaamnow_api_server:start_kaaamnow_api_server"
 
 [build-system]
 requires = ["setuptools>=68"]
