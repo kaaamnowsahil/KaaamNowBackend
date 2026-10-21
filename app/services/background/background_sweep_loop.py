@@ -86,7 +86,7 @@ async def _loop(pool: asyncpg.Pool, interval_seconds: int) -> None:
 async def start_background_sweep_loop(pool: asyncpg.Pool, interval_seconds: int) -> None:
     global _task
     if _task is None or _task.done():
-        _task = asyncio.create_task(_loop(pool, interval_seconds), name="kaamnow-sweep")
+        _task = asyncio.create_task(_loop(pool, interval_seconds), name="kaaamnow-sweep")
 
 
 async def stop_background_sweep_loop() -> None:

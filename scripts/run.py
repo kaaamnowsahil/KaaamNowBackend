@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Single entrypoint for the KaamNow API.
+"""Single entrypoint for the KaaamNow API.
 
 Usage:
     make run-api ENV=dev
@@ -37,7 +37,7 @@ def _ensure_project_deps() -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the KaamNow API.")
+    parser = argparse.ArgumentParser(description="Run the KaaamNow API.")
     parser.add_argument(
         "--env",
         choices=["dev", "preprod", "prod", "test"],
@@ -70,9 +70,9 @@ def main(argv: list[str] | None = None) -> None:
         )
         raise SystemExit(1) from None
 
-    from app.kaamnow_api_server import start_kaamnow_api_server
+    from app.kaaamnow_api_server import start_kaaamnow_api_server
 
-    start_kaamnow_api_server()
+    start_kaaamnow_api_server()
 
 
 if __name__ == "__main__":

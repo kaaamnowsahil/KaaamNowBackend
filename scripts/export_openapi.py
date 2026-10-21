@@ -15,11 +15,11 @@ from app.config.environment_loader import activate_environment_profile  # noqa: 
 
 def main() -> None:
     activate_environment_profile("dev")
-    from app.kaamnow_api_server import kaamnow_api_application
+    from app.kaaamnow_api_server import kaaamnow_api_application
 
     target = REPO_ROOT / "openapi.yaml"
     target.write_text(
-        yaml.safe_dump(kaamnow_api_application.openapi(), sort_keys=False, allow_unicode=True),
+        yaml.safe_dump(kaaamnow_api_application.openapi(), sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
     print(f"wrote {target.relative_to(REPO_ROOT)}")

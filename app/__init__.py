@@ -1,1 +1,1 @@
-"""KaamNow shift-staffing API."""
+"""KaaamNow shift-staffing API."""

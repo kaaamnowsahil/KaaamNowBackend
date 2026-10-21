@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Final
 
-APP_TITLE: Final[str] = "KaamNow API"
-SERVICE_NAME: Final[str] = "kaamnow-api"
-UVICORN_APP_IMPORT_PATH: Final[str] = "app.kaamnow_api_server:kaamnow_api_application"
+APP_TITLE: Final[str] = "KaaamNow API"
+SERVICE_NAME: Final[str] = "kaaamnow-api"
+UVICORN_APP_IMPORT_PATH: Final[str] = "app.kaaamnow_api_server:kaaamnow_api_application"
 DEFAULT_API_PORT: Final[int] = 8000
 ENCODING_UTF8: Final[str] = "utf-8"
 
@@ -32,7 +32,7 @@ SELF_SERVICE_ROLES: Final[tuple[str, ...]] = (ROLE_BUSINESS, ROLE_WORKER)
 ALL_ROLES: Final[tuple[str, ...]] = (ROLE_BUSINESS, ROLE_WORKER, ROLE_ADMIN)
 
 # --- Logging ---
-LOG_FILE_NAME: Final[str] = "kaamnow-api.log"
+LOG_FILE_NAME: Final[str] = "kaaamnow-api.log"
 LOG_FILE_MAX_BYTES: Final[int] = 10 * 1024 * 1024
 LOG_FILE_BACKUP_COUNT: Final[int] = 5
 LOG_API_READY: Final[str] = "api ready"

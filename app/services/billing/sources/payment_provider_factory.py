@@ -55,7 +55,7 @@ class FakePaymentProvider:
         settings = load_settings()
         order_id = f"fake_order_{secrets.token_hex(8)}"
         if method == "card_netbanking":
-            return ProviderOrder(order_id, None, f"https://checkout.fake.kaamnow/{order_id}")
+            return ProviderOrder(order_id, None, f"https://checkout.fake.kaaamnow/{order_id}")
         payload = upi_intent(
             vpa=settings.upi_payee_vpa,
             payee=settings.upi_payee_name,
