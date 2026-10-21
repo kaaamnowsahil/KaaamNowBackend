@@ -1,4 +1,4 @@
-"""Integration harness: real Postgres (``kaaamnow_test`` recreated per run) + in-process ASGI."""
+"""Integration harness: local Postgres (``<dev db>_test``, recreated per run) + ASGI app."""
 
 from __future__ import annotations
 

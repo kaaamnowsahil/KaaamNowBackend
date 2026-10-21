@@ -7,7 +7,7 @@ ENV ?= dev
 
 help:
 	@echo "targets: venv install run-api test lint format openapi"
-	@echo "ENV=dev|preprod|prod (default: dev -> .env.dev)"
+	@echo "ENV=dev|prod (default: dev -> .env.dev)"
 	@echo "Always uses .venv/bin/python (not system python)"
 
 venv:

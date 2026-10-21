@@ -1,9 +1,8 @@
 """Resolves which dotenv file backs the running process.
 
-  * ``--env dev``     -> ``.env.dev`` (also the default when omitted)
-  * ``--env preprod`` -> ``.env.preprod``
-  * ``--env prod``    -> ``.env.prod``
-  * ``--env test``    -> ``.env.test`` (pytest)
+  * ``--env dev``  -> ``.env.dev`` (also the default when omitted; pytest uses it too,
+    with a separate local ``*_test`` database)
+  * ``--env prod`` -> ``.env.prod``
 
 ``ENV_PROFILE`` is honored the same way when ``--env`` is omitted.
 
