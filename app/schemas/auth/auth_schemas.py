@@ -27,6 +27,12 @@ class OtpVerifyRequest(BaseModel):
     code: str = Field(min_length=4, max_length=8, pattern=r"^\d+$", examples=["123456"])
 
 
+class FirebaseVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id_token: str = Field(min_length=20, max_length=4096, description="Firebase Auth ID token.")
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

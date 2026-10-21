@@ -71,6 +71,8 @@ class KaaamNowSettings(BaseSettings):
     otp_max_attempts: int = 5
     otp_resend_cooldown_seconds: int = 30
     otp_max_sends_per_hour: int = 5
+    # Firebase project whose phone-auth ID tokens are accepted (OTP_PROVIDER=firebase).
+    firebase_project_id: str = ""
 
     # --- Marketplace policy (OWNER DECISIONS) ---
     default_currency: str = "INR"

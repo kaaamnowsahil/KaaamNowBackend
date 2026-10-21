@@ -81,6 +81,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/firebase/verify:
+    post:
+      tags:
+      - auth
+      summary: Sign in with a Firebase phone-auth ID token · Public
+      operationId: verify_firebase_api_v1_auth_firebase_verify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseVerifyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/auth/token/refresh:
     post:
       tags:
@@ -3675,6 +3700,19 @@ components:
       - limit
       - offset
       title: FeedPage
+    FirebaseVerifyRequest:
+      properties:
+        id_token:
+          type: string
+          maxLength: 4096
+          minLength: 20
+          title: Id Token
+          description: Firebase Auth ID token.
+      additionalProperties: false
+      type: object
+      required:
+      - id_token
+      title: FirebaseVerifyRequest
     HTTPValidationError:
       properties:
         detail:
