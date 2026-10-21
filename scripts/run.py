@@ -40,9 +40,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the KaaamNow API.")
     parser.add_argument(
         "--env",
-        choices=["dev", "preprod", "prod", "test"],
+        choices=["dev", "prod"],
         default="dev",
-        help="Environment profile (.env.dev / .env.preprod / .env.prod / .env.test).",
+        help="Environment profile (.env.dev / .env.prod).",
     )
     return parser.parse_args(argv)
 

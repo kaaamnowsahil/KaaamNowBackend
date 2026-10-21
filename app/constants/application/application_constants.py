@@ -13,14 +13,10 @@ ENCODING_UTF8: Final[str] = "utf-8"
 # --- Environment profiles ---
 ENV_VAR_PROFILE: Final[str] = "ENV_PROFILE"
 ENV_PROFILE_DEV: Final[str] = "dev"
-ENV_PROFILE_PREPROD: Final[str] = "preprod"
 ENV_PROFILE_PROD: Final[str] = "prod"
-ENV_PROFILE_TEST: Final[str] = "test"
 ENV_FILE_BY_PROFILE: Final[dict[str, str]] = {
     ENV_PROFILE_DEV: ".env.dev",
-    ENV_PROFILE_PREPROD: ".env.preprod",
     ENV_PROFILE_PROD: ".env.prod",
-    ENV_PROFILE_TEST: ".env.test",
 }
 VALID_ENV_PROFILES: Final[tuple[str, ...]] = tuple(ENV_FILE_BY_PROFILE)
 
