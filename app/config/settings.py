@@ -2,6 +2,9 @@
 
 Marketplace policy values (radii, timeouts, fee) are **owner decisions**: defaults
 below mirror the Figma copy and must be confirmed before production.
+
+Payments, payouts and push are out of scope for now, so their fake/console providers
+are allowed in production; only the console OTP provider is refused.
 """
 
 from __future__ import annotations
@@ -16,17 +19,17 @@ from app.constants.application.application_constants import (
     DEFAULT_API_PORT,
     ENCODING_UTF8,
     ENV_PROFILE_PROD,
+    MEDIA_STORAGE_CHOICES,
+    MEDIA_STORAGE_LOCAL,
     MSG_CORS_WILDCARD_NOT_ALLOWED_IN_PRODUCTION,
     MSG_DATABASE_URL_SCHEME,
     MSG_JWT_SECRET_TOO_SHORT,
+    MSG_MEDIA_STORAGE_UNKNOWN,
     MSG_PROVIDER_NOT_ALLOWED_IN_PRODUCTION,
 )
 
 _DEV_ONLY_PROVIDERS: dict[str, str] = {
     "otp_provider": "console",
-    "push_provider": "console",
-    "payment_provider": "fake",
-    "payout_provider": "fake",
 }
 
 
@@ -49,6 +52,9 @@ class KaaamNowSettings(BaseSettings):
     pagination_max_limit: int = Field(default=100, ge=1)
     background_jobs_enabled: bool = True
     background_sweep_interval_seconds: int = Field(default=15, ge=1)
+    # Serverless hosts (Vercel) freeze idle processes, so the sweep runs inline on
+    # incoming requests at most once per interval instead of in a background loop.
+    request_sweep_enabled: bool = False
 
     # --- Database ---
     database_url: str
@@ -103,6 +109,7 @@ class KaaamNowSettings(BaseSettings):
 
     # --- Notifications / media / support ---
     push_provider: str = "console"
+    media_storage: str = MEDIA_STORAGE_LOCAL
     media_dir: str = ""
     media_base_url: str = "/media"
     max_photo_bytes: int = 5 * 1024 * 1024
@@ -117,6 +124,18 @@ class KaaamNowSettings(BaseSettings):
             scheme = url.split(":", 1)[0] if ":" in url else ""
             raise ValueError(MSG_DATABASE_URL_SCHEME.format(scheme=scheme))
         return url
+
+    @field_validator("media_storage")
+    @classmethod
+    def _validate_media_storage(cls, value: str) -> str:
+        storage = (value or "").strip().lower()
+        if storage not in MEDIA_STORAGE_CHOICES:
+            raise ValueError(
+                MSG_MEDIA_STORAGE_UNKNOWN.format(
+                    allowed=", ".join(MEDIA_STORAGE_CHOICES), value=value
+                )
+            )
+        return storage
 
     @property
     def env_profile(self) -> str:

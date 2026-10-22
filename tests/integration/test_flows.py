@@ -128,9 +128,7 @@ async def test_auth_refresh_rotation_and_reuse(app_client: httpx.AsyncClient) ->
 
 async def test_login_requires_existing_account(app_client: httpx.AsyncClient) -> None:
     phone = "+919811100099"
-    sent = await app_client.post(
-        f"{API}/auth/otp/send", json={"phone": phone, "intent": "sign_in"}
-    )
+    sent = await app_client.post(f"{API}/auth/otp/send", json={"phone": phone, "intent": "sign_in"})
     assert sent.status_code == 404
     verified = await app_client.post(
         f"{API}/auth/otp/verify", json={"phone": phone, "code": "123456"}

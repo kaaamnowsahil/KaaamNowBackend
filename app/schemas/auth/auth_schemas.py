@@ -159,6 +159,7 @@ class SignupRequest(BaseModel):
     @classmethod
     def validate_password(cls, value: str) -> str:
         return _validate_password_strength(value)
+
     role: SelfServiceRole
     language_code: str | None = Field(default=None, min_length=2, max_length=8)
     worker: SignupWorkerDetails | None = None
