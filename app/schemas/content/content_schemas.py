@@ -12,24 +12,35 @@ Audience = Literal["worker", "business"]
 SupportTopic = Literal["general", "check_in", "payment", "payout", "shift", "account"]
 
 
+class ContentSection(BaseModel):
+    id: str
+    title: str
+    body: str
+
+
 class ContentPage(BaseModel):
     slug: str
     audience: str
     title: str
     body_markdown: str
+    sections: list[ContentSection] = Field(
+        default_factory=list, description="body_markdown split on '## ' headings."
+    )
     effective_date: date
     updated_at: datetime
 
 
 class FaqItem(BaseModel):
     id: UUID
+    slug: str | None = None
     question: str
     answer: str
 
 
 class FaqList(BaseModel):
     items: list[FaqItem]
-    support_email: str
+    support_email: str = Field(description="Comma-separated; prefer support_emails.")
+    support_emails: list[str]
 
 
 class SupportTicketCreate(BaseModel):
@@ -48,3 +59,4 @@ class SupportTicketResponse(BaseModel):
     status: str
     created_at: datetime
     support_email: str
+    support_emails: list[str]

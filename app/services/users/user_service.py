@@ -8,6 +8,7 @@ import asyncpg
 
 from app.config.settings import load_settings
 from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_WORKER
+from app.constants.auth.auth_route_strings import MSG_PHONE_REGISTERED
 from app.constants.users.user_route_strings import (
     ALLOWED_PHOTO_CONTENT_TYPES,
     MSG_DEVICE_NOT_FOUND,
@@ -18,7 +19,7 @@ from app.constants.users.user_route_strings import (
     MSG_USER_NOT_FOUND,
 )
 from app.db.pool import get_pool
-from app.exceptions.api_errors import bad_request, forbidden, not_found
+from app.exceptions.api_errors import bad_request, conflict, forbidden, not_found
 from app.repositories.profiles import profile_repository
 from app.repositories.users import user_repository
 from app.schemas.auth.auth_schemas import OtpVerifyResponse
@@ -112,12 +113,16 @@ async def set_active_role(user: AuthenticatedUser, role: str) -> MeResponse:
 
 
 async def add_role(user: AuthenticatedUser, role: str) -> OtpVerifyResponse:
-    """Figma "How will you use KaamNow?": grant role, create its profile, switch to it.
+    """Figma "How will you use KaaamNow?": grant role, create its profile, switch to it.
 
     Returns fresh tokens because the access token embeds the role list.
     """
     async with get_pool().acquire() as conn:
         async with conn.transaction():
+            await user_repository.lock_user(conn, user.user_id)
+            roles = await user_repository.list_active_roles(conn, user.user_id)
+            if roles and role not in roles:
+                raise conflict("phone_registered", MSG_PHONE_REGISTERED)
             await user_repository.grant_role(conn, user.user_id, role)
             await _PROFILE_ENSURERS[role](conn, user.user_id)
             await user_repository.set_active_role(conn, user.user_id, role)

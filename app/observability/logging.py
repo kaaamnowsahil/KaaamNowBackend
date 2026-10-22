@@ -1,7 +1,7 @@
 """JSON structured logging with optional rotating file output.
 
 * JSON is always emitted to stdout (container/log-aggregator friendly).
-* ``LOG_TO_FILE=true`` (or production) also writes ``logs/kaamnow-api.log``.
+* ``LOG_TO_FILE=true`` (or production) also writes ``logs/kaaamnow-api.log``.
 * ``request_id`` from the request context is merged into every record.
 """
 
@@ -57,7 +57,7 @@ def _should_log_to_file() -> bool:
         from app.config.settings import load_settings
 
         settings = load_settings()
-        return settings.log_to_file or settings.is_production
+        return settings.log_to_file
     except Exception:
         return False
 

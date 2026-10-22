@@ -1,4 +1,4 @@
-"""Integration harness: real Postgres (``kaamnow_test`` recreated per run) + in-process ASGI."""
+"""Integration harness: local Postgres (``<dev db>_test``, recreated per run) + ASGI app."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import pytest
 import pytest_asyncio
 
 from app.config.settings import load_settings
+from app.db.pool import get_pool
 from app.services.auth import auth_service
 
 TEST_OTP = "123456"
@@ -44,7 +45,7 @@ async def app_client() -> AsyncIterator[httpx.AsyncClient]:
     await _recreate_database(settings.database_url)
     auth_service.new_numeric_code = lambda _length: TEST_OTP  # type: ignore[assignment]
 
-    from app.kaamnow_api_server import kaamnow_api_application as app
+    from app.kaaamnow_api_server import kaaamnow_api_application as app
 
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
@@ -71,6 +72,10 @@ class Actor:
 
 async def login(client: httpx.AsyncClient, phone: str | None = None) -> Actor:
     phone = phone or next_phone()
+    async with get_pool().acquire() as conn:
+        await conn.execute(
+            "INSERT INTO users (phone) VALUES ($1) ON CONFLICT (phone) DO NOTHING", phone
+        )
     sent = await client.post("/api/v1/auth/otp/send", json={"phone": phone})
     assert sent.status_code == 200, sent.text
     verified = await client.post("/api/v1/auth/otp/verify", json={"phone": phone, "code": TEST_OTP})

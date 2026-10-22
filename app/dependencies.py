@@ -68,7 +68,19 @@ def require_access(resource: str, action: str) -> Callable[..., AuthenticatedUse
     return _dependency
 
 
+async def get_optional_user(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_swagger_bearer)] = None,
+) -> AuthenticatedUser | None:
+    """Like ``get_current_user`` but public routes get ``None`` instead of a 401."""
+    try:
+        return await get_current_user(request, credentials)
+    except AuthenticationError:
+        return None
+
+
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
+OptionalUser = Annotated[AuthenticatedUser | None, Depends(get_optional_user)]
 
 RequireBusinessProfileRead = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_BUSINESS_PROFILE, ACTION_READ))

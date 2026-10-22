@@ -9,12 +9,17 @@ import asyncpg
 
 from app.repositories.users.user_queries import (
     DEACTIVATE_DEVICE,
+    GET_AUTH_CREDENTIALS,
     GET_ME,
+    GET_PHONE_STATUS,
     GET_USER_BY_ID,
     LANGUAGE_IS_ACTIVE,
     LIST_ACTIVE_PUSH_TOKENS,
     LIST_ACTIVE_ROLES,
+    LOCK_USER_BY_ID,
     SET_ACTIVE_ROLE,
+    SET_PASSWORD_BY_PHONE,
+    SET_PASSWORD_IF_MISSING,
     SET_PHOTO_URL,
     TOUCH_LAST_LOGIN,
     UPDATE_USER_FIELDS,
@@ -29,12 +34,34 @@ async def upsert_user_by_phone(conn: asyncpg.Connection, phone: str) -> asyncpg.
     return await conn.fetchrow(UPSERT_USER_BY_PHONE, phone)
 
 
+async def get_phone_status(conn: asyncpg.Connection, phone: str) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_PHONE_STATUS, phone)
+
+
+async def get_auth_credentials(conn: asyncpg.Connection, phone: str) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_AUTH_CREDENTIALS, phone)
+
+
+async def set_password_by_phone(conn: asyncpg.Connection, phone: str, password_hash: str) -> bool:
+    return await conn.fetchval(SET_PASSWORD_BY_PHONE, phone, password_hash) is not None
+
+
+async def set_password_if_missing(
+    conn: asyncpg.Connection, user_id: UUID, password_hash: str
+) -> None:
+    await conn.execute(SET_PASSWORD_IF_MISSING, user_id, password_hash)
+
+
 async def touch_last_login(conn: asyncpg.Connection, user_id: UUID, now: datetime) -> None:
     await conn.execute(TOUCH_LAST_LOGIN, user_id, now)
 
 
 async def get_user(conn: asyncpg.Connection, user_id: UUID) -> asyncpg.Record | None:
     return await conn.fetchrow(GET_USER_BY_ID, user_id)
+
+
+async def lock_user(conn: asyncpg.Connection, user_id: UUID) -> None:
+    await conn.fetchval(LOCK_USER_BY_ID, user_id)
 
 
 async def list_active_roles(conn: asyncpg.Connection, user_id: UUID) -> list[str]:

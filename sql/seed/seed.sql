@@ -1,5 +1,5 @@
 -- Idempotent reference data applied on every API boot (ON CONFLICT DO NOTHING).
--- Copy comes from the KaamNow Figma file; marketplace values are OWNER DECISIONS.
+-- Copy comes from the KaaamNow Figma file; marketplace values are OWNER DECISIONS.
 
 -- Figma SH · Language
 INSERT INTO languages (code, english_name, native_name, sort_order) VALUES
@@ -46,7 +46,43 @@ INSERT INTO work_categories (slug, name, icon, sort_order) VALUES
     ('office-boy',       'Office Assistant / Peon',  'briefcase',     25),
     ('car-wash',         'Car Wash',                 'droplets',      26),
     ('pet-care',         'Pet Care',                 'paw-print',     27),
+    ('cook',             'Cook (Hotel / Restaurant)', 'chef-hat',     28),
+    ('hotel-staff',      'Hotel Staff',              'bed',           29),
     ('other',            'Other',                    'more-horizontal', 99)
+ON CONFLICT (slug) DO NOTHING;
+
+-- App business signup "Business type" chips.
+INSERT INTO business_types (slug, name, icon, sort_order) VALUES
+    ('hospitality', 'Hospitality',       'coffee',          1),
+    ('retail',      'Retail',            'shopping-bag',    2),
+    ('events',      'Events',            'calendar',        3),
+    ('delivery',    'Delivery',          'truck',           4),
+    ('household',   'Household',         'home',            5),
+    ('office',      'Office',            'briefcase',       6),
+    ('restaurant',     'Restaurant / Cafe',        'utensils',        7),
+    ('hotel',          'Hotel / Guest House',      'bed',             8),
+    ('catering',       'Catering',                 'chef-hat',        9),
+    ('grocery',        'Grocery / Kirana Store',   'shopping-cart',   10),
+    ('supermarket',    'Supermarket / Mall',       'store',           11),
+    ('warehouse',      'Warehouse / Logistics',    'warehouse',       12),
+    ('manufacturing',  'Factory / Manufacturing',  'factory',         13),
+    ('construction',   'Construction',             'hard-hat',        14),
+    ('real-estate',    'Real Estate / Society',    'building',        15),
+    ('healthcare',     'Hospital / Clinic',        'stethoscope',     16),
+    ('education',      'School / Coaching',        'graduation-cap',  17),
+    ('salon',          'Salon / Spa',              'scissors',        18),
+    ('gym',            'Gym / Fitness',            'dumbbell',        19),
+    ('cleaning',       'Cleaning / Facility',      'sparkles',        20),
+    ('security',       'Security Services',        'shield',          21),
+    ('automobile',     'Automobile / Garage',      'car',             22),
+    ('car-wash',       'Car Wash',                 'droplets',        23),
+    ('laundry',        'Laundry / Dry Clean',      'shirt',           24),
+    ('bakery',         'Bakery / Sweet Shop',      'cake',            25),
+    ('pharmacy',       'Pharmacy',                 'pill',            26),
+    ('ecommerce',      'E-commerce',               'package',         27),
+    ('agriculture',    'Farm / Agriculture',       'leaf',            28),
+    ('wedding',        'Wedding / Banquet Hall',   'party-popper',    29),
+    ('other',       'Other',             'more-horizontal', 99)
 ON CONFLICT (slug) DO NOTHING;
 
 -- OWNER DECISION: Figma shows an illustrative 5% fee paid by the business on top of worker pay.
@@ -57,10 +93,10 @@ WHERE NOT EXISTS (SELECT 1 FROM platform_fee_policies);
 -- Terms & Conditions (worker + business share the Figma copy dated 1 October 2026)
 INSERT INTO content_pages (slug, audience, title, body_markdown, effective_date) VALUES
     ('terms', 'worker', 'Terms & Conditions',
-     E'## 1. Using KaamNow\nKaamNow connects businesses with workers for short shifts. By creating an account you agree to these terms and to use the app lawfully.\n\n## 2. Accounts and verification\nYou must give accurate details. Phone numbers are verified by OTP, and businesses may be asked for extra verification.\n\n## 3. Shifts, payments and cancellations\nPay rates are shown before you accept a shift. Payments are released after check-out. Late cancellations may affect your rating.\n\n## 4. Ratings and conduct\nBusinesses and workers rate each other after every shift. Harassment, fake check-ins or no-shows can lead to suspension.\n\n## 5. Privacy and data\nWe use your location only to show nearby shifts and track check-in. See the Privacy Policy for details.\n\n## 6. Contact us\nQuestions about these terms? Write to support@kaamnow.app.',
+     E'## 1. Using KaaamNow\nKaaamNow connects businesses with workers for short shifts. By creating an account you agree to these terms and to use the app lawfully.\n\n## 2. Accounts and verification\nYou must give accurate details. Phone numbers are verified by OTP, and businesses may be asked for extra verification.\n\n## 3. Shifts, payments and cancellations\nPay rates are shown before you accept a shift. Payments are released after check-out. Late cancellations may affect your rating.\n\n## 4. Ratings and conduct\nBusinesses and workers rate each other after every shift. Harassment, fake check-ins or no-shows can lead to suspension.\n\n## 5. Privacy and data\nWe use your location only to show nearby shifts and track check-in. See the Privacy Policy for details.\n\n## 6. Contact us\nQuestions about these terms? Write to sumit.pandey@kaaamnow.in or sahil.shrivastava@kaaamnow.in.',
      DATE '2026-10-01'),
     ('terms', 'business', 'Terms & Conditions',
-     E'## 1. Using KaamNow\nKaamNow connects businesses with workers for short shifts. By creating an account you agree to these terms and to use the app lawfully.\n\n## 2. Accounts and verification\nYou must give accurate details. Phone numbers are verified by OTP, and businesses may be asked for extra verification.\n\n## 3. Shifts, payments and cancellations\nPay rates are shown before workers accept a shift. You pay the final shift cost after reviewing attendance. Late cancellations may affect your rating.\n\n## 4. Ratings and conduct\nBusinesses and workers rate each other after every shift. Harassment, unsafe workplaces or non-payment can lead to suspension.\n\n## 5. Privacy and data\nWorker location is shared with you only while a booked worker is travelling to or checking in at your workplace.\n\n## 6. Contact us\nQuestions about these terms? Write to support@kaamnow.app.',
+     E'## 1. Using KaaamNow\nKaaamNow connects businesses with workers for short shifts. By creating an account you agree to these terms and to use the app lawfully.\n\n## 2. Accounts and verification\nYou must give accurate details. Phone numbers are verified by OTP, and businesses may be asked for extra verification.\n\n## 3. Shifts, payments and cancellations\nPay rates are shown before workers accept a shift. You pay the final shift cost after reviewing attendance. Late cancellations may affect your rating.\n\n## 4. Ratings and conduct\nBusinesses and workers rate each other after every shift. Harassment, unsafe workplaces or non-payment can lead to suspension.\n\n## 5. Privacy and data\nWorker location is shared with you only while a booked worker is travelling to or checking in at your workplace.\n\n## 6. Contact us\nQuestions about these terms? Write to sumit.pandey@kaaamnow.in or sahil.shrivastava@kaaamnow.in.',
      DATE '2026-10-01')
 ON CONFLICT (slug, audience) DO NOTHING;
 
@@ -87,3 +123,7 @@ INSERT INTO faq_entries (audience, question, answer, sort_order) VALUES
     ('business', 'How are ratings calculated?',
      'Your rating is the average of the stars workers give you after each completed shift.', 5)
 ON CONFLICT (audience, question) DO NOTHING;
+
+UPDATE faq_entries
+SET slug = left(trim(BOTH '-' FROM lower(regexp_replace(question, '[^a-zA-Z0-9]+', '-', 'g'))), 64)
+WHERE slug IS NULL;

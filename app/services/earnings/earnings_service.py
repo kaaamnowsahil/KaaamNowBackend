@@ -33,6 +33,7 @@ from app.schemas.earnings.earnings_schemas import (
     LedgerEntry,
     LedgerPage,
     PayoutAccountCreate,
+    PayoutAccountPatch,
     PayoutAccountResponse,
     WithdrawalCreate,
     WithdrawalPage,
@@ -72,6 +73,8 @@ def _account_response(row: asyncpg.Record) -> PayoutAccountResponse:
         bank_ifsc=row["bank_ifsc"],
         account_holder_name=row["account_holder_name"],
         is_default=row["is_default"],
+        is_verified=row["is_verified"],
+        verified_at=row["verified_at"],
         created_at=row["created_at"],
     )
 
@@ -163,6 +166,37 @@ async def add_payout_account(
                 account_holder_name=body.account_holder_name or worker["full_name"],
                 is_default=make_default,
             )
+    return _account_response(row)
+
+
+async def update_payout_account(
+    user: AuthenticatedUser, account_id: UUID, body: PayoutAccountPatch
+) -> PayoutAccountResponse:
+    patch = body.model_dump(exclude_unset=True, exclude={"make_default"})
+    detail_fields = {k for k in patch if k != "account_holder_name" and patch[k] is not None}
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            worker = await require_worker_profile(conn, user.user_id)
+            current = await earnings_repository.get_payout_account(conn, account_id, worker["id"])
+            if current is None:
+                raise not_found("payout_account_not_found", MSG_PAYOUT_ACCOUNT_NOT_FOUND)
+            if not detail_fields <= set(_REQUIRED_FIELDS[current["account_type"]]):
+                raise bad_request("payout_account_fields", MSG_PAYOUT_ACCOUNT_FIELDS)
+            await earnings_repository.update_payout_account(
+                conn,
+                account_id,
+                worker["id"],
+                upi_id=body.upi_id,
+                paytm_phone=body.paytm_phone,
+                bank_account_number=body.bank_account_number,
+                bank_ifsc=body.bank_ifsc,
+                account_holder_name=body.account_holder_name,
+                details_changed=bool(detail_fields),
+            )
+            if body.make_default:
+                await earnings_repository.clear_default_account(conn, worker["id"])
+                await earnings_repository.set_default_account(conn, account_id, worker["id"])
+            row = await earnings_repository.get_payout_account(conn, account_id, worker["id"])
     return _account_response(row)
 
 

@@ -1,7 +1,4 @@
-"""OTP delivery providers. The SMS vendor is an OWNER DECISION.
-
-``console`` logs the code (development only; refused in production by settings).
-"""
+"""Development-only console OTP sender."""
 
 from __future__ import annotations
 
@@ -14,10 +11,15 @@ log = get_logger(__name__)
 
 
 class OtpSender(Protocol):
+    def ensure_configured(self) -> None: ...
+
     async def send(self, phone: str, code: str) -> None: ...
 
 
 class ConsoleOtpSender:
+    def ensure_configured(self) -> None:
+        return None
+
     async def send(self, phone: str, code: str) -> None:
         log.warning("DEV OTP (console provider)", extra=log_extra(phone=phone, otp_code=code))
 

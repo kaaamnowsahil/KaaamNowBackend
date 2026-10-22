@@ -13,6 +13,7 @@ from app.security.permissions import (
     RESOURCE_SHIFTS,
     roles_allow,
 )
+from app.services.auth.auth_service import _reject_existing_role
 from app.services.auth.validation.auth_validation_pipeline import (
     hash_otp_code,
     normalize_phone,
@@ -51,6 +52,13 @@ def test_normalize_phone() -> None:
     assert normalize_phone("+91 98765-43210") == "+919876543210"
     with pytest.raises(ApiError):
         normalize_phone("abc")
+
+
+def test_existing_phone_cannot_register_a_second_role() -> None:
+    with pytest.raises(ApiError) as error:
+        _reject_existing_role(["worker"], "business")
+
+    assert error.value.code == "phone_registered"
 
 
 def test_permissions_matrix() -> None:

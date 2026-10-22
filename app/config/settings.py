@@ -2,6 +2,9 @@
 
 Marketplace policy values (radii, timeouts, fee) are **owner decisions**: defaults
 below mirror the Figma copy and must be confirmed before production.
+
+Payments, payouts and push are out of scope for now, so their fake/console providers
+are allowed in production; only the console OTP provider is refused.
 """
 
 from __future__ import annotations
@@ -16,21 +19,21 @@ from app.constants.application.application_constants import (
     DEFAULT_API_PORT,
     ENCODING_UTF8,
     ENV_PROFILE_PROD,
+    MEDIA_STORAGE_CHOICES,
+    MEDIA_STORAGE_LOCAL,
     MSG_CORS_WILDCARD_NOT_ALLOWED_IN_PRODUCTION,
     MSG_DATABASE_URL_SCHEME,
     MSG_JWT_SECRET_TOO_SHORT,
+    MSG_MEDIA_STORAGE_UNKNOWN,
     MSG_PROVIDER_NOT_ALLOWED_IN_PRODUCTION,
 )
 
 _DEV_ONLY_PROVIDERS: dict[str, str] = {
     "otp_provider": "console",
-    "push_provider": "console",
-    "payment_provider": "fake",
-    "payout_provider": "fake",
 }
 
 
-class KaamNowSettings(BaseSettings):
+class KaaamNowSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=resolve_env_file(),
         env_file_encoding=ENCODING_UTF8,
@@ -49,6 +52,9 @@ class KaamNowSettings(BaseSettings):
     pagination_max_limit: int = Field(default=100, ge=1)
     background_jobs_enabled: bool = True
     background_sweep_interval_seconds: int = Field(default=15, ge=1)
+    # Serverless hosts (Vercel) freeze idle processes, so the sweep runs inline on
+    # incoming requests at most once per interval instead of in a background loop.
+    request_sweep_enabled: bool = False
 
     # --- Database ---
     database_url: str
@@ -60,7 +66,7 @@ class KaamNowSettings(BaseSettings):
 
     # --- Auth (self-issued JWT after phone OTP) ---
     jwt_secret_key: str
-    jwt_issuer: str = "kaamnow"
+    jwt_issuer: str = "kaaamnow"
     jwt_access_minutes: int = Field(default=15, ge=1)
     jwt_refresh_days: int = Field(default=30, ge=1)
 
@@ -71,6 +77,7 @@ class KaamNowSettings(BaseSettings):
     otp_max_attempts: int = 5
     otp_resend_cooldown_seconds: int = 30
     otp_max_sends_per_hour: int = 5
+    firebase_project_id: str = ""
 
     # --- Marketplace policy (OWNER DECISIONS) ---
     default_currency: str = "INR"
@@ -95,17 +102,18 @@ class KaamNowSettings(BaseSettings):
     payment_provider: str = "fake"
     payment_expiry_seconds: int = 300
     payment_webhook_secret: str = ""
-    upi_payee_vpa: str = "kaamnow@upi"
-    upi_payee_name: str = "KaamNow"
+    upi_payee_vpa: str = "kaaamnow@upi"
+    upi_payee_name: str = "KaaamNow"
     payout_provider: str = "fake"
     min_withdrawal_minor: int = 10000
 
     # --- Notifications / media / support ---
     push_provider: str = "console"
+    media_storage: str = MEDIA_STORAGE_LOCAL
     media_dir: str = ""
     media_base_url: str = "/media"
     max_photo_bytes: int = 5 * 1024 * 1024
-    support_email: str = "support@kaamnow.app"
+    support_email: str
 
     @field_validator("database_url")
     @classmethod
@@ -116,6 +124,18 @@ class KaamNowSettings(BaseSettings):
             scheme = url.split(":", 1)[0] if ":" in url else ""
             raise ValueError(MSG_DATABASE_URL_SCHEME.format(scheme=scheme))
         return url
+
+    @field_validator("media_storage")
+    @classmethod
+    def _validate_media_storage(cls, value: str) -> str:
+        storage = (value or "").strip().lower()
+        if storage not in MEDIA_STORAGE_CHOICES:
+            raise ValueError(
+                MSG_MEDIA_STORAGE_UNKNOWN.format(
+                    allowed=", ".join(MEDIA_STORAGE_CHOICES), value=value
+                )
+            )
+        return storage
 
     @property
     def env_profile(self) -> str:
@@ -143,8 +163,8 @@ class KaamNowSettings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
-def load_settings() -> KaamNowSettings:
-    return KaamNowSettings()  # type: ignore[call-arg]
+def load_settings() -> KaaamNowSettings:
+    return KaaamNowSettings()  # type: ignore[call-arg]
 
 
-__all__ = ["KaamNowSettings", "load_settings"]
+__all__ = ["KaaamNowSettings", "load_settings"]

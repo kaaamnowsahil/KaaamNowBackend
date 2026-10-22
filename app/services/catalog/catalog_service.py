@@ -7,6 +7,7 @@ from uuid import UUID
 import asyncpg
 
 from app.constants.catalog.catalog_route_strings import (
+    MSG_BUSINESS_TYPE_UNKNOWN,
     MSG_CATEGORY_UNKNOWN,
     MSG_NO_ACTIVE_FEE_POLICY,
     PAYMENT_METHODS,
@@ -20,14 +21,7 @@ from app.schemas.catalog.catalog_schemas import (
     Language,
     PaymentMethod,
     RatingTags,
-    WorkCategory,
 )
-
-
-async def list_work_categories() -> list[WorkCategory]:
-    async with get_pool().acquire() as conn:
-        rows = await catalog_repository.list_work_categories(conn)
-    return [WorkCategory.model_validate(dict(r)) for r in rows]
 
 
 async def list_languages() -> list[Language]:
@@ -58,6 +52,13 @@ async def resolve_category_id(conn: asyncpg.Connection, slug: str) -> UUID:
     row = await catalog_repository.get_category_by_slug(conn, slug)
     if row is None:
         raise bad_request("category_unknown", MSG_CATEGORY_UNKNOWN, {"slug": slug})
+    return row["id"]
+
+
+async def resolve_business_type_id(conn: asyncpg.Connection, slug: str) -> UUID:
+    row = await catalog_repository.get_business_type_by_slug(conn, slug)
+    if row is None:
+        raise bad_request("business_type_unknown", MSG_BUSINESS_TYPE_UNKNOWN, {"slug": slug})
     return row["id"]
 
 

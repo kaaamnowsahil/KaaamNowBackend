@@ -16,7 +16,8 @@ _BUSINESS_COLUMNS = """
 bp.id, bp.user_id, bp.business_name, bp.category_id, wc.slug AS category_slug,
 wc.name AS category_name, bp.logo_url, bp.address_text, bp.locality, bp.latitude, bp.longitude,
 bp.verification_status, bp.verification_note, bp.verified_at, bp.rating_avg, bp.rating_count,
-u.phone, u.full_name AS owner_name, bp.created_at, bp.updated_at
+u.phone, u.full_name AS owner_name, bp.contact_name, bp.email, bp.business_type_id,
+bt.slug AS business_type_slug, bt.name AS business_type_name, bp.created_at, bp.updated_at
 """
 
 GET_BUSINESS_PROFILE_BY_USER = f"""
@@ -24,6 +25,7 @@ SELECT {_BUSINESS_COLUMNS}
 FROM business_profiles bp
 JOIN users u ON u.id = bp.user_id
 LEFT JOIN work_categories wc ON wc.id = bp.category_id
+LEFT JOIN business_types bt ON bt.id = bp.business_type_id
 WHERE bp.user_id = $1
 """
 
@@ -32,6 +34,7 @@ SELECT {_BUSINESS_COLUMNS}
 FROM business_profiles bp
 JOIN users u ON u.id = bp.user_id
 LEFT JOIN work_categories wc ON wc.id = bp.category_id
+LEFT JOIN business_types bt ON bt.id = bp.business_type_id
 WHERE bp.id = $1
 """
 
@@ -44,12 +47,16 @@ UPDATE business_profiles SET
     locality = COALESCE($6, locality),
     latitude = COALESCE($7, latitude),
     longitude = COALESCE($8, longitude),
+    contact_name = COALESCE($9, contact_name),
+    email = COALESCE($10, email),
+    business_type_id = COALESCE($11, business_type_id),
     updated_at = now()
 WHERE user_id = $1
 """
 
 _WORKER_COLUMNS = """
-wp.id, wp.user_id, u.full_name, u.photo_url, u.phone, wp.address_text, wp.locality,
+wp.id, wp.user_id, u.full_name, u.email, u.photo_url, u.phone, wp.age, wp.address_text,
+wp.locality,
 wp.latitude, wp.longitude, wp.verification_status, wp.verification_note, wp.verified_at,
 wp.is_available, wp.availability_changed_at, wp.rating_avg, wp.rating_count,
 wp.completed_shift_count, wp.created_at, wp.updated_at,
@@ -79,6 +86,7 @@ UPDATE worker_profiles SET
     locality = COALESCE($3, locality),
     latitude = COALESCE($4, latitude),
     longitude = COALESCE($5, longitude),
+    age = COALESCE($6, age),
     updated_at = now()
 WHERE user_id = $1
 """
@@ -126,6 +134,7 @@ SELECT {_BUSINESS_COLUMNS}
 FROM business_profiles bp
 JOIN users u ON u.id = bp.user_id
 LEFT JOIN work_categories wc ON wc.id = bp.category_id
+LEFT JOIN business_types bt ON bt.id = bp.business_type_id
 WHERE bp.verification_status = $1
 ORDER BY bp.created_at
 LIMIT $2 OFFSET $3

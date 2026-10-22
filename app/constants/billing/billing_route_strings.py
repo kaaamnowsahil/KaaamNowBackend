@@ -19,7 +19,7 @@ PATH_PAYMENT: Final[str] = "/payments/{payment_id}"
 PATH_PAYMENT_CONFIRM: Final[str] = "/payments/{payment_id}/confirm"
 PATH_WEBHOOK: Final[str] = "/webhooks/{provider}"
 
-HEADER_WEBHOOK_SIGNATURE: Final[str] = "x-kaamnow-signature"
+HEADER_WEBHOOK_SIGNATURE: Final[str] = "x-kaaamnow-signature"
 
 INVOICE_PENDING: Final[str] = "pending"
 INVOICE_PAID: Final[str] = "paid"

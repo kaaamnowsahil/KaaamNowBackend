@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: KaamNow API
+  title: KaaamNow API
   version: 1.0.0
 paths:
   /:
@@ -35,7 +35,7 @@ paths:
     post:
       tags:
       - auth
-      summary: Send login OTP · Public
+      summary: Send backend OTP (dev/testing only) · Public
       operationId: send_otp_api_v1_auth_otp_send_post
       requestBody:
         content:
@@ -75,6 +75,127 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/firebase/verify:
+    post:
+      tags:
+      - auth
+      summary: Verify Firebase phone token and sign in · Public
+      operationId: verify_firebase_api_v1_auth_firebase_verify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseVerifyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/phone/check:
+    post:
+      tags:
+      - auth
+      summary: Is this phone already registered? · Public
+      operationId: check_phone_api_v1_auth_phone_check_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneCheckRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneCheckResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/signup:
+    post:
+      tags:
+      - auth
+      summary: Register in one call (Firebase phone proof + role + profile) · Public
+      operationId: signup_api_v1_auth_signup_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/password/login:
+    post:
+      tags:
+      - auth
+      summary: Sign in with phone and password · Public
+      operationId: password_login_api_v1_auth_password_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/password/reset/confirm:
+    post:
+      tags:
+      - auth
+      summary: Verify Firebase phone token and set password · Public
+      operationId: confirm_password_reset_api_v1_auth_password_reset_confirm_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -303,22 +424,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/catalog/work-categories:
-    get:
-      tags:
-      - catalog
-      summary: Work categories · Public
-      operationId: work_categories_api_v1_catalog_work_categories_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/WorkCategory'
-                type: array
-                title: Response Work Categories Api V1 Catalog Work Categories Get
   /api/v1/catalog/languages:
     get:
       tags:
@@ -398,6 +503,324 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FeePolicy'
+  /api/v1/work-categories:
+    get:
+      tags:
+      - work categories
+      summary: List work categorys · Public
+      description: 'Public: active items only, for sign-up and pickers. include_inactive=true
+        requires an admin token.'
+      operationId: list_items_api_v1_work_categories_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: include_inactive
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Inactive
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Q
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LookupItem'
+                title: Response List Items Api V1 Work Categories Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - work categories
+      summary: Create work category · Admin
+      operationId: create_item_api_v1_work_categories_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LookupCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupItem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/work-categories/{item_id}:
+    get:
+      tags:
+      - work categories
+      summary: Get work category · Public
+      description: Public for active items; inactive items are visible to admins only.
+      operationId: get_item_api_v1_work_categories__item_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupItem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - work categories
+      summary: Update work category · Admin
+      operationId: update_item_api_v1_work_categories__item_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LookupUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupItem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - work categories
+      summary: Delete work category · Admin
+      description: 'Soft delete: sets is_active=false so it disappears from sign-up
+        and pickers. Existing links are kept. PATCH is_active=true to restore.'
+      operationId: delete_item_api_v1_work_categories__item_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business-types:
+    get:
+      tags:
+      - business types
+      summary: List business types · Public
+      description: 'Public: active items only, for sign-up and pickers. include_inactive=true
+        requires an admin token.'
+      operationId: list_items_api_v1_business_types_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: include_inactive
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Inactive
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Q
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LookupItem'
+                title: Response List Items Api V1 Business Types Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - business types
+      summary: Create business type · Admin
+      operationId: create_item_api_v1_business_types_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LookupCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupItem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business-types/{item_id}:
+    get:
+      tags:
+      - business types
+      summary: Get business type · Public
+      description: Public for active items; inactive items are visible to admins only.
+      operationId: get_item_api_v1_business_types__item_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupItem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - business types
+      summary: Update business type · Admin
+      operationId: update_item_api_v1_business_types__item_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LookupUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupItem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - business types
+      summary: Delete business type · Admin
+      description: 'Soft delete: sets is_active=false so it disappears from sign-up
+        and pickers. Existing links are kept. PATCH is_active=true to restore.'
+      operationId: delete_item_api_v1_business_types__item_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/notifications:
     get:
       tags:
@@ -528,6 +951,33 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/BusinessProfilePatch'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/business/profile/logo:
+    post:
+      tags:
+      - business profile
+      summary: Upload business logo · Business
+      operationId: upload_logo_api_v1_business_profile_logo_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_logo_api_v1_business_profile_logo_post'
         required: true
       responses:
         '200':
@@ -782,6 +1232,292 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/resources:
+    get:
+      tags:
+      - admin data
+      summary: Admin resources & columns · Admin
+      operationId: list_resources_api_v1_admin_resources_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminResourceList'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/metrics/overview:
+    get:
+      tags:
+      - admin data
+      summary: Dashboard overview metrics · Admin
+      operationId: metrics_overview_api_v1_admin_metrics_overview_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMetricsOverview'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/{resource}/export.csv:
+    get:
+      tags:
+      - admin data
+      summary: Export filtered list as CSV · Admin
+      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
+        on searchable columns), sort (field or -field). Any other query param is an
+        exact-match filter on a filterable column (use the literal `null` to match
+        NULL). Composite keys in paths are joined with '',''.'
+      operationId: export_records_api_v1_admin__resource__export_csv_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: sort
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/{resource}:
+    get:
+      tags:
+      - admin data
+      summary: List / search / filter records · Admin
+      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
+        on searchable columns), sort (field or -field). Any other query param is an
+        exact-match filter on a filterable column (use the literal `null` to match
+        NULL). Composite keys in paths are joined with '',''.'
+      operationId: list_records_api_v1_admin__resource__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: sort
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRecordPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - admin data
+      summary: Create record · Admin
+      operationId: create_record_api_v1_admin__resource__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Record Api V1 Admin  Resource  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/{resource}/{record_id}:
+    get:
+      tags:
+      - admin data
+      summary: Get record · Admin
+      operationId: get_record_api_v1_admin__resource___record_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Record Api V1 Admin  Resource   Record Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - admin data
+      summary: Update record (partial) · Admin
+      operationId: update_record_api_v1_admin__resource___record_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Update Record Api V1 Admin  Resource   Record Id  Patch
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - admin data
+      summary: Delete record (soft or hard per resource) · Admin
+      operationId: delete_record_api_v1_admin__resource___record_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -2467,6 +3203,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/worker/payout-accounts/{account_id}:
+    patch:
+      tags:
+      - earnings
+      summary: Edit payout account · Worker
+      operationId: update_account_api_v1_worker_payout_accounts__account_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Account Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayoutAccountPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutAccountResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
       - earnings
@@ -2654,15 +3424,19 @@ paths:
       - content
       summary: Terms & Conditions · Public
       operationId: terms_api_v1_content_terms_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: audience
         in: query
-        required: true
+        required: false
         schema:
-          enum:
-          - worker
-          - business
-          type: string
+          anyOf:
+          - enum:
+            - worker
+            - business
+            type: string
+          - type: 'null'
           title: Audience
       responses:
         '200':
@@ -2683,15 +3457,19 @@ paths:
       - content
       summary: FAQ & Help · Public
       operationId: faqs_api_v1_content_faqs_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: audience
         in: query
-        required: true
+        required: false
         schema:
-          enum:
-          - worker
-          - business
-          type: string
+          anyOf:
+          - enum:
+            - worker
+            - business
+            type: string
+          - type: 'null'
           title: Audience
       - name: q
         in: query
@@ -2771,6 +3549,239 @@ components:
       required:
       - role
       title: AddRoleRequest
+    AdminColumn:
+      properties:
+        name:
+          type: string
+          title: Name
+        data_type:
+          type: string
+          title: Data Type
+          examples:
+          - character varying
+        udt_name:
+          type: string
+          title: Udt Name
+          examples:
+          - varchar
+        nullable:
+          type: boolean
+          title: Nullable
+        has_default:
+          type: boolean
+          title: Has Default
+        max_length:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Length
+        primary_key:
+          type: boolean
+          title: Primary Key
+        read_only:
+          type: boolean
+          title: Read Only
+        writable_on_create:
+          type: boolean
+          title: Writable On Create
+        writable_on_update:
+          type: boolean
+          title: Writable On Update
+        searchable:
+          type: boolean
+          title: Searchable
+        filterable:
+          type: boolean
+          title: Filterable
+        sortable:
+          type: boolean
+          title: Sortable
+      type: object
+      required:
+      - name
+      - data_type
+      - udt_name
+      - nullable
+      - has_default
+      - primary_key
+      - read_only
+      - writable_on_create
+      - writable_on_update
+      - searchable
+      - filterable
+      - sortable
+      title: AdminColumn
+    AdminCount:
+      properties:
+        key:
+          type: string
+          title: Key
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - key
+      - count
+      title: AdminCount
+    AdminMetricsOverview:
+      properties:
+        users_total:
+          type: integer
+          title: Users Total
+        users_active:
+          type: integer
+          title: Users Active
+        workers_total:
+          type: integer
+          title: Workers Total
+        workers_by_verification:
+          items:
+            $ref: '#/components/schemas/AdminCount'
+          type: array
+          title: Workers By Verification
+        businesses_total:
+          type: integer
+          title: Businesses Total
+        businesses_by_verification:
+          items:
+            $ref: '#/components/schemas/AdminCount'
+          type: array
+          title: Businesses By Verification
+        shifts_total:
+          type: integer
+          title: Shifts Total
+        shifts_by_status:
+          items:
+            $ref: '#/components/schemas/AdminCount'
+          type: array
+          title: Shifts By Status
+        open_support_tickets:
+          type: integer
+          title: Open Support Tickets
+        pending_withdrawals:
+          type: integer
+          title: Pending Withdrawals
+        pending_withdrawals_minor:
+          type: integer
+          title: Pending Withdrawals Minor
+        total_paid_out_minor:
+          type: integer
+          title: Total Paid Out Minor
+          description: Sum of paid withdrawals (paise).
+        invoiced_paid_minor:
+          type: integer
+          title: Invoiced Paid Minor
+          description: Sum of paid invoice totals (paise).
+        platform_fees_minor:
+          type: integer
+          title: Platform Fees Minor
+          description: Platform fee revenue on paid invoices.
+        payments_succeeded_minor:
+          type: integer
+          title: Payments Succeeded Minor
+        currency:
+          type: string
+          title: Currency
+          default: INR
+      type: object
+      required:
+      - users_total
+      - users_active
+      - workers_total
+      - workers_by_verification
+      - businesses_total
+      - businesses_by_verification
+      - shifts_total
+      - shifts_by_status
+      - open_support_tickets
+      - pending_withdrawals
+      - pending_withdrawals_minor
+      - total_paid_out_minor
+      - invoiced_paid_minor
+      - platform_fees_minor
+      - payments_succeeded_minor
+      title: AdminMetricsOverview
+    AdminRecordPage:
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: AdminRecordPage
+    AdminResourceInfo:
+      properties:
+        name:
+          type: string
+          title: Name
+          examples:
+          - work_categories
+        table:
+          type: string
+          title: Table
+        primary_key:
+          items:
+            type: string
+          type: array
+          title: Primary Key
+        operations:
+          items:
+            type: string
+          type: array
+          title: Operations
+          description: Allowed writes (read is always allowed).
+        delete_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Delete Mode
+          description: soft | hard | null when delete is disabled.
+        default_sort:
+          type: string
+          title: Default Sort
+        columns:
+          items:
+            $ref: '#/components/schemas/AdminColumn'
+          type: array
+          title: Columns
+      type: object
+      required:
+      - name
+      - table
+      - primary_key
+      - operations
+      - delete_mode
+      - default_sort
+      - columns
+      title: AdminResourceInfo
+    AdminResourceList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AdminResourceInfo'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: AdminResourceList
     ApplicantItem:
       properties:
         application_id:
@@ -3117,8 +4128,6 @@ components:
       type: object
       required:
       - is_available
-      - latitude
-      - longitude
       title: AvailabilityRequest
     AvailabilityResponse:
       properties:
@@ -3141,6 +4150,16 @@ components:
       required:
       - is_available
       title: AvailabilityResponse
+    Body_upload_logo_api_v1_business_profile_logo_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_logo_api_v1_business_profile_logo_post
     Body_upload_photo_api_v1_me_photo_post:
       properties:
         file:
@@ -3191,6 +4210,26 @@ components:
             minLength: 1
           - type: 'null'
           title: Business Name
+        contact_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        business_type_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Business Type Slug
         category_slug:
           anyOf:
           - type: string
@@ -3231,9 +4270,6 @@ components:
           title: Longitude
       additionalProperties: false
       type: object
-      required:
-      - latitude
-      - longitude
       title: BusinessProfilePatch
     BusinessProfileResponse:
       properties:
@@ -3306,6 +4342,24 @@ components:
         owner_name:
           type: string
           title: Owner Name
+        contact_name:
+          type: string
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        business_type_slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Type Slug
+        business_type_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Type Name
         phone:
           type: string
           title: Phone
@@ -3320,6 +4374,7 @@ components:
       - rating_avg
       - rating_count
       - owner_name
+      - contact_name
       - phone
       title: BusinessProfileResponse
     BusinessProfileSummary:
@@ -3420,6 +4475,12 @@ components:
         body_markdown:
           type: string
           title: Body Markdown
+        sections:
+          items:
+            $ref: '#/components/schemas/ContentSection'
+          type: array
+          title: Sections
+          description: body_markdown split on '## ' headings.
         effective_date:
           type: string
           format: date
@@ -3437,6 +4498,23 @@ components:
       - effective_date
       - updated_at
       title: ContentPage
+    ContentSection:
+      properties:
+        id:
+          type: string
+          title: Id
+        title:
+          type: string
+          title: Title
+        body:
+          type: string
+          title: Body
+      type: object
+      required:
+      - id
+      - title
+      - body
+      title: ContentSection
     ConvertToScheduledRequest:
       properties:
         starts_at:
@@ -3616,6 +4694,11 @@ components:
           type: string
           format: uuid
           title: Id
+        slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Slug
         question:
           type: string
           title: Question
@@ -3638,10 +4721,17 @@ components:
         support_email:
           type: string
           title: Support Email
+          description: Comma-separated; prefer support_emails.
+        support_emails:
+          items:
+            type: string
+          type: array
+          title: Support Emails
       type: object
       required:
       - items
       - support_email
+      - support_emails
       title: FaqList
     FeePolicy:
       properties:
@@ -4005,6 +5095,118 @@ components:
       - latitude
       - longitude
       title: LocationRequest
+    LookupCreate:
+      properties:
+        slug:
+          type: string
+          maxLength: 64
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          title: Slug
+          examples:
+          - barista
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+          examples:
+          - Barista
+        icon:
+          type: string
+          maxLength: 64
+          title: Icon
+          default: ''
+          examples:
+          - coffee
+        sort_order:
+          type: integer
+          minimum: 0.0
+          title: Sort Order
+          default: 0
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+      type: object
+      required:
+      - slug
+      - name
+      title: LookupCreate
+    LookupItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        slug:
+          type: string
+          title: Slug
+        name:
+          type: string
+          title: Name
+        icon:
+          type: string
+          title: Icon
+        sort_order:
+          type: integer
+          title: Sort Order
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - slug
+      - name
+      - icon
+      - sort_order
+      - is_active
+      - created_at
+      - updated_at
+      title: LookupItem
+    LookupUpdate:
+      properties:
+        slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+            pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          - type: 'null'
+          title: Slug
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        icon:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Icon
+        sort_order:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Sort Order
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      type: object
+      title: LookupUpdate
     MePatch:
       properties:
         full_name:
@@ -4300,6 +5502,26 @@ components:
           title: Phone
           examples:
           - '+919876543210'
+        intent:
+          anyOf:
+          - type: string
+            enum:
+            - sign_in
+            - sign_up
+            - password_reset
+          - type: 'null'
+          title: Intent
+          description: 'sign_in: 404 if no account. sign_up: 409 if the number already
+            has one.'
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+          description: 'With intent: check the account for this role (worker or business).'
       additionalProperties: false
       type: object
       required:
@@ -4339,6 +5561,23 @@ components:
           title: Code
           examples:
           - '123456'
+        intent:
+          anyOf:
+          - type: string
+            const: sign_in
+          - type: 'null'
+          title: Intent
+          description: 'sign_in: 404 instead of creating a new account.'
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+          description: 'Log in as this role: 404 role_not_registered if the account
+            lacks it; otherwise it becomes the active role.'
       additionalProperties: false
       type: object
       required:
@@ -4365,6 +5604,76 @@ components:
       - needs_role_selection
       - me
       title: OtpVerifyResponse
+    PasswordLoginRequest:
+      properties:
+        phone:
+          type: string
+          maxLength: 20
+          minLength: 8
+          title: Phone
+        password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Password
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+      additionalProperties: false
+      type: object
+      required:
+      - phone
+      - password
+      title: PasswordLoginRequest
+    FirebaseVerifyRequest:
+      properties:
+        id_token:
+          type: string
+          maxLength: 4096
+          minLength: 20
+          title: Id Token
+        intent:
+          anyOf:
+          - type: string
+            const: sign_in
+          - type: 'null'
+          title: Intent
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+      additionalProperties: false
+      type: object
+      required:
+      - id_token
+      title: FirebaseVerifyRequest
+    PasswordResetConfirmRequest:
+      properties:
+        id_token:
+          type: string
+          maxLength: 4096
+          minLength: 20
+          title: Id Token
+        new_password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: New Password
+      additionalProperties: false
+      type: object
+      required:
+      - id_token
+      - new_password
+      title: PasswordResetConfirmRequest
     PaymentCreate:
       properties:
         method:
@@ -4633,6 +5942,49 @@ components:
       required:
       - account_type
       title: PayoutAccountCreate
+    PayoutAccountPatch:
+      properties:
+        upi_id:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,63}$
+          - type: 'null'
+          title: Upi Id
+        paytm_phone:
+          anyOf:
+          - type: string
+            pattern: ^\+?\d{10,15}$
+          - type: 'null'
+          title: Paytm Phone
+        bank_account_number:
+          anyOf:
+          - type: string
+            pattern: ^\d{9,18}$
+          - type: 'null'
+          title: Bank Account Number
+        bank_ifsc:
+          anyOf:
+          - type: string
+            pattern: ^[A-Z]{4}0[A-Z0-9]{6}$
+          - type: 'null'
+          title: Bank Ifsc
+        account_holder_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Account Holder Name
+        make_default:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Make Default
+      additionalProperties: false
+      type: object
+      title: PayoutAccountPatch
+      description: Edit details of a saved account; the type cannot change. Edits
+        clear verification.
     PayoutAccountResponse:
       properties:
         id:
@@ -4676,6 +6028,16 @@ components:
         is_default:
           type: boolean
           title: Is Default
+        is_verified:
+          type: boolean
+          title: Is Verified
+          default: false
+        verified_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Verified At
         created_at:
           type: string
           format: date-time
@@ -4689,6 +6051,39 @@ components:
       - is_default
       - created_at
       title: PayoutAccountResponse
+    PhoneCheckRequest:
+      properties:
+        phone:
+          type: string
+          maxLength: 20
+          minLength: 8
+          title: Phone
+          examples:
+          - '+919876543210'
+      additionalProperties: false
+      type: object
+      required:
+      - phone
+      title: PhoneCheckRequest
+    PhoneCheckResponse:
+      properties:
+        phone:
+          type: string
+          title: Phone
+        registered:
+          type: boolean
+          title: Registered
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+      type: object
+      required:
+      - phone
+      - registered
+      - roles
+      title: PhoneCheckResponse
     RatingCreate:
       properties:
         stars:
@@ -5489,6 +6884,187 @@ components:
       - created_at
       title: ShiftResponse
       description: Business view of one shift.
+    SignupBusinessDetails:
+      properties:
+        business_name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Business Name
+        contact_name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        address_text:
+          type: string
+          maxLength: 500
+          minLength: 3
+          title: Address Text
+        locality:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Locality
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+        business_type_slug:
+          type: string
+          maxLength: 64
+          title: Business Type Slug
+        category_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Category Slug
+      additionalProperties: false
+      type: object
+      required:
+      - business_name
+      - contact_name
+      - address_text
+      - business_type_slug
+      title: SignupBusinessDetails
+      description: App business signup step 2 ("Tell us about your business").
+    SignupRequest:
+      properties:
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 20
+            minLength: 8
+          - type: 'null'
+          title: Phone
+        code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 4
+            pattern: ^\d+$
+          - type: 'null'
+          title: Code
+        id_token:
+          anyOf:
+          - type: string
+            maxLength: 4096
+            minLength: 20
+          - type: 'null'
+          title: Id Token
+        password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Password
+        role:
+          type: string
+          enum:
+          - business
+          - worker
+          title: Role
+        language_code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 2
+          - type: 'null'
+          title: Language Code
+        worker:
+          anyOf:
+          - $ref: '#/components/schemas/SignupWorkerDetails'
+          - type: 'null'
+        business:
+          anyOf:
+          - $ref: '#/components/schemas/SignupBusinessDetails'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - password
+      - role
+      title: SignupRequest
+      description: 'One-call registration: verifies the phone OTP and creates the
+        account + role profile.'
+    SignupWorkerDetails:
+      properties:
+        full_name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        age:
+          type: integer
+          maximum: 70.0
+          minimum: 18.0
+          title: Age
+        address_text:
+          type: string
+          maxLength: 500
+          minLength: 3
+          title: Address Text
+        locality:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Locality
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+        work_type_slugs:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          minItems: 1
+          title: Work Type Slugs
+      additionalProperties: false
+      type: object
+      required:
+      - full_name
+      - age
+      - address_text
+      - work_type_slugs
+      title: SignupWorkerDetails
+      description: App worker signup step 2 ("Tell us about you").
     SupportTicketCreate:
       properties:
         topic:
@@ -5546,6 +7122,11 @@ components:
         support_email:
           type: string
           title: Support Email
+        support_emails:
+          items:
+            type: string
+          type: array
+          title: Support Emails
       type: object
       required:
       - id
@@ -5554,6 +7135,7 @@ components:
       - status
       - created_at
       - support_email
+      - support_emails
       title: SupportTicketResponse
     TokenPair:
       properties:
@@ -5820,30 +7402,29 @@ components:
       - payout_display
       - initiated_at
       title: WithdrawalResponse
-    WorkCategory:
-      properties:
-        id:
-          type: string
-          format: uuid
-          title: Id
-        slug:
-          type: string
-          title: Slug
-        name:
-          type: string
-          title: Name
-        icon:
-          type: string
-          title: Icon
-      type: object
-      required:
-      - id
-      - slug
-      - name
-      - icon
-      title: WorkCategory
     WorkerProfilePatch:
       properties:
+        full_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        age:
+          anyOf:
+          - type: integer
+            maximum: 70.0
+            minimum: 18.0
+          - type: 'null'
+          title: Age
         address_text:
           anyOf:
           - type: string
@@ -5880,9 +7461,6 @@ components:
           title: Category Slugs
       additionalProperties: false
       type: object
-      required:
-      - latitude
-      - longitude
       title: WorkerProfilePatch
     WorkerProfileResponse:
       properties:
@@ -5897,6 +7475,16 @@ components:
         full_name:
           type: string
           title: Full Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        age:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Age
         photo_url:
           anyOf:
           - type: string
@@ -6355,7 +7943,6 @@ components:
   securitySchemes:
     HTTPBearer:
       type: http
-      description: Access token from POST /api/v1/auth/otp/verify (OTP is printed
-        to the API log in dev).
+      description: Access token from POST /api/v1/auth/otp/verify after SMS OTP verification.
       scheme: bearer
       bearerFormat: JWT

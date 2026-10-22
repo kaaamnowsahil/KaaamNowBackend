@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
+import time
 from collections.abc import Awaitable, Callable
 
 import asyncpg
+from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.db.pool import get_pool
 from app.observability.logging import get_logger, log_extra
 
 log = get_logger(__name__)
@@ -59,23 +63,25 @@ async def run_sweep_once(pool: asyncpg.Pool) -> dict[str, int]:
     return results
 
 
+async def run_locked_sweep(pool: asyncpg.Pool) -> None:
+    """Run one sweep unless another replica holds the sweep lock."""
+    async with pool.acquire() as conn:
+        locked = await conn.fetchval("SELECT pg_try_advisory_lock($1)", _SWEEP_ADVISORY_LOCK_KEY)
+        if not locked:
+            return
+        try:
+            results = await run_sweep_once(pool)
+            changed = {k: v for k, v in results.items() if v}
+            if changed:
+                log.info("sweep", extra=log_extra(**changed))
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock($1)", _SWEEP_ADVISORY_LOCK_KEY)
+
+
 async def _loop(pool: asyncpg.Pool, interval_seconds: int) -> None:
     while True:
         try:
-            async with pool.acquire() as conn:
-                locked = await conn.fetchval(
-                    "SELECT pg_try_advisory_lock($1)", _SWEEP_ADVISORY_LOCK_KEY
-                )
-                if locked:
-                    try:
-                        results = await run_sweep_once(pool)
-                        changed = {k: v for k, v in results.items() if v}
-                        if changed:
-                            log.info("sweep", extra=log_extra(**changed))
-                    finally:
-                        await conn.execute(
-                            "SELECT pg_advisory_unlock($1)", _SWEEP_ADVISORY_LOCK_KEY
-                        )
+            await run_locked_sweep(pool)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -83,10 +89,38 @@ async def _loop(pool: asyncpg.Pool, interval_seconds: int) -> None:
         await asyncio.sleep(interval_seconds)
 
 
+class RequestSweepMiddleware:
+    """Runs the sweep before an HTTP request when the last one is older than the interval.
+
+    The sweep is awaited inline: work scheduled after the response may be frozen on
+    serverless hosts while it still holds the advisory lock.
+    """
+
+    def __init__(self, app: ASGIApp, interval_seconds: int) -> None:
+        self.app = app
+        self.interval_seconds = interval_seconds
+        self._last_sweep_at = -math.inf
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            await self._maybe_sweep()
+        await self.app(scope, receive, send)
+
+    async def _maybe_sweep(self) -> None:
+        now = time.monotonic()
+        if now - self._last_sweep_at < self.interval_seconds:
+            return
+        self._last_sweep_at = now
+        try:
+            await run_locked_sweep(get_pool())
+        except Exception:
+            log.exception("request sweep failed")
+
+
 async def start_background_sweep_loop(pool: asyncpg.Pool, interval_seconds: int) -> None:
     global _task
     if _task is None or _task.done():
-        _task = asyncio.create_task(_loop(pool, interval_seconds), name="kaamnow-sweep")
+        _task = asyncio.create_task(_loop(pool, interval_seconds), name="kaaamnow-sweep")
 
 
 async def stop_background_sweep_loop() -> None:

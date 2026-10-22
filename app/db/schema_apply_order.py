@@ -14,6 +14,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     # Reference catalogs
     "tables/languages.sql",
     "tables/work_categories.sql",
+    "tables/business_types.sql",
     "tables/platform_fee_policies.sql",
     # Identity
     "tables/users.sql",
