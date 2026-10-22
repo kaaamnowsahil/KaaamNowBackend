@@ -10,6 +10,7 @@ from app.routes.attendance.attendance_router import worker_router as attendance_
 from app.routes.auth.auth_router import router as auth_router
 from app.routes.billing.billing_router import router as billing_router
 from app.routes.billing.billing_router import webhook_router as payment_webhook_router
+from app.routes.brand_assets_router import router as brand_assets_router
 from app.routes.catalog.catalog_router import router as catalog_router
 from app.routes.content.content_router import router as content_router
 from app.routes.content.content_router import support_router
@@ -29,6 +30,7 @@ from app.routes.users.me_router import router as me_router
 
 _ROUTERS = (
     health_router,
+    brand_assets_router,
     auth_router,
     me_router,
     catalog_router,
