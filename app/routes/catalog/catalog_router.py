@@ -1,4 +1,4 @@
-"""Reference data for pickers: categories, languages, rating chips, payment methods, fee."""
+"""Reference data for pickers: languages, rating chips, payment methods, fee."""
 
 from __future__ import annotations
 
@@ -10,42 +10,20 @@ from app.constants.application.application_common import SWAGGER_ROLE_PUBLIC, sw
 from app.constants.catalog.catalog_route_strings import (
     CATALOG_ROUTE_PREFIX,
     OPENAPI_TAG_CATALOG,
-    PATH_BUSINESS_TYPES,
     PATH_FEE_POLICY,
     PATH_LANGUAGES,
     PATH_PAYMENT_METHODS,
     PATH_RATING_TAGS,
-    PATH_WORK_CATEGORIES,
 )
 from app.schemas.catalog.catalog_schemas import (
-    BusinessType,
     FeePolicy,
     Language,
     PaymentMethod,
     RatingTags,
-    WorkCategory,
 )
 from app.services.catalog import catalog_service
 
 router = APIRouter(prefix=CATALOG_ROUTE_PREFIX, tags=[OPENAPI_TAG_CATALOG])
-
-
-@router.get(
-    PATH_WORK_CATEGORIES,
-    response_model=list[WorkCategory],
-    summary=swagger_summary("Work categories", SWAGGER_ROLE_PUBLIC),
-)
-async def work_categories() -> list[WorkCategory]:
-    return await catalog_service.list_work_categories()
-
-
-@router.get(
-    PATH_BUSINESS_TYPES,
-    response_model=list[BusinessType],
-    summary=swagger_summary("Business types", SWAGGER_ROLE_PUBLIC),
-)
-async def business_types() -> list[BusinessType]:
-    return await catalog_service.list_business_types()
 
 
 @router.get(

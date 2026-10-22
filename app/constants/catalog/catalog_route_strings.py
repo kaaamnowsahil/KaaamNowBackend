@@ -9,8 +9,6 @@ from app.constants.application.application_common import API_V1, SEGMENT_CATALOG
 CATALOG_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_CATALOG}"
 OPENAPI_TAG_CATALOG: Final[str] = "catalog"
 
-PATH_WORK_CATEGORIES: Final[str] = "/work-categories"
-PATH_BUSINESS_TYPES: Final[str] = "/business-types"
 PATH_LANGUAGES: Final[str] = "/languages"
 PATH_RATING_TAGS: Final[str] = "/rating-tags"
 PATH_PAYMENT_METHODS: Final[str] = "/payment-methods"

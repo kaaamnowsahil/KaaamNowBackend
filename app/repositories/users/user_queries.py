@@ -30,9 +30,29 @@ FROM users u
 WHERE u.phone = $1
 """
 
+GET_AUTH_CREDENTIALS = """
+SELECT u.id, u.phone, u.password_hash, u.is_active,
+       COALESCE((SELECT array_agg(r.role ORDER BY r.role) FROM user_roles r
+                 WHERE r.user_id = u.id AND r.status = 'active'), ARRAY[]::varchar[]) AS roles
+FROM users u WHERE u.phone = $1
+"""
+
+SET_PASSWORD_BY_PHONE = """
+UPDATE users SET password_hash = $2, updated_at = now()
+WHERE phone = $1 AND is_active = true
+RETURNING id
+"""
+
+SET_PASSWORD_IF_MISSING = """
+UPDATE users SET password_hash = COALESCE(password_hash, $2), updated_at = now()
+WHERE id = $1
+"""
+
 TOUCH_LAST_LOGIN = "UPDATE users SET last_login_at = $2 WHERE id = $1"
 
 GET_USER_BY_ID = f"SELECT {_USER_COLUMNS} FROM users u WHERE u.id = $1"
+
+LOCK_USER_BY_ID = "SELECT id FROM users WHERE id = $1 FOR UPDATE"
 
 LIST_ACTIVE_ROLES = """
 SELECT role FROM user_roles WHERE user_id = $1 AND status = 'active' ORDER BY role

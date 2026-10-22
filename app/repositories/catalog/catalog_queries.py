@@ -2,14 +2,6 @@
 
 from __future__ import annotations
 
-LIST_WORK_CATEGORIES = """
-SELECT id, slug, name, icon FROM work_categories WHERE is_active ORDER BY sort_order, name
-"""
-
-LIST_BUSINESS_TYPES = """
-SELECT id, slug, name, icon FROM business_types WHERE is_active ORDER BY sort_order, name
-"""
-
 GET_BUSINESS_TYPE_BY_SLUG = """
 SELECT id, slug, name FROM business_types WHERE slug = $1 AND is_active
 """

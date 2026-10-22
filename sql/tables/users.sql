@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone            VARCHAR(16) NOT NULL,
+    password_hash    TEXT,
     full_name        VARCHAR(120) NOT NULL DEFAULT '',
     email            VARCHAR(254),
     photo_url        TEXT,
@@ -18,3 +19,5 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT users_active_role_chk
         CHECK (active_role IS NULL OR active_role IN ('business', 'worker', 'admin'))
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;

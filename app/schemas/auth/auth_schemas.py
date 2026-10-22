@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.auth.auth_route_strings import (
     MSG_SIGNUP_DETAILS,
@@ -21,7 +21,42 @@ from app.schemas.profiles.profile_schemas import (
 )
 from app.schemas.users.user_schemas import MeResponse, SelfServiceRole
 
-AuthIntent = Literal["sign_in", "sign_up"]
+AuthIntent = Literal["sign_in", "sign_up", "password_reset"]
+
+
+def _validate_password_strength(value: str) -> str:
+    has_letter = any(char.isalpha() for char in value)
+    has_number = any(char.isdigit() for char in value)
+    if len(value) < 8 or not has_letter or not has_number:
+        raise ValueError(
+            "Password must be at least 8 characters and include a letter and a number."
+        )
+    return value
+
+
+class PasswordLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phone: str = Field(min_length=8, max_length=20)
+    password: str = Field(min_length=8, max_length=128)
+    role: SelfServiceRole | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_strength(value)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id_token: str = Field(min_length=20, max_length=4096)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_strength(value)
 
 
 class OtpSendRequest(BaseModel):
@@ -62,15 +97,9 @@ class OtpVerifyRequest(BaseModel):
 class FirebaseVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id_token: str = Field(min_length=20, max_length=4096, description="Firebase Auth ID token.")
-    intent: Literal["sign_in"] | None = Field(
-        default=None, description="sign_in: 404 instead of creating a new account."
-    )
-    role: SelfServiceRole | None = Field(
-        default=None,
-        description="Log in as this role: 404 role_not_registered if the account lacks it; "
-        "otherwise it becomes the active role.",
-    )
+    id_token: str = Field(min_length=20, max_length=4096)
+    intent: Literal["sign_in"] | None = None
+    role: SelfServiceRole | None = None
 
 
 class PhoneCheckRequest(BaseModel):
@@ -117,13 +146,19 @@ class SignupBusinessDetails(_CoordinatesPair):
 
 
 class SignupRequest(BaseModel):
-    """One-call registration: proves the phone and creates the account + role profile."""
+    """One-call registration: verifies the phone OTP and creates the account + role profile."""
 
     model_config = ConfigDict(extra="forbid")
 
     phone: str | None = Field(default=None, min_length=8, max_length=20)
     code: str | None = Field(default=None, min_length=4, max_length=8, pattern=r"^\d+$")
     id_token: str | None = Field(default=None, min_length=20, max_length=4096)
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_strength(value)
     role: SelfServiceRole
     language_code: str | None = Field(default=None, min_length=2, max_length=8)
     worker: SignupWorkerDetails | None = None

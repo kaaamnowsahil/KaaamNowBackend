@@ -71,7 +71,6 @@ class KaaamNowSettings(BaseSettings):
     otp_max_attempts: int = 5
     otp_resend_cooldown_seconds: int = 30
     otp_max_sends_per_hour: int = 5
-    # Firebase project whose phone-auth ID tokens are accepted (OTP_PROVIDER=firebase).
     firebase_project_id: str = ""
 
     # --- Marketplace policy (OWNER DECISIONS) ---
@@ -107,7 +106,7 @@ class KaaamNowSettings(BaseSettings):
     media_dir: str = ""
     media_base_url: str = "/media"
     max_photo_bytes: int = 5 * 1024 * 1024
-    support_email: str = "sumit.pandey@kaaamnow.in,sahil.shrivastava@kaaamnow.in"
+    support_email: str
 
     @field_validator("database_url")
     @classmethod

@@ -26,6 +26,7 @@ def _test_database_url() -> str:
 
 activate_environment_profile("dev")
 os.environ["DATABASE_URL"] = _test_database_url()
+os.environ["OTP_PROVIDER"] = "console"
 os.environ["LOG_LEVEL"] = "warning"
 os.environ["BACKGROUND_JOBS_ENABLED"] = "false"
 os.environ["MEDIA_DIR"] = "/tmp/kaaamnow-test-media"
