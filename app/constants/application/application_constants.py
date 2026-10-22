@@ -45,4 +45,12 @@ MSG_PROVIDER_NOT_ALLOWED_IN_PRODUCTION: Final[str] = (
     "{name}={value} is a development provider and is refused in production"
 )
 MSG_JWT_SECRET_TOO_SHORT: Final[str] = "JWT_SECRET_KEY must be at least 32 characters"
+MSG_MEDIA_STORAGE_UNKNOWN: Final[str] = "MEDIA_STORAGE must be one of {allowed} (got {value!r})"
+
+# --- Media storage (``MEDIA_STORAGE``) ---
+MEDIA_STORAGE_LOCAL: Final[str] = "local"
+MEDIA_STORAGE_VERCEL_BLOB: Final[str] = "vercel_blob"
+MEDIA_STORAGE_CHOICES: Final[tuple[str, ...]] = (MEDIA_STORAGE_LOCAL, MEDIA_STORAGE_VERCEL_BLOB)
+BLOB_ACCESS_PUBLIC: Final[str] = "public"
+BLOB_ROOT_FOLDER: Final[str] = "media"
 MSG_CORS_WILDCARD_NOT_ALLOWED_IN_PRODUCTION: Final[str] = "CORS_ORIGIN='*' is refused in production"

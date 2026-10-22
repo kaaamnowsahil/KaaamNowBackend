@@ -15,7 +15,8 @@ from app.middleware.cors_setup import configure_cors
 from app.middleware.request_context import RequestContextMiddleware
 from app.observability.logging import configure_application_logging
 from app.router import register_routes
-from app.services.users.sources.photo_storage import media_root
+from app.services.background.background_sweep_loop import RequestSweepMiddleware
+from app.services.users.sources.photo_storage import media_root, uses_local_media
 
 
 def create_kaaamnow_api_application() -> FastAPI:
@@ -27,12 +28,15 @@ def create_kaaamnow_api_application() -> FastAPI:
         lifespan=api_lifespan,
         swagger_ui_parameters={"persistAuthorization": True},
     )
+    if settings.request_sweep_enabled:
+        app.add_middleware(RequestSweepMiddleware, settings.background_sweep_interval_seconds)
     app.add_middleware(RequestContextMiddleware)
     configure_cors(app, settings)
     register_exception_handlers(app)
-    media_dir = media_root()
-    media_dir.mkdir(parents=True, exist_ok=True)
-    app.mount(PATH_MEDIA, StaticFiles(directory=str(media_dir)), name="media")
+    if uses_local_media():
+        media_dir = media_root()
+        media_dir.mkdir(parents=True, exist_ok=True)
+        app.mount(PATH_MEDIA, StaticFiles(directory=str(media_dir)), name="media")
     register_routes(app)
     return app
 
