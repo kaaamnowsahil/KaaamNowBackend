@@ -56,5 +56,7 @@ MSG_FIREBASE_UNAVAILABLE: Final[str] = "Could not reach Firebase to verify sign-
 MSG_OTP_SENT_BY_FIREBASE: Final[str] = "OTP is sent by Firebase; use POST /auth/firebase/verify."
 MSG_ACCOUNT_NOT_FOUND: Final[str] = "No account found for this number. Create an account first."
 MSG_PHONE_REGISTERED: Final[str] = "This number already has an account. Log in instead."
+MSG_ROLE_NOT_REGISTERED: Final[str] = "This number has no {role} account. Create one first."
+MSG_ROLE_REGISTERED: Final[str] = "This number already has a {role} account. Log in instead."
 MSG_SIGNUP_IDENTITY: Final[str] = "Send either phone + code (SMS OTP) or id_token (Firebase)."
 MSG_SIGNUP_DETAILS: Final[str] = "Send the details block that matches the chosen role."

@@ -45,7 +45,7 @@ router = APIRouter(prefix=AUTH_ROUTE_PREFIX, tags=[OPENAPI_TAG_AUTH])
 )
 async def send_otp(body: OtpSendRequest, request: Request) -> OtpSendResponse:
     client_ip = request.client.host if request.client else None
-    return await auth_service.send_otp(body.phone, client_ip, body.intent)
+    return await auth_service.send_otp(body.phone, client_ip, body.intent, body.role)
 
 
 @router.post(
@@ -54,7 +54,7 @@ async def send_otp(body: OtpSendRequest, request: Request) -> OtpSendResponse:
     summary=swagger_summary("Verify OTP and sign in", SWAGGER_ROLE_PUBLIC),
 )
 async def verify_otp(body: OtpVerifyRequest) -> OtpVerifyResponse:
-    return await auth_service.verify_otp(body.phone, body.code, body.intent)
+    return await auth_service.verify_otp(body.phone, body.code, body.intent, body.role)
 
 
 @router.post(
@@ -63,7 +63,7 @@ async def verify_otp(body: OtpVerifyRequest) -> OtpVerifyResponse:
     summary=swagger_summary("Sign in with a Firebase phone-auth ID token", SWAGGER_ROLE_PUBLIC),
 )
 async def verify_firebase(body: FirebaseVerifyRequest) -> OtpVerifyResponse:
-    return await auth_service.verify_firebase(body.id_token, body.intent)
+    return await auth_service.verify_firebase(body.id_token, body.intent, body.role)
 
 
 @router.post(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncpg
 import httpx
 import pytest
 
@@ -165,3 +166,67 @@ async def test_payout_account_edit(app_client: httpx.AsyncClient) -> None:
         headers=headers,
     )
     assert wrong_field.status_code == 400
+
+
+async def _verify(
+    client: httpx.AsyncClient, phone: str, role: str | None = None, intent: str | None = None
+) -> httpx.Response:
+    body = {"phone": phone, "code": TEST_OTP}
+    body |= {"role": role} if role else {}
+    body |= {"intent": intent} if intent else {}
+    return await client.post(f"{API}/auth/otp/verify", json=body)
+
+
+async def test_one_phone_both_roles_and_role_login(
+    app_client: httpx.AsyncClient, db: asyncpg.Connection
+) -> None:
+    phone = next_phone()
+
+    async def reset_otp() -> None:
+        await db.execute("DELETE FROM otp_challenges WHERE phone = $1", phone)
+
+    await _send(app_client, phone)
+    worker = await _signup(app_client, phone, "worker", WORKER_DETAILS)
+    assert worker.status_code == 201, worker.text
+
+    await reset_otp()
+    no_business = await _send(app_client, phone, "sign_in")
+    assert no_business.status_code == 200
+    missing = await _verify(app_client, phone, role="business", intent="sign_in")
+    assert missing.status_code == 404 and missing.json()["code"] == "role_not_registered"
+
+    await reset_otp()
+    sent = await app_client.post(
+        f"{API}/auth/otp/send", json={"phone": phone, "intent": "sign_up", "role": "business"}
+    )
+    assert sent.status_code == 200, sent.text
+    business = await _signup(app_client, phone, "business", BUSINESS_DETAILS)
+    assert business.status_code == 201, business.text
+    body = business.json()
+    assert body["is_new_user"] is False
+    assert body["me"]["roles"] == ["business", "worker"]
+    assert body["me"]["active_role"] == "business"
+    assert body["me"]["full_name"] == "Ravi Kumar"
+
+    dup = await app_client.post(
+        f"{API}/auth/otp/send", json={"phone": phone, "intent": "sign_up", "role": "worker"}
+    )
+    assert dup.status_code == 409 and dup.json()["code"] == "role_registered"
+
+    await reset_otp()
+    assert (await _send(app_client, phone, "sign_in")).status_code == 200
+    as_worker = await _verify(app_client, phone, role="worker", intent="sign_in")
+    assert as_worker.status_code == 200, as_worker.text
+    assert as_worker.json()["me"]["active_role"] == "worker"
+    headers = {"Authorization": f"Bearer {as_worker.json()['tokens']['access_token']}"}
+    assert (await app_client.get(f"{API}/worker/profile", headers=headers)).status_code == 200
+    assert (await app_client.get(f"{API}/business/profile", headers=headers)).status_code == 200
+
+
+async def test_role_login_does_not_create_accounts(app_client: httpx.AsyncClient) -> None:
+    phone = next_phone()
+    await _send(app_client, phone)
+    resp = await _verify(app_client, phone, role="worker")
+    assert resp.status_code == 404 and resp.json()["code"] == "role_not_registered"
+    check = await app_client.post(f"{API}/auth/phone/check", json={"phone": phone})
+    assert check.json()["registered"] is False

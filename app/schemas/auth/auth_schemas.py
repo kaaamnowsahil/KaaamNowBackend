@@ -32,6 +32,10 @@ class OtpSendRequest(BaseModel):
         default=None,
         description="sign_in: 404 if no account. sign_up: 409 if the number already has one.",
     )
+    role: SelfServiceRole | None = Field(
+        default=None,
+        description="With intent: check the account for this role (worker or business).",
+    )
 
 
 class OtpSendResponse(BaseModel):
@@ -48,6 +52,11 @@ class OtpVerifyRequest(BaseModel):
     intent: Literal["sign_in"] | None = Field(
         default=None, description="sign_in: 404 instead of creating a new account."
     )
+    role: SelfServiceRole | None = Field(
+        default=None,
+        description="Log in as this role: 404 role_not_registered if the account lacks it; "
+        "otherwise it becomes the active role.",
+    )
 
 
 class FirebaseVerifyRequest(BaseModel):
@@ -56,6 +65,11 @@ class FirebaseVerifyRequest(BaseModel):
     id_token: str = Field(min_length=20, max_length=4096, description="Firebase Auth ID token.")
     intent: Literal["sign_in"] | None = Field(
         default=None, description="sign_in: 404 instead of creating a new account."
+    )
+    role: SelfServiceRole | None = Field(
+        default=None,
+        description="Log in as this role: 404 role_not_registered if the account lacks it; "
+        "otherwise it becomes the active role.",
     )
 
 

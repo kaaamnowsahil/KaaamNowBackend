@@ -4470,6 +4470,16 @@ components:
           - type: 'null'
           title: Intent
           description: 'sign_in: 404 instead of creating a new account.'
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+          description: 'Log in as this role: 404 role_not_registered if the account
+            lacks it; otherwise it becomes the active role.'
       additionalProperties: false
       type: object
       required:
@@ -5110,6 +5120,15 @@ components:
           title: Intent
           description: 'sign_in: 404 if no account. sign_up: 409 if the number already
             has one.'
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+          description: 'With intent: check the account for this role (worker or business).'
       additionalProperties: false
       type: object
       required:
@@ -5156,6 +5175,16 @@ components:
           - type: 'null'
           title: Intent
           description: 'sign_in: 404 instead of creating a new account.'
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+          description: 'Log in as this role: 404 role_not_registered if the account
+            lacks it; otherwise it becomes the active role.'
       additionalProperties: false
       type: object
       required:
