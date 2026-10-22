@@ -17,25 +17,11 @@ from app.db.pool import get_pool
 from app.exceptions.api_errors import ApiError, bad_request
 from app.repositories.catalog import catalog_repository
 from app.schemas.catalog.catalog_schemas import (
-    BusinessType,
     FeePolicy,
     Language,
     PaymentMethod,
     RatingTags,
-    WorkCategory,
 )
-
-
-async def list_work_categories() -> list[WorkCategory]:
-    async with get_pool().acquire() as conn:
-        rows = await catalog_repository.list_work_categories(conn)
-    return [WorkCategory.model_validate(dict(r)) for r in rows]
-
-
-async def list_business_types() -> list[BusinessType]:
-    async with get_pool().acquire() as conn:
-        rows = await catalog_repository.list_business_types(conn)
-    return [BusinessType.model_validate(dict(r)) for r in rows]
 
 
 async def list_languages() -> list[Language]:

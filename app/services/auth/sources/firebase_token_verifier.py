@@ -1,8 +1,4 @@
-"""Verify Firebase phone-auth ID tokens against Google's published signing keys.
-
-The client signs in with Firebase (which sends and checks the SMS OTP) and posts the
-resulting ID token here; we only trust the verified ``phone_number`` claim from it.
-"""
+"""Verify Firebase phone-auth ID tokens against Google's published signing keys."""
 
 from __future__ import annotations
 

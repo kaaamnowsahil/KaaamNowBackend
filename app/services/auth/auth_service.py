@@ -1,4 +1,4 @@
-"""Phone OTP / Firebase phone login, refresh-token rotation and logout."""
+"""Phone OTP login, refresh-token rotation and logout."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import asyncpg
 from app.config.settings import load_settings
 from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_WORKER
 from app.constants.auth.auth_route_strings import (
+    INTENT_PASSWORD_RESET,
     INTENT_SIGN_IN,
     INTENT_SIGN_UP,
     MSG_ACCOUNT_DISABLED,
@@ -22,6 +23,8 @@ from app.constants.auth.auth_route_strings import (
     MSG_PHONE_REGISTERED,
     MSG_REFRESH_INVALID,
     MSG_REFRESH_REUSED,
+    MSG_ROLE_NOT_REGISTERED,
+    MSG_ROLE_REGISTERED,
     OTP_PROVIDER_FIREBASE,
 )
 from app.constants.users.user_route_strings import MSG_LANGUAGE_UNKNOWN
@@ -40,11 +43,14 @@ from app.repositories.users import user_repository
 from app.schemas.auth.auth_schemas import (
     OtpSendResponse,
     OtpVerifyResponse,
+    PasswordLoginRequest,
+    PasswordResetConfirmRequest,
     PhoneCheckResponse,
     SignupRequest,
     TokenPair,
 )
 from app.security.jwt_tokens import hash_refresh_token
+from app.security.password_hash import burn_password_check, hash_password, verify_password
 from app.services.auth.domain.token_issuer import issue_token_pair
 from app.services.auth.sources.firebase_token_verifier import verify_firebase_phone_token
 from app.services.auth.sources.otp_sender_factory import get_otp_sender
@@ -60,20 +66,37 @@ from app.utils.clock import utc_now
 from app.utils.references import new_numeric_code
 
 
-async def _is_registered(conn: asyncpg.Connection, phone: str) -> bool:
+async def _registered_roles(conn: asyncpg.Connection, phone: str) -> list[str]:
     row = await user_repository.get_phone_status(conn, phone)
-    return row is not None and bool(row["roles"])
+    return list(row["roles"]) if row is not None else []
 
 
-async def _enforce_intent(phone: str, intent: str | None) -> None:
+def _require_role(roles: list[str], role: str) -> None:
+    if role not in roles:
+        raise not_found("role_not_registered", MSG_ROLE_NOT_REGISTERED.format(role=role))
+
+
+def _reject_existing_role(roles: list[str], role: str | None) -> None:
+    if not roles:
+        return
+    if role is not None and role in roles:
+        raise conflict("role_registered", MSG_ROLE_REGISTERED.format(role=role))
+    raise conflict("phone_registered", MSG_PHONE_REGISTERED)
+
+
+async def _enforce_intent(phone: str, intent: str | None, role: str | None = None) -> None:
+    """sign_in needs an account (with ``role`` if given); sign_up needs that role to be free."""
     if intent is None:
         return
     async with get_pool().acquire() as conn:
-        registered = await _is_registered(conn, phone)
-    if intent == INTENT_SIGN_IN and not registered:
-        raise not_found("account_not_found", MSG_ACCOUNT_NOT_FOUND)
-    if intent == INTENT_SIGN_UP and registered:
-        raise conflict("phone_registered", MSG_PHONE_REGISTERED)
+        roles = await _registered_roles(conn, phone)
+    if intent == INTENT_SIGN_IN:
+        if not roles:
+            raise not_found("account_not_found", MSG_ACCOUNT_NOT_FOUND)
+        if role is not None:
+            _require_role(roles, role)
+    elif intent == INTENT_SIGN_UP:
+        _reject_existing_role(roles, role)
 
 
 async def check_phone(phone: str) -> PhoneCheckResponse:
@@ -85,13 +108,26 @@ async def check_phone(phone: str) -> PhoneCheckResponse:
 
 
 async def send_otp(
-    phone: str, request_ip: str | None, intent: str | None = None
+    phone: str, request_ip: str | None, intent: str | None = None, role: str | None = None
 ) -> OtpSendResponse:
     settings = load_settings()
+    phone = normalize_phone(phone)
     if settings.otp_provider == OTP_PROVIDER_FIREBASE:
         raise bad_request("otp_sent_by_firebase", MSG_OTP_SENT_BY_FIREBASE)
-    phone = normalize_phone(phone)
-    await _enforce_intent(phone, intent)
+    purpose = intent or INTENT_SIGN_IN
+    if purpose == INTENT_PASSWORD_RESET:
+        async with get_pool().acquire() as conn:
+            account_exists = await user_repository.get_auth_credentials(conn, phone) is not None
+        if not account_exists:
+            return OtpSendResponse(
+                phone=phone,
+                expires_in_seconds=settings.otp_ttl_seconds,
+                resend_after_seconds=settings.otp_resend_cooldown_seconds,
+            )
+    else:
+        await _enforce_intent(phone, intent, role)
+    otp_sender = get_otp_sender()
+    otp_sender.ensure_configured()
     now = utc_now()
     code = new_numeric_code(settings.otp_length)
     async with get_pool().acquire() as conn:
@@ -111,12 +147,13 @@ async def send_otp(
             await auth_repository.replace_otp_challenge(
                 conn,
                 phone=phone,
+                purpose=purpose,
                 code_hash=hash_otp_code(settings.jwt_secret_key, phone, code),
                 expires_at=now + timedelta(seconds=settings.otp_ttl_seconds),
                 request_ip=request_ip,
                 now=now,
             )
-    await get_otp_sender().send(phone, code)
+    await otp_sender.send(phone, code)
     return OtpSendResponse(
         phone=phone,
         expires_in_seconds=settings.otp_ttl_seconds,
@@ -124,12 +161,12 @@ async def send_otp(
     )
 
 
-async def _consume_otp(phone: str, code: str) -> None:
+async def _consume_otp(phone: str, code: str, purpose: str = INTENT_SIGN_IN) -> None:
     settings = load_settings()
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            challenge = await auth_repository.lock_latest_open_otp_challenge(conn, phone)
+            challenge = await auth_repository.lock_latest_open_otp_challenge(conn, phone, purpose)
             if challenge is None or challenge["expires_at"] <= now:
                 raise bad_request("otp_invalid", MSG_OTP_INVALID)
             if challenge["attempts"] >= settings.otp_max_attempts:
@@ -142,21 +179,26 @@ async def _consume_otp(phone: str, code: str) -> None:
         raise bad_request("otp_invalid", MSG_OTP_INVALID)
 
 
-async def verify_otp(phone: str, code: str, intent: str | None = None) -> OtpVerifyResponse:
+async def verify_otp(
+    phone: str, code: str, intent: str | None = None, role: str | None = None
+) -> OtpVerifyResponse:
     phone = normalize_phone(phone)
-    await _consume_otp(phone, code)
-    await _enforce_intent(phone, intent)
-    return await _sign_in(phone)
+    await _consume_otp(phone, code, intent or INTENT_SIGN_IN)
+    await _enforce_intent(phone, intent, role)
+    return await _sign_in(phone, role)
 
 
-async def verify_firebase(id_token: str, intent: str | None = None) -> OtpVerifyResponse:
+async def verify_firebase(
+    id_token: str, intent: str | None = None, role: str | None = None
+) -> OtpVerifyResponse:
     phone = normalize_phone(await verify_firebase_phone_token(id_token))
-    await _enforce_intent(phone, intent)
-    return await _sign_in(phone)
+    await _enforce_intent(phone, intent, role)
+    return await _sign_in(phone, role)
+
 
 
 async def signup(body: SignupRequest) -> OtpVerifyResponse:
-    """Verify the phone (SMS OTP or Firebase) and create user + role + profile atomically."""
+    """Verify Firebase phone proof and create the account + role + profile."""
     async with get_pool().acquire() as conn:
         if body.language_code and not await user_repository.language_is_active(
             conn, body.language_code
@@ -178,11 +220,11 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
 
     if body.id_token is not None:
         phone = normalize_phone(await verify_firebase_phone_token(body.id_token))
-        await _enforce_intent(phone, INTENT_SIGN_UP)
     else:
         phone = normalize_phone(body.phone or "")
-        await _enforce_intent(phone, INTENT_SIGN_UP)
-        await _consume_otp(phone, body.code or "")
+    await _enforce_intent(phone, INTENT_SIGN_UP, body.role)
+    if body.id_token is None:
+        await _consume_otp(phone, body.code or "", INTENT_SIGN_UP)
 
     async with get_pool().acquire() as conn:
         async with conn.transaction():
@@ -191,16 +233,22 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
                 user = await user_repository.upsert_user_by_phone(conn, phone)
             if not user["is_active"]:
                 raise forbidden("account_disabled", MSG_ACCOUNT_DISABLED)
-            if await user_repository.list_active_roles(conn, user["id"]):
-                raise conflict("phone_registered", MSG_PHONE_REGISTERED)
+            await user_repository.lock_user(conn, user["id"])
+            existing_roles = await user_repository.list_active_roles(conn, user["id"])
+            _reject_existing_role(existing_roles, body.role)
             user_id = user["id"]
+            await user_repository.set_password_if_missing(
+                conn, user_id, hash_password(body.password)
+            )
+            # Adding a second role must not overwrite the name/email of the existing account.
+            is_first_role = not existing_roles
             if body.worker is not None:
                 worker = body.worker
                 await user_repository.update_user_fields(
                     conn,
                     user_id,
-                    full_name=worker.full_name.strip(),
-                    email_set=worker.email is not None,
+                    full_name=worker.full_name.strip() if is_first_role else None,
+                    email_set=worker.email is not None and is_first_role,
                     email=worker.email,
                     language_code=body.language_code,
                     theme_preference=None,
@@ -227,8 +275,8 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
                 await user_repository.update_user_fields(
                     conn,
                     user_id,
-                    full_name=business.contact_name.strip(),
-                    email_set=business.email is not None,
+                    full_name=business.contact_name.strip() if is_first_role else None,
+                    email_set=business.email is not None and is_first_role,
                     email=business.email,
                     language_code=body.language_code,
                     theme_preference=None,
@@ -254,26 +302,62 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
             await user_repository.touch_last_login(conn, user_id, utc_now())
             tokens, _ = await issue_token_pair(conn, user_id=user_id, phone=phone)
             me = await user_service.build_me(conn, user_id)
-    return OtpVerifyResponse(tokens=tokens, is_new_user=True, needs_role_selection=False, me=me)
+    return OtpVerifyResponse(
+        tokens=tokens, is_new_user=is_first_role, needs_role_selection=False, me=me
+    )
 
 
-async def _sign_in(phone: str) -> OtpVerifyResponse:
+async def _sign_in(phone: str, role: str | None = None) -> OtpVerifyResponse:
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            user = await user_repository.upsert_user_by_phone(conn, phone)
-            if user is None:  # concurrent first login — row committed by the other request
-                user = await user_repository.upsert_user_by_phone(conn, phone)
+            user = await user_repository.get_auth_credentials(conn, phone)
+            if user is None:
+                raise AuthenticationError(
+                    "Invalid phone number or password.", code="credentials_invalid"
+                )
             if not user["is_active"]:
                 raise forbidden("account_disabled", MSG_ACCOUNT_DISABLED)
+            if role is not None:
+                _require_role(await user_repository.list_active_roles(conn, user["id"]), role)
+                await user_repository.set_active_role(conn, user["id"], role)
             await user_repository.touch_last_login(conn, user["id"], utc_now())
             tokens, _ = await issue_token_pair(conn, user_id=user["id"], phone=phone)
             me = await user_service.build_me(conn, user["id"])
     return OtpVerifyResponse(
         tokens=tokens,
-        is_new_user=bool(user["created"]),
+        is_new_user=False,
         needs_role_selection=not me.roles,
         me=me,
     )
+
+
+async def password_login(body: PasswordLoginRequest) -> OtpVerifyResponse:
+    phone = normalize_phone(body.phone)
+    async with get_pool().acquire() as conn:
+        user = await user_repository.get_auth_credentials(conn, phone)
+    if user is None:
+        burn_password_check(body.password)
+        raise AuthenticationError("Invalid phone number or password.", code="credentials_invalid")
+    if not user["password_hash"]:
+        burn_password_check(body.password)
+        raise AuthenticationError("Invalid phone number or password.", code="credentials_invalid")
+    if not verify_password(body.password, user["password_hash"]):
+        raise AuthenticationError("Invalid phone number or password.", code="credentials_invalid")
+    if not user["is_active"]:
+        raise AuthenticationError("Invalid phone number or password.", code="credentials_invalid")
+    if body.role is not None:
+        _require_role(list(user["roles"]), body.role)
+    return await _sign_in(phone, body.role)
+
+
+async def confirm_password_reset(body: PasswordResetConfirmRequest) -> None:
+    phone = normalize_phone(await verify_firebase_phone_token(body.id_token))
+    async with get_pool().acquire() as conn:
+        updated = await user_repository.set_password_by_phone(
+            conn, phone, hash_password(body.new_password)
+        )
+    if not updated:
+        raise AuthenticationError("The code is invalid or expired.", code="otp_invalid")
 
 
 async def refresh_tokens(refresh_token: str) -> TokenPair:

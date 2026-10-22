@@ -14,15 +14,15 @@ WHERE phone = $1 AND consumed_at IS NULL
 """
 
 INSERT_OTP_CHALLENGE = """
-INSERT INTO otp_challenges (phone, code_hash, expires_at, request_ip)
-VALUES ($1, $2, $3, $4)
+INSERT INTO otp_challenges (phone, purpose, code_hash, expires_at, request_ip)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, expires_at
 """
 
 LOCK_LATEST_OPEN_OTP_CHALLENGE = """
 SELECT id, code_hash, expires_at, attempts
 FROM otp_challenges
-WHERE phone = $1 AND consumed_at IS NULL
+WHERE phone = $1 AND purpose = $2 AND consumed_at IS NULL
 ORDER BY created_at DESC
 LIMIT 1
 FOR UPDATE

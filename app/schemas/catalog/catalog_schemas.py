@@ -2,23 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from pydantic import BaseModel
-
-
-class WorkCategory(BaseModel):
-    id: UUID
-    slug: str
-    name: str
-    icon: str
-
-
-class BusinessType(BaseModel):
-    id: UUID
-    slug: str
-    name: str
-    icon: str
 
 
 class Language(BaseModel):

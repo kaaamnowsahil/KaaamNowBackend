@@ -31,19 +31,22 @@ async def replace_otp_challenge(
     conn: asyncpg.Connection,
     *,
     phone: str,
+    purpose: str,
     code_hash: str,
     expires_at: datetime,
     request_ip: str | None,
     now: datetime,
 ) -> asyncpg.Record:
     await conn.execute(CONSUME_OPEN_OTP_CHALLENGES, phone, now)
-    return await conn.fetchrow(INSERT_OTP_CHALLENGE, phone, code_hash, expires_at, request_ip)
+    return await conn.fetchrow(
+        INSERT_OTP_CHALLENGE, phone, purpose, code_hash, expires_at, request_ip
+    )
 
 
 async def lock_latest_open_otp_challenge(
-    conn: asyncpg.Connection, phone: str
+    conn: asyncpg.Connection, phone: str, purpose: str
 ) -> asyncpg.Record | None:
-    return await conn.fetchrow(LOCK_LATEST_OPEN_OTP_CHALLENGE, phone)
+    return await conn.fetchrow(LOCK_LATEST_OPEN_OTP_CHALLENGE, phone, purpose)
 
 
 async def record_otp_attempt(

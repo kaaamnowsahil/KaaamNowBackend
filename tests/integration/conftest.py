@@ -14,6 +14,7 @@ import pytest
 import pytest_asyncio
 
 from app.config.settings import load_settings
+from app.db.pool import get_pool
 from app.services.auth import auth_service
 
 TEST_OTP = "123456"
@@ -71,6 +72,10 @@ class Actor:
 
 async def login(client: httpx.AsyncClient, phone: str | None = None) -> Actor:
     phone = phone or next_phone()
+    async with get_pool().acquire() as conn:
+        await conn.execute(
+            "INSERT INTO users (phone) VALUES ($1) ON CONFLICT (phone) DO NOTHING", phone
+        )
     sent = await client.post("/api/v1/auth/otp/send", json={"phone": phone})
     assert sent.status_code == 200, sent.text
     verified = await client.post("/api/v1/auth/otp/verify", json={"phone": phone, "code": TEST_OTP})

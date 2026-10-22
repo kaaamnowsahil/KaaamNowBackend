@@ -97,7 +97,7 @@ async def _work_and_pay(client, db, business, worker, shift, assignment_id) -> d
 
 
 async def test_public_catalog_and_content(app_client: httpx.AsyncClient) -> None:
-    cats = (await app_client.get(f"{API}/catalog/work-categories")).json()
+    cats = (await app_client.get(f"{API}/work-categories")).json()
     slugs = {c["slug"] for c in (cats["items"] if isinstance(cats, dict) else cats)}
     assert {"house-help", "cooking", "driver", "other"} <= slugs
     terms = await app_client.get(f"{API}/content/terms", params={"audience": "worker"})
@@ -108,6 +108,8 @@ async def test_public_catalog_and_content(app_client: httpx.AsyncClient) -> None
 
 async def test_auth_refresh_rotation_and_reuse(app_client: httpx.AsyncClient) -> None:
     phone = "+919811100001"
+    async with get_pool().acquire() as conn:
+        await conn.execute("INSERT INTO users (phone) VALUES ($1)", phone)
     await app_client.post(f"{API}/auth/otp/send", json={"phone": phone})
     bad = await app_client.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": "000000"})
     assert bad.status_code == 400
@@ -122,6 +124,20 @@ async def test_auth_refresh_rotation_and_reuse(app_client: httpx.AsyncClient) ->
     newer = rotated.json()["refresh_token"]
     revoked = await app_client.post(f"{API}/auth/token/refresh", json={"refresh_token": newer})
     assert revoked.status_code == 401  # whole family revoked after reuse
+
+
+async def test_login_requires_existing_account(app_client: httpx.AsyncClient) -> None:
+    phone = "+919811100099"
+    sent = await app_client.post(
+        f"{API}/auth/otp/send", json={"phone": phone, "intent": "sign_in"}
+    )
+    assert sent.status_code == 404
+    verified = await app_client.post(
+        f"{API}/auth/otp/verify", json={"phone": phone, "code": "123456"}
+    )
+    assert verified.status_code == 400
+    async with get_pool().acquire() as conn:
+        assert await conn.fetchval("SELECT 1 FROM users WHERE phone = $1", phone) is None
 
 
 async def test_rbac_and_ownership(app_client, make_business, make_worker) -> None:  # type: ignore[no-untyped-def]
