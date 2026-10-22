@@ -267,9 +267,7 @@ async def test_one_phone_cannot_have_both_roles(
     assert second_role.status_code == 409
     assert second_role.json()["code"] == "phone_registered"
 
-    role_add = await app_client.post(
-        f"{API}/me/roles", json={"role": "business"}, headers=headers
-    )
+    role_add = await app_client.post(f"{API}/me/roles", json={"role": "business"}, headers=headers)
     assert role_add.status_code == 409
     assert role_add.json()["code"] == "phone_registered"
 

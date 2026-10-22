@@ -196,7 +196,6 @@ async def verify_firebase(
     return await _sign_in(phone, role)
 
 
-
 async def signup(body: SignupRequest) -> OtpVerifyResponse:
     """Verify Firebase phone proof and create the account + role + profile."""
     async with get_pool().acquire() as conn:
