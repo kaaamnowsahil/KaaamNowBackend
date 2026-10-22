@@ -23,6 +23,16 @@ SEGMENT_ADMIN: Final[str] = "/admin"
 PATH_ROOT: Final[str] = "/"
 PATH_HEALTH: Final[str] = "/health"
 PATH_MEDIA: Final[str] = "/media"
+PATH_FAVICON_ICO: Final[str] = "/favicon.ico"
+PATH_FAVICON_SVG: Final[str] = "/favicon.svg"
+PATH_APPLE_TOUCH_ICON: Final[str] = "/apple-touch-icon.png"
+
+# --- Static brand assets (files in ``app/static``) ---
+FAVICON_SVG_FILE: Final[str] = "favicon.svg"
+APPLE_TOUCH_ICON_FILE: Final[str] = "apple-touch-icon.png"
+MEDIA_TYPE_SVG: Final[str] = "image/svg+xml"
+MEDIA_TYPE_PNG: Final[str] = "image/png"
+BRAND_ASSET_CACHE_CONTROL: Final[str] = "public, max-age=86400"
 
 # --- OpenAPI tags ---
 OPENAPI_TAG_HEALTH: Final[str] = "health"
