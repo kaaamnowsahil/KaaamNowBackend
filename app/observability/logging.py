@@ -57,7 +57,7 @@ def _should_log_to_file() -> bool:
         from app.config.settings import load_settings
 
         settings = load_settings()
-        return settings.log_to_file or settings.is_production
+        return settings.log_to_file
     except Exception:
         return False
 
