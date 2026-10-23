@@ -53,6 +53,18 @@ TOUCH_LAST_LOGIN = "UPDATE users SET last_login_at = $2 WHERE id = $1"
 GET_USER_BY_ID = f"SELECT {_USER_COLUMNS} FROM users u WHERE u.id = $1"
 
 LOCK_USER_BY_ID = "SELECT id FROM users WHERE id = $1 FOR UPDATE"
+IS_USER_ACTIVE = "SELECT is_active FROM users WHERE id = $1"
+
+DEACTIVATE_USER_ACCOUNT = """
+UPDATE users SET is_active = false, updated_at = now()
+WHERE id = $1 AND is_active = true
+RETURNING id
+"""
+
+DEACTIVATE_USER_DEVICES = """
+UPDATE user_devices SET is_active = false, updated_at = now()
+WHERE user_id = $1 AND is_active = true
+"""
 
 LIST_ACTIVE_ROLES = """
 SELECT role FROM user_roles WHERE user_id = $1 AND status = 'active' ORDER BY role
@@ -86,7 +98,18 @@ WHERE id = $1
 
 SET_ACTIVE_ROLE = "UPDATE users SET active_role = $2, updated_at = now() WHERE id = $1"
 
-SET_PHOTO_URL = "UPDATE users SET photo_url = $2, updated_at = now() WHERE id = $1"
+REPLACE_PHOTO_URL = """
+UPDATE users u SET photo_url = $2, updated_at = now()
+FROM (SELECT id, photo_url FROM users WHERE id = $1 FOR UPDATE) previous
+WHERE u.id = previous.id
+RETURNING previous.photo_url
+"""
+
+GET_PROFILE_IMAGE_URLS = """
+SELECT u.photo_url, bp.logo_url
+FROM users u LEFT JOIN business_profiles bp ON bp.user_id = u.id
+WHERE u.id = $1
+"""
 
 UPSERT_USER_ROLE = """
 INSERT INTO user_roles (user_id, role) VALUES ($1, $2)

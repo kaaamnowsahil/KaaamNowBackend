@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from app.routes.admin.account_deletion_router import router as admin_account_deletion_router
 from app.routes.admin.admin_crud_router import router as admin_crud_router
 from app.routes.attendance.attendance_router import business_router as attendance_business_router
 from app.routes.attendance.attendance_router import worker_router as attendance_worker_router
@@ -19,9 +20,6 @@ from app.routes.health_router import router as health_router
 from app.routes.lookups.lookup_router import LOOKUP_ROUTERS
 from app.routes.notifications.notifications_router import router as notifications_router
 from app.routes.profiles.admin_verification_router import router as admin_verification_router
-from app.routes.profiles.business_profile_router import router as business_profile_router
-from app.routes.profiles.worker_profile_router import router as worker_profile_router
-from app.routes.profiles.worker_profile_router import workers_router
 from app.routes.ratings.ratings_router import router as ratings_router
 from app.routes.shifts.assignments_router import router as assignments_router
 from app.routes.shifts.business_shifts_router import router as business_shifts_router
@@ -33,13 +31,10 @@ _ROUTERS = (
     brand_assets_router,
     auth_router,
     me_router,
-    catalog_router,
     *LOOKUP_ROUTERS,
     notifications_router,
-    business_profile_router,
-    worker_profile_router,
-    workers_router,
     admin_verification_router,
+    admin_account_deletion_router,
     admin_crud_router,
     business_shifts_router,
     worker_shifts_router,
@@ -50,6 +45,7 @@ _ROUTERS = (
     payment_webhook_router,
     earnings_router,
     ratings_router,
+    catalog_router,
     content_router,
     support_router,
 )

@@ -41,27 +41,6 @@ class MeResponse(BaseModel):
     created_at: datetime
 
 
-class MePatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    full_name: str | None = Field(default=None, min_length=1, max_length=120)
-    email: str | None = Field(default=None, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-    language_code: str | None = Field(default=None, min_length=2, max_length=8)
-    theme_preference: ThemePreference | None = None
-
-
-class ActiveRoleRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    role: AnyRole
-
-
-class AddRoleRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    role: SelfServiceRole
-
-
 class DeviceRegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

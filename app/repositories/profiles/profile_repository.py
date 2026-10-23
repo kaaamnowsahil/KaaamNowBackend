@@ -23,6 +23,7 @@ from app.repositories.profiles.profile_queries import (
     LIST_VERIFICATIONS_WORKERS,
     RECOMPUTE_BUSINESS_RATING,
     RECOMPUTE_WORKER_RATING,
+    REPLACE_BUSINESS_LOGO_URL,
     SET_BUSINESS_VERIFICATION,
     SET_WORKER_AVAILABILITY,
     SET_WORKER_VERIFICATION,
@@ -56,7 +57,6 @@ async def update_business_profile(
     *,
     business_name: str | None,
     category_id: UUID | None,
-    logo_url: str | None,
     address_text: str | None,
     locality: str | None,
     latitude: float | None,
@@ -70,7 +70,6 @@ async def update_business_profile(
         user_id,
         business_name,
         category_id,
-        logo_url,
         address_text,
         locality,
         latitude,
@@ -79,6 +78,13 @@ async def update_business_profile(
         email,
         business_type_id,
     )
+
+
+async def replace_business_logo_url(
+    conn: asyncpg.Connection, user_id: UUID, logo_url: str
+) -> str | None:
+    """Set the business logo and return the URL it replaced."""
+    return await conn.fetchval(REPLACE_BUSINESS_LOGO_URL, user_id, logo_url)
 
 
 async def get_worker_profile_by_user(

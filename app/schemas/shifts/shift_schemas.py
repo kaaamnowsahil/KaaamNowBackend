@@ -132,8 +132,8 @@ class ShiftResponse(BaseModel):
     break_minutes: int
     workplace_name: str
     address_text: str
-    latitude: float
-    longitude: float
+    latitude: float | None
+    longitude: float | None
     arrival_instructions: str
     site_contact_name: str
     check_in_code: str = Field(description="Show at the venue; workers enter it to check in.")
@@ -228,8 +228,8 @@ class WorkerShiftCard(BaseModel):
     business: BusinessCard
     workplace_name: str
     address_text: str
-    latitude: float
-    longitude: float
+    latitude: float | None
+    longitude: float | None
     distance_km: float | None = None
     starts_at: datetime
     ends_at: datetime

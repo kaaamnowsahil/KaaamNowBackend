@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS shifts (
     break_minutes             SMALLINT NOT NULL DEFAULT 0,
     workplace_name            VARCHAR(160) NOT NULL DEFAULT '',
     address_text              VARCHAR(500) NOT NULL,
-    latitude                  DOUBLE PRECISION NOT NULL,
-    longitude                 DOUBLE PRECISION NOT NULL,
+    latitude                  DOUBLE PRECISION,
+    longitude                 DOUBLE PRECISION,
     arrival_instructions      TEXT NOT NULL DEFAULT '',
     site_contact_name         VARCHAR(120) NOT NULL DEFAULT '',
     check_in_code             VARCHAR(8) NOT NULL,
@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS shifts (
     CONSTRAINT shifts_time_window_chk CHECK (ends_at > starts_at),
     CONSTRAINT shifts_break_minutes_chk CHECK (break_minutes >= 0)
 );
+
+ALTER TABLE shifts
+    ALTER COLUMN latitude DROP NOT NULL,
+    ALTER COLUMN longitude DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS shifts_business_profile_idx
     ON shifts (business_profile_id, starts_at DESC);

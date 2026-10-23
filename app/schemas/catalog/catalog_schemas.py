@@ -5,12 +5,6 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
-class Language(BaseModel):
-    code: str
-    english_name: str
-    native_name: str
-
-
 class RatingTags(BaseModel):
     direction: str
     tags: list[str]

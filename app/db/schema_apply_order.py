@@ -22,6 +22,9 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/otp_challenges.sql",
     "tables/refresh_tokens.sql",
     "tables/user_devices.sql",
+    "tables/account_deletion_requests.sql",
+    "tables/account_deletion_holds.sql",
+    "tables/account_deletion_events.sql",
     # Profiles
     "tables/business_profiles.sql",
     "tables/worker_profiles.sql",
@@ -53,6 +56,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     # Foreign keys (parent__child naming)
     "relations/languages__users.sql",
     "relations/users__auth.sql",
+    "relations/users__account_deletion.sql",
     "relations/users__business_profiles.sql",
     "relations/users__worker_profiles.sql",
     "relations/business_profiles__shifts.sql",

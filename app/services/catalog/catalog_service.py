@@ -18,16 +18,9 @@ from app.exceptions.api_errors import ApiError, bad_request
 from app.repositories.catalog import catalog_repository
 from app.schemas.catalog.catalog_schemas import (
     FeePolicy,
-    Language,
     PaymentMethod,
     RatingTags,
 )
-
-
-async def list_languages() -> list[Language]:
-    async with get_pool().acquire() as conn:
-        rows = await catalog_repository.list_languages(conn)
-    return [Language.model_validate(dict(r)) for r in rows]
 
 
 def list_rating_tags(direction: str | None) -> list[RatingTags]:

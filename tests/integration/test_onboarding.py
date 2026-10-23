@@ -73,20 +73,23 @@ async def test_worker_signup_and_sign_in_intent(app_client: httpx.AsyncClient) -
     assert body["me"]["full_name"] == "Ravi Kumar"
     headers = {"Authorization": f"Bearer {body['tokens']['access_token']}"}
 
-    profile = (await app_client.get(f"{API}/worker/profile", headers=headers)).json()
+    body = (await app_client.get(f"{API}/me/profile", headers=headers)).json()
+    assert body["profile_type"] == "worker" and body["business"] is None
+    profile = body["worker"]
     assert profile["age"] == 24 and profile["email"] == "ravi@example.com"
     assert profile["locality"] == "Indiranagar"
     assert profile["category_slugs"] == ["cook", "hotel-staff"]
 
     patched = await app_client.patch(
-        f"{API}/worker/profile",
+        f"{API}/me/profile",
         json={"full_name": "Ravi K", "age": 25, "address_text": "Sector 5, HSR Layout, Bengaluru"},
         headers=headers,
     )
     assert patched.status_code == 200, patched.text
-    assert patched.json()["full_name"] == "Ravi K"
-    assert patched.json()["age"] == 25 and patched.json()["locality"] == "HSR Layout"
-    too_young = await app_client.patch(f"{API}/worker/profile", json={"age": 15}, headers=headers)
+    worker = patched.json()["worker"]
+    assert worker["full_name"] == "Ravi K" and patched.json()["account"]["full_name"] == "Ravi K"
+    assert worker["age"] == 25 and worker["locality"] == "HSR Layout"
+    too_young = await app_client.patch(f"{API}/me/profile", json={"age": 15}, headers=headers)
     assert too_young.status_code == 422
 
     taken = await _send(app_client, phone, "sign_up")
@@ -171,25 +174,28 @@ async def test_business_signup_logo_and_catalog(app_client: httpx.AsyncClient) -
     created = await _signup(app_client, phone, "business", BUSINESS_DETAILS)
     assert created.status_code == 201, created.text
     headers = {"Authorization": f"Bearer {created.json()['tokens']['access_token']}"}
-    profile = (await app_client.get(f"{API}/business/profile", headers=headers)).json()
+    body = (await app_client.get(f"{API}/me/profile", headers=headers)).json()
+    assert body["profile_type"] == "business" and body["worker"] is None
+    profile = body["business"]
     assert profile["business_name"] == "Cafe Aroma"
     assert profile["contact_name"] == "Priya Shah" and profile["owner_name"] == "Priya Shah"
     assert profile["business_type_slug"] == "hospitality"
     assert profile["locality"] == "Koramangala"
 
     patched = await app_client.patch(
-        f"{API}/business/profile", json={"business_type_slug": "retail"}, headers=headers
+        f"{API}/me/profile", json={"business_type_slug": "retail"}, headers=headers
     )
-    assert patched.json()["business_type_slug"] == "retail"
+    assert patched.json()["business"]["business_type_slug"] == "retail"
 
     png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
     logo = await app_client.post(
-        f"{API}/business/profile/logo",
+        f"{API}/me/profile/image",
         files={"file": ("logo.png", png, "image/png")},
         headers=headers,
     )
     assert logo.status_code == 200, logo.text
-    assert logo.json()["logo_url"]
+    assert logo.json()["business"]["logo_url"]
+    assert logo.json()["account"]["photo_url"] is None
 
     again = await _signup(app_client, phone, "business", BUSINESS_DETAILS)
     assert again.status_code in (400, 409)
@@ -267,13 +273,9 @@ async def test_one_phone_cannot_have_both_roles(
     assert second_role.status_code == 409
     assert second_role.json()["code"] == "phone_registered"
 
-    role_add = await app_client.post(f"{API}/me/roles", json={"role": "business"}, headers=headers)
-    assert role_add.status_code == 409
-    assert role_add.json()["code"] == "phone_registered"
-
-    me = await app_client.get(f"{API}/me", headers=headers)
-    assert me.json()["roles"] == ["worker"]
-    assert (await app_client.get(f"{API}/worker/profile", headers=headers)).status_code == 200
+    profile = await app_client.get(f"{API}/me/profile", headers=headers)
+    assert profile.json()["account"]["roles"] == ["worker"]
+    assert profile.status_code == 200 and profile.json()["profile_type"] == "worker"
 
 
 async def test_role_login_does_not_create_accounts(app_client: httpx.AsyncClient) -> None:

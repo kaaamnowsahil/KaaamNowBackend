@@ -1,4 +1,4 @@
-"""Reference data for pickers: languages, rating chips, payment methods, fee."""
+"""Reference data for pickers: rating chips, payment methods, fee."""
 
 from __future__ import annotations
 
@@ -11,28 +11,17 @@ from app.constants.catalog.catalog_route_strings import (
     CATALOG_ROUTE_PREFIX,
     OPENAPI_TAG_CATALOG,
     PATH_FEE_POLICY,
-    PATH_LANGUAGES,
     PATH_PAYMENT_METHODS,
     PATH_RATING_TAGS,
 )
 from app.schemas.catalog.catalog_schemas import (
     FeePolicy,
-    Language,
     PaymentMethod,
     RatingTags,
 )
 from app.services.catalog import catalog_service
 
 router = APIRouter(prefix=CATALOG_ROUTE_PREFIX, tags=[OPENAPI_TAG_CATALOG])
-
-
-@router.get(
-    PATH_LANGUAGES,
-    response_model=list[Language],
-    summary=swagger_summary("App languages", SWAGGER_ROLE_PUBLIC),
-)
-async def languages() -> list[Language]:
-    return await catalog_service.list_languages()
 
 
 @router.get(

@@ -9,8 +9,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.profiles.profile_route_strings import MSG_COORDINATES_PAIR
+from app.schemas.users.user_schemas import MeResponse, ThemePreference
 
 VerificationStatus = Literal["pending", "verified", "rejected"]
+ProfileType = Literal["account", "business", "worker"]
 
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 WORKER_MIN_AGE = 18
@@ -28,6 +30,14 @@ class _CoordinatesPair(BaseModel):
         if (self.latitude is None) != (self.longitude is None):  # type: ignore[attr-defined]
             raise ValueError(MSG_COORDINATES_PAIR)
         return self
+
+
+class _AccountPreferences(BaseModel):
+    """Account settings any role may change through PATCH /me/profile."""
+
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
+    language_code: str | None = Field(default=None, min_length=2, max_length=8)
+    theme_preference: ThemePreference | None = None
 
 
 class BusinessProfileResponse(BaseModel):
@@ -54,7 +64,9 @@ class BusinessProfileResponse(BaseModel):
     phone: str
 
 
-class BusinessProfilePatch(_CoordinatesPair):
+class BusinessProfilePatch(_CoordinatesPair, _AccountPreferences):
+    """``full_name`` is the owner's name; ``email`` is the business contact email."""
+
     model_config = ConfigDict(extra="forbid")
 
     business_name: str | None = Field(default=None, min_length=1, max_length=160)
@@ -62,7 +74,6 @@ class BusinessProfilePatch(_CoordinatesPair):
     email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
     business_type_slug: str | None = Field(default=None, max_length=64)
     category_slug: str | None = Field(default=None, max_length=64)
-    logo_url: str | None = Field(default=None, max_length=2000)
     address_text: str | None = Field(default=None, max_length=500)
     locality: str | None = Field(default=None, max_length=160)
     latitude: float | None = OptionalLatitude
@@ -92,10 +103,9 @@ class WorkerProfileResponse(BaseModel):
     completed_shift_count: int
 
 
-class WorkerProfilePatch(_CoordinatesPair):
+class WorkerProfilePatch(_CoordinatesPair, _AccountPreferences):
     model_config = ConfigDict(extra="forbid")
 
-    full_name: str | None = Field(default=None, min_length=1, max_length=120)
     email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
     age: int | None = Field(default=None, ge=WORKER_MIN_AGE, le=WORKER_MAX_AGE)
     address_text: str | None = Field(default=None, max_length=500)
@@ -103,6 +113,28 @@ class WorkerProfilePatch(_CoordinatesPair):
     latitude: float | None = OptionalLatitude
     longitude: float | None = OptionalLongitude
     category_slugs: list[str] | None = Field(default=None, max_length=20)
+
+
+class AccountProfilePatch(_AccountPreferences):
+    """Profile fields for an account without a Business or Worker profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
+
+
+# The role resolved from the access token decides which member is enforced; the union only
+# documents the accepted shapes.
+ProfilePatch = BusinessProfilePatch | WorkerProfilePatch | AccountProfilePatch
+
+
+class MyProfileResponse(BaseModel):
+    """Exactly one of ``business`` / ``worker`` is set, matching ``profile_type``."""
+
+    profile_type: ProfileType
+    account: MeResponse
+    business: BusinessProfileResponse | None = None
+    worker: WorkerProfileResponse | None = None
 
 
 class WorkerPublicProfile(BaseModel):

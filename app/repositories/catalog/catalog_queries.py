@@ -1,4 +1,4 @@
-"""SQL for work_categories, languages and platform_fee_policies."""
+"""SQL for work_categories and platform_fee_policies."""
 
 from __future__ import annotations
 
@@ -10,10 +10,6 @@ GET_CATEGORY_BY_SLUG = "SELECT id, slug, name FROM work_categories WHERE slug = 
 
 GET_CATEGORY_IDS_BY_SLUGS = """
 SELECT id, slug FROM work_categories WHERE slug = ANY($1::varchar[]) AND is_active
-"""
-
-LIST_LANGUAGES = """
-SELECT code, english_name, native_name FROM languages WHERE is_active ORDER BY sort_order, code
 """
 
 GET_ACTIVE_FEE_POLICY = """

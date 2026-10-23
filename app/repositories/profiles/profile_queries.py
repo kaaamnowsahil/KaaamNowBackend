@@ -42,16 +42,22 @@ UPDATE_BUSINESS_PROFILE = """
 UPDATE business_profiles SET
     business_name = COALESCE($2, business_name),
     category_id = COALESCE($3, category_id),
-    logo_url = COALESCE($4, logo_url),
-    address_text = COALESCE($5, address_text),
-    locality = COALESCE($6, locality),
-    latitude = COALESCE($7, latitude),
-    longitude = COALESCE($8, longitude),
-    contact_name = COALESCE($9, contact_name),
-    email = COALESCE($10, email),
-    business_type_id = COALESCE($11, business_type_id),
+    address_text = COALESCE($4, address_text),
+    locality = COALESCE($5, locality),
+    latitude = COALESCE($6, latitude),
+    longitude = COALESCE($7, longitude),
+    contact_name = COALESCE($8, contact_name),
+    email = COALESCE($9, email),
+    business_type_id = COALESCE($10, business_type_id),
     updated_at = now()
 WHERE user_id = $1
+"""
+
+REPLACE_BUSINESS_LOGO_URL = """
+UPDATE business_profiles bp SET logo_url = $2, updated_at = now()
+FROM (SELECT id, logo_url FROM business_profiles WHERE user_id = $1 FOR UPDATE) previous
+WHERE bp.id = previous.id
+RETURNING previous.logo_url
 """
 
 _WORKER_COLUMNS = """
