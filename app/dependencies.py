@@ -11,10 +11,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.config.settings import load_settings
 from app.constants.auth.auth_route_strings import (
     DESC_SWAGGER_BEARER,
+    MSG_ACCOUNT_DISABLED,
     MSG_AUTHENTICATION_REQUIRED,
     MSG_PERMISSION_DENIED,
 )
+from app.db.pool import get_pool
 from app.exceptions.api_errors import AuthenticationError, AuthorizationError
+from app.repositories.users import user_repository
 from app.security.authenticated_user import AuthenticatedUser
 from app.security.bearer import parse_bearer_token
 from app.security.jwt_tokens import verify_access_token
@@ -22,12 +25,10 @@ from app.security.permissions import (
     ACTION_READ,
     ACTION_WRITE,
     RESOURCE_BILLING,
-    RESOURCE_BUSINESS_PROFILE,
     RESOURCE_EARNINGS,
     RESOURCE_SHIFTS,
     RESOURCE_VERIFICATION,
     RESOURCE_WORK,
-    RESOURCE_WORKER_PROFILE,
     roles_allow,
 )
 
@@ -48,8 +49,31 @@ async def get_current_user(
     if not token:
         raise AuthenticationError(MSG_AUTHENTICATION_REQUIRED)
     user = verify_access_token(token, load_settings())
+    async with get_pool().acquire() as conn:
+        is_active = await user_repository.is_user_active(conn, user.user_id)
+    if not is_active:
+        raise AuthenticationError(MSG_ACCOUNT_DISABLED, code="account_disabled")
     request.state.user = user
     return user
+
+
+async def get_authenticated_user(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_swagger_bearer)] = None,
+) -> AuthenticatedUser:
+    """Verify a signed access token without checking account activity.
+
+    This is reserved for an account's deletion-status endpoint after completion,
+    when the account has been disabled and its refresh tokens revoked.
+    """
+    existing = getattr(request.state, "user", None)
+    if isinstance(existing, AuthenticatedUser):
+        return existing
+    token = credentials.credentials if credentials else None
+    token = token or parse_bearer_token(request.headers.get("authorization"))
+    if not token:
+        raise AuthenticationError(MSG_AUTHENTICATION_REQUIRED)
+    return verify_access_token(token, load_settings())
 
 
 def require_access(resource: str, action: str) -> Callable[..., AuthenticatedUser]:
@@ -80,14 +104,9 @@ async def get_optional_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
+AuthenticatedTokenUser = Annotated[AuthenticatedUser, Depends(get_authenticated_user)]
 OptionalUser = Annotated[AuthenticatedUser | None, Depends(get_optional_user)]
 
-RequireBusinessProfileRead = Annotated[
-    AuthenticatedUser, Depends(require_access(RESOURCE_BUSINESS_PROFILE, ACTION_READ))
-]
-RequireBusinessProfileWrite = Annotated[
-    AuthenticatedUser, Depends(require_access(RESOURCE_BUSINESS_PROFILE, ACTION_WRITE))
-]
 RequireShiftsRead = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_SHIFTS, ACTION_READ))
 ]
@@ -99,12 +118,6 @@ RequireBillingRead = Annotated[
 ]
 RequireBillingWrite = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_BILLING, ACTION_WRITE))
-]
-RequireWorkerProfileRead = Annotated[
-    AuthenticatedUser, Depends(require_access(RESOURCE_WORKER_PROFILE, ACTION_READ))
-]
-RequireWorkerProfileWrite = Annotated[
-    AuthenticatedUser, Depends(require_access(RESOURCE_WORKER_PROFILE, ACTION_WRITE))
 ]
 RequireWorkRead = Annotated[AuthenticatedUser, Depends(require_access(RESOURCE_WORK, ACTION_READ))]
 RequireWorkWrite = Annotated[

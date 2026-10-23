@@ -18,6 +18,7 @@ from app.repositories.auth.auth_queries import (
     RECORD_OTP_ATTEMPT,
     REVOKE_REFRESH_TOKEN_BY_HASH,
     REVOKE_REFRESH_TOKEN_FAMILY,
+    REVOKE_REFRESH_TOKENS_BY_USER,
 )
 
 
@@ -86,3 +87,9 @@ async def revoke_refresh_token(
     conn: asyncpg.Connection, token_hash: str, *, user_id: UUID, now: datetime
 ) -> None:
     await conn.execute(REVOKE_REFRESH_TOKEN_BY_HASH, token_hash, now, user_id)
+
+
+async def revoke_refresh_tokens_for_user(
+    conn: asyncpg.Connection, user_id: UUID, now: datetime
+) -> None:
+    await conn.execute(REVOKE_REFRESH_TOKENS_BY_USER, user_id, now)

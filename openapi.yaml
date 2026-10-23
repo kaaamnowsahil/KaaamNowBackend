@@ -250,31 +250,35 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - HTTPBearer: []
-  /api/v1/me:
+  /api/v1/me/profile:
     get:
       tags:
       - me
-      summary: Get me · Any signed-in user
-      operationId: get_me_api_v1_me_get
+      summary: Get my Business, Worker or account profile · Any signed-in user
+      operationId: get_profile_api_v1_me_profile_get
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MeResponse'
+                $ref: '#/components/schemas/MyProfileResponse'
       security:
       - HTTPBearer: []
     patch:
       tags:
       - me
-      summary: Update me · Any signed-in user
-      operationId: update_me_api_v1_me_patch
+      summary: Update my profile (role-specific fields) · Any signed-in user
+      operationId: update_profile_api_v1_me_profile_patch
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/MePatch'
+              anyOf:
+              - $ref: '#/components/schemas/BusinessProfilePatch'
+              - $ref: '#/components/schemas/WorkerProfilePatch'
+              - $ref: '#/components/schemas/AccountProfilePatch'
+              title: Body
         required: true
       responses:
         '200':
@@ -282,7 +286,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MeResponse'
+                $ref: '#/components/schemas/MyProfileResponse'
         '422':
           description: Validation Error
           content:
@@ -291,71 +295,18 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - HTTPBearer: []
-  /api/v1/me/active-role:
-    put:
-      tags:
-      - me
-      summary: Switch active role · Any signed-in user
-      operationId: set_active_role_api_v1_me_active_role_put
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ActiveRoleRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MeResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/me/roles:
+  /api/v1/me/profile/image:
     post:
       tags:
       - me
-      summary: Add Business or Worker role (returns new tokens) · Any signed-in user
-      operationId: add_role_api_v1_me_roles_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AddRoleRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OtpVerifyResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/me/photo:
-    post:
-      tags:
-      - me
-      summary: Upload profile photo · Any signed-in user
-      operationId: upload_photo_api_v1_me_photo_post
+      summary: 'Upload my profile photo (Business: logo) — JPEG, PNG or WebP · Any
+        signed-in user'
+      operationId: upload_profile_image_api_v1_me_profile_image_post
       requestBody:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Body_upload_photo_api_v1_me_photo_post'
+              $ref: '#/components/schemas/Body_upload_profile_image_api_v1_me_profile_image_post'
         required: true
       responses:
         '200':
@@ -363,13 +314,126 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MeResponse'
+                $ref: '#/components/schemas/MyProfileResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/availability:
+    put:
+      tags:
+      - me
+      summary: Go online / offline · Worker
+      operationId: set_availability_api_v1_me_availability_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/location:
+    put:
+      tags:
+      - me
+      summary: Update live location · Worker
+      operationId: update_location_api_v1_me_location_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/workers/{worker_profile_id}:
+    get:
+      tags:
+      - me
+      summary: View a worker's public profile · Business
+      operationId: get_worker_api_v1_me_workers__worker_profile_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: worker_profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Worker Profile Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPublicProfile'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/me/deletion-requests:
+    post:
+      tags:
+      - me
+      summary: Request account deletion · Any signed-in user
+      operationId: create_deletion_request_api_v1_me_deletion_requests_post
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionRequestResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/deletion-requests/current:
+    get:
+      tags:
+      - me
+      summary: Get account deletion status · Any signed-in user
+      operationId: get_deletion_request_api_v1_me_deletion_requests_current_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionRequestResponse'
       security:
       - HTTPBearer: []
   /api/v1/me/devices:
@@ -424,85 +488,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/catalog/languages:
-    get:
-      tags:
-      - catalog
-      summary: App languages · Public
-      operationId: languages_api_v1_catalog_languages_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/Language'
-                type: array
-                title: Response Languages Api V1 Catalog Languages Get
-  /api/v1/catalog/rating-tags:
-    get:
-      tags:
-      - catalog
-      summary: Rating tag chips · Public
-      operationId: rating_tags_api_v1_catalog_rating_tags_get
-      parameters:
-      - name: direction
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - enum:
-            - business_to_worker
-            - worker_to_business
-            type: string
-          - type: 'null'
-          title: Direction
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RatingTags'
-                title: Response Rating Tags Api V1 Catalog Rating Tags Get
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/catalog/payment-methods:
-    get:
-      tags:
-      - catalog
-      summary: Payment methods · Public
-      operationId: payment_methods_api_v1_catalog_payment_methods_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/PaymentMethod'
-                type: array
-                title: Response Payment Methods Api V1 Catalog Payment Methods Get
-  /api/v1/catalog/fee-policy:
-    get:
-      tags:
-      - catalog
-      summary: Active platform fee · Public
-      operationId: fee_policy_api_v1_catalog_fee_policy_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FeePolicy'
   /api/v1/work-categories:
     get:
       tags:
@@ -926,198 +911,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/business/profile:
-    get:
-      tags:
-      - business profile
-      summary: Get business profile · Business
-      operationId: get_profile_api_v1_business_profile_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BusinessProfileResponse'
-      security:
-      - HTTPBearer: []
-    patch:
-      tags:
-      - business profile
-      summary: Update business profile · Business
-      operationId: update_profile_api_v1_business_profile_patch
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BusinessProfilePatch'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BusinessProfileResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/business/profile/logo:
-    post:
-      tags:
-      - business profile
-      summary: Upload business logo · Business
-      operationId: upload_logo_api_v1_business_profile_logo_post
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Body_upload_logo_api_v1_business_profile_logo_post'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BusinessProfileResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/worker/profile:
-    get:
-      tags:
-      - worker profile
-      summary: Get worker profile · Worker
-      operationId: get_profile_api_v1_worker_profile_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkerProfileResponse'
-      security:
-      - HTTPBearer: []
-    patch:
-      tags:
-      - worker profile
-      summary: Update worker profile · Worker
-      operationId: update_profile_api_v1_worker_profile_patch
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/WorkerProfilePatch'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkerProfileResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/worker/availability:
-    put:
-      tags:
-      - worker profile
-      summary: Go online / offline · Worker
-      operationId: set_availability_api_v1_worker_availability_put
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AvailabilityRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AvailabilityResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/worker/location:
-    put:
-      tags:
-      - worker profile
-      summary: Update live location · Worker
-      operationId: update_location_api_v1_worker_location_put
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LocationRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AvailabilityResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      security:
-      - HTTPBearer: []
-  /api/v1/workers/{worker_profile_id}:
-    get:
-      tags:
-      - worker profile
-      summary: View worker profile · Business
-      operationId: get_worker_api_v1_workers__worker_profile_id__get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: worker_profile_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Worker Profile Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkerPublicProfile'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/admin/verifications:
     get:
       tags:
@@ -1232,6 +1025,187 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests:
+    get:
+      tags:
+      - admin account deletion
+      summary: List account deletion requests · Admin
+      operationId: list_deletion_requests_api_v1_admin_account_deletion_requests_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - pending
+            - approved
+            - on_hold
+            - completed
+            type: string
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionRequestPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}:
+    get:
+      tags:
+      - admin account deletion
+      summary: Get account deletion request · Admin
+      operationId: get_deletion_request_api_v1_admin_account_deletion_requests__request_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}/approve:
+    post:
+      tags:
+      - admin account deletion
+      summary: Approve account deletion request · Admin
+      operationId: approve_deletion_request_api_v1_admin_account_deletion_requests__request_id__approve_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}/holds:
+    post:
+      tags:
+      - admin account deletion
+      summary: Add a documented account deletion hold · Admin
+      operationId: add_deletion_hold_api_v1_admin_account_deletion_requests__request_id__holds_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeletionHoldCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}/holds/{hold_id}:
+    delete:
+      tags:
+      - admin account deletion
+      summary: Release an account deletion hold · Admin
+      operationId: release_deletion_hold_api_v1_admin_account_deletion_requests__request_id__holds__hold_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      - name: hold_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Hold Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
         '422':
           description: Validation Error
           content:
@@ -3418,6 +3392,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/catalog/rating-tags:
+    get:
+      tags:
+      - catalog
+      summary: Rating tag chips · Public
+      operationId: rating_tags_api_v1_catalog_rating_tags_get
+      parameters:
+      - name: direction
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - business_to_worker
+            - worker_to_business
+            type: string
+          - type: 'null'
+          title: Direction
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RatingTags'
+                title: Response Rating Tags Api V1 Catalog Rating Tags Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/catalog/payment-methods:
+    get:
+      tags:
+      - catalog
+      summary: Payment methods · Public
+      operationId: payment_methods_api_v1_catalog_payment_methods_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/PaymentMethod'
+                type: array
+                title: Response Payment Methods Api V1 Catalog Payment Methods Get
+  /api/v1/catalog/fee-policy:
+    get:
+      tags:
+      - catalog
+      summary: Active platform fee · Public
+      operationId: fee_policy_api_v1_catalog_fee_policy_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeePolicy'
   /api/v1/content/terms:
     get:
       tags:
@@ -3522,33 +3559,307 @@ paths:
       - HTTPBearer: []
 components:
   schemas:
-    ActiveRoleRequest:
+    AccountDeletionEvent:
       properties:
-        role:
+        event_type:
+          type: string
+          title: Event Type
+        actor_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actor User Id
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - event_type
+      - details
+      - created_at
+      title: AccountDeletionEvent
+    AccountDeletionHoldCreate:
+      properties:
+        basis:
           type: string
           enum:
-          - business
-          - worker
-          - admin
-          title: Role
+          - pending_booking
+          - pending_payment
+          - refund
+          - dispute
+          - complaint
+          - legal_obligation
+          - fraud_investigation
+          title: Basis
+        reason:
+          type: string
+          maxLength: 1000
+          minLength: 20
+          title: Reason
+        reference:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Reference
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
       additionalProperties: false
       type: object
       required:
-      - role
-      title: ActiveRoleRequest
-    AddRoleRequest:
+      - basis
+      - reason
+      - expires_at
+      title: AccountDeletionHoldCreate
+    AccountDeletionRequestPage:
       properties:
-        role:
-          type: string
-          enum:
-          - business
-          - worker
-          title: Role
-      additionalProperties: false
+        items:
+          items:
+            $ref: '#/components/schemas/AdminAccountDeletionRequest'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
       type: object
       required:
-      - role
-      title: AddRoleRequest
+      - items
+      - total
+      - limit
+      - offset
+      title: AccountDeletionRequestPage
+    AccountDeletionRequestResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - on_hold
+          - completed
+          title: Status
+        requested_at:
+          type: string
+          format: date-time
+          title: Requested At
+        approved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Approved At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        blockers:
+          items:
+            type: string
+          type: array
+          title: Blockers
+        holds:
+          items:
+            $ref: '#/components/schemas/DeletionHold'
+          type: array
+          title: Holds
+      type: object
+      required:
+      - id
+      - status
+      - requested_at
+      title: AccountDeletionRequestResponse
+    AccountProfilePatch:
+      properties:
+        full_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Full Name
+        language_code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 2
+          - type: 'null'
+          title: Language Code
+        theme_preference:
+          anyOf:
+          - type: string
+            enum:
+            - system
+            - light
+            - dark
+          - type: 'null'
+          title: Theme Preference
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+      additionalProperties: false
+      type: object
+      title: AccountProfilePatch
+      description: Profile fields for an account without a Business or Worker profile.
+    AdminAccountDeletionRequest:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - on_hold
+          - completed
+          title: Status
+        requested_at:
+          type: string
+          format: date-time
+          title: Requested At
+        approved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Approved At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        blockers:
+          items:
+            type: string
+          type: array
+          title: Blockers
+        holds:
+          items:
+            $ref: '#/components/schemas/DeletionHold'
+          type: array
+          title: Holds
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        phone:
+          type: string
+          title: Phone
+        full_name:
+          type: string
+          title: Full Name
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+      type: object
+      required:
+      - id
+      - status
+      - requested_at
+      - user_id
+      - phone
+      - full_name
+      - roles
+      title: AdminAccountDeletionRequest
+    AdminAccountDeletionRequestDetail:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - on_hold
+          - completed
+          title: Status
+        requested_at:
+          type: string
+          format: date-time
+          title: Requested At
+        approved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Approved At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        blockers:
+          items:
+            type: string
+          type: array
+          title: Blockers
+        holds:
+          items:
+            $ref: '#/components/schemas/DeletionHold'
+          type: array
+          title: Holds
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        phone:
+          type: string
+          title: Phone
+        full_name:
+          type: string
+          title: Full Name
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+        events:
+          items:
+            $ref: '#/components/schemas/AccountDeletionEvent'
+          type: array
+          title: Events
+      type: object
+      required:
+      - id
+      - status
+      - requested_at
+      - user_id
+      - phone
+      - full_name
+      - roles
+      title: AdminAccountDeletionRequestDetail
     AdminColumn:
       properties:
         name:
@@ -4150,7 +4461,7 @@ components:
       required:
       - is_available
       title: AvailabilityResponse
-    Body_upload_logo_api_v1_business_profile_logo_post:
+    Body_upload_profile_image_api_v1_me_profile_image_post:
       properties:
         file:
           type: string
@@ -4159,17 +4470,7 @@ components:
       type: object
       required:
       - file
-      title: Body_upload_logo_api_v1_business_profile_logo_post
-    Body_upload_photo_api_v1_me_photo_post:
-      properties:
-        file:
-          type: string
-          contentMediaType: application/octet-stream
-          title: File
-      type: object
-      required:
-      - file
-      title: Body_upload_photo_api_v1_me_photo_post
+      title: Body_upload_profile_image_api_v1_me_profile_image_post
     BusinessCard:
       properties:
         id:
@@ -4203,6 +4504,29 @@ components:
       title: BusinessCard
     BusinessProfilePatch:
       properties:
+        full_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Full Name
+        language_code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 2
+          - type: 'null'
+          title: Language Code
+        theme_preference:
+          anyOf:
+          - type: string
+            enum:
+            - system
+            - light
+            - dark
+          - type: 'null'
+          title: Theme Preference
         business_name:
           anyOf:
           - type: string
@@ -4236,12 +4560,6 @@ components:
             maxLength: 64
           - type: 'null'
           title: Category Slug
-        logo_url:
-          anyOf:
-          - type: string
-            maxLength: 2000
-          - type: 'null'
-          title: Logo Url
         address_text:
           anyOf:
           - type: string
@@ -4271,6 +4589,8 @@ components:
       additionalProperties: false
       type: object
       title: BusinessProfilePatch
+      description: '``full_name`` is the owner''s name; ``email`` is the business
+        contact email.'
     BusinessProfileResponse:
       properties:
         id:
@@ -4587,6 +4907,42 @@ components:
       - awaiting_review
       - unpaid_invoices
       title: DashboardSummary
+    DeletionHold:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        basis:
+          type: string
+          enum:
+          - pending_booking
+          - pending_payment
+          - refund
+          - dispute
+          - complaint
+          - legal_obligation
+          - fraud_investigation
+          title: Basis
+        reason:
+          type: string
+          title: Reason
+        reference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reference
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+      type: object
+      required:
+      - id
+      - basis
+      - reason
+      - expires_at
+      title: DeletionHold
     DeviceRegisterRequest:
       properties:
         platform:
@@ -4765,6 +5121,32 @@ components:
       - limit
       - offset
       title: FeedPage
+    FirebaseVerifyRequest:
+      properties:
+        id_token:
+          type: string
+          maxLength: 4096
+          minLength: 20
+          title: Id Token
+        intent:
+          anyOf:
+          - type: string
+            const: sign_in
+          - type: 'null'
+          title: Intent
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+          - type: 'null'
+          title: Role
+      additionalProperties: false
+      type: object
+      required:
+      - id_token
+      title: FirebaseVerifyRequest
     HTTPValidationError:
       properties:
         detail:
@@ -4883,23 +5265,6 @@ components:
       - lines
       - issued_at
       title: InvoiceResponse
-    Language:
-      properties:
-        code:
-          type: string
-          title: Code
-        english_name:
-          type: string
-          title: English Name
-        native_name:
-          type: string
-          title: Native Name
-      type: object
-      required:
-      - code
-      - english_name
-      - native_name
-      title: Language
     LedgerEntry:
       properties:
         id:
@@ -5207,41 +5572,6 @@ components:
           title: Is Active
       type: object
       title: LookupUpdate
-    MePatch:
-      properties:
-        full_name:
-          anyOf:
-          - type: string
-            maxLength: 120
-            minLength: 1
-          - type: 'null'
-          title: Full Name
-        email:
-          anyOf:
-          - type: string
-            maxLength: 254
-            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
-          - type: 'null'
-          title: Email
-        language_code:
-          anyOf:
-          - type: string
-            maxLength: 8
-            minLength: 2
-          - type: 'null'
-          title: Language Code
-        theme_preference:
-          anyOf:
-          - type: string
-            enum:
-            - system
-            - light
-            - dark
-          - type: 'null'
-          title: Theme Preference
-      additionalProperties: false
-      type: object
-      title: MePatch
     MeResponse:
       properties:
         id:
@@ -5360,6 +5690,31 @@ components:
       - body
       - created_at
       title: MessageItem
+    MyProfileResponse:
+      properties:
+        profile_type:
+          type: string
+          enum:
+          - account
+          - business
+          - worker
+          title: Profile Type
+        account:
+          $ref: '#/components/schemas/MeResponse'
+        business:
+          anyOf:
+          - $ref: '#/components/schemas/BusinessProfileResponse'
+          - type: 'null'
+        worker:
+          anyOf:
+          - $ref: '#/components/schemas/WorkerProfileResponse'
+          - type: 'null'
+      type: object
+      required:
+      - profile_type
+      - account
+      title: MyProfileResponse
+      description: Exactly one of ``business`` / ``worker`` is set, matching ``profile_type``.
     MyShiftItem:
       properties:
         tab:
@@ -5630,32 +5985,6 @@ components:
       - phone
       - password
       title: PasswordLoginRequest
-    FirebaseVerifyRequest:
-      properties:
-        id_token:
-          type: string
-          maxLength: 4096
-          minLength: 20
-          title: Id Token
-        intent:
-          anyOf:
-          - type: string
-            const: sign_in
-          - type: 'null'
-          title: Intent
-        role:
-          anyOf:
-          - type: string
-            enum:
-            - business
-            - worker
-          - type: 'null'
-          title: Role
-      additionalProperties: false
-      type: object
-      required:
-      - id_token
-      title: FirebaseVerifyRequest
     PasswordResetConfirmRequest:
       properties:
         id_token:
@@ -6779,10 +7108,14 @@ components:
           type: string
           title: Address Text
         latitude:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Latitude
         longitude:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Longitude
         arrival_instructions:
           type: string
@@ -7411,6 +7744,22 @@ components:
             minLength: 1
           - type: 'null'
           title: Full Name
+        language_code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 2
+          - type: 'null'
+          title: Language Code
+        theme_preference:
+          anyOf:
+          - type: string
+            enum:
+            - system
+            - light
+            - dark
+          - type: 'null'
+          title: Theme Preference
         email:
           anyOf:
           - type: string
@@ -7685,10 +8034,14 @@ components:
           type: string
           title: Address Text
         latitude:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Latitude
         longitude:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Longitude
         distance_km:
           anyOf:
@@ -7804,10 +8157,14 @@ components:
           type: string
           title: Address Text
         latitude:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Latitude
         longitude:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Longitude
         distance_km:
           anyOf:
@@ -7943,6 +8300,7 @@ components:
   securitySchemes:
     HTTPBearer:
       type: http
-      description: Access token from POST /api/v1/auth/otp/verify after SMS OTP verification.
+      description: Access token from POST /api/v1/auth/firebase/verify after Firebase
+        phone verification.
       scheme: bearer
       bearerFormat: JWT

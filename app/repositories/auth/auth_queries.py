@@ -60,3 +60,8 @@ REVOKE_REFRESH_TOKEN_BY_HASH = """
 UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, $2)
 WHERE token_hash = $1 AND user_id = $3
 """
+
+REVOKE_REFRESH_TOKENS_BY_USER = """
+UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, $2)
+WHERE user_id = $1 AND revoked_at IS NULL
+"""

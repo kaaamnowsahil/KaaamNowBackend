@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     assignment_id       UUID NOT NULL,
     checked_in_at       TIMESTAMPTZ NOT NULL,
-    check_in_latitude   DOUBLE PRECISION NOT NULL,
-    check_in_longitude  DOUBLE PRECISION NOT NULL,
+    check_in_latitude   DOUBLE PRECISION,
+    check_in_longitude  DOUBLE PRECISION,
     check_in_distance_m INTEGER NOT NULL,
     checked_out_at      TIMESTAMPTZ,
     check_out_latitude  DOUBLE PRECISION,
@@ -24,3 +24,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
         AND (approved_minutes IS NULL OR approved_minutes >= 0)
     )
 );
+
+ALTER TABLE attendance_records
+    ALTER COLUMN check_in_latitude DROP NOT NULL,
+    ALTER COLUMN check_in_longitude DROP NOT NULL;

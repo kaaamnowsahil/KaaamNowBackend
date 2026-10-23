@@ -38,6 +38,10 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         finish_live_searches,
         refresh_live_searches,
     )
+    from app.services.users.deletion_service import (
+        expire_holds,
+        process_deletion_requests,
+    )
 
     return [
         ("expire_live_offers", expire_live_offers),
@@ -48,6 +52,8 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         ("expire_stale_payments", expire_stale_payments),
         ("advance_processing_withdrawals", advance_processing_withdrawals),
         ("deliver_pending_pushes", deliver_pending_pushes),
+        ("expire_deletion_holds", expire_holds),
+        ("process_deletion_requests", process_deletion_requests),
     ]
 
 

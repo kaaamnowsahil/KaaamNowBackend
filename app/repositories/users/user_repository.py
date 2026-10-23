@@ -9,18 +9,22 @@ import asyncpg
 
 from app.repositories.users.user_queries import (
     DEACTIVATE_DEVICE,
+    DEACTIVATE_USER_ACCOUNT,
+    DEACTIVATE_USER_DEVICES,
     GET_AUTH_CREDENTIALS,
     GET_ME,
     GET_PHONE_STATUS,
+    GET_PROFILE_IMAGE_URLS,
     GET_USER_BY_ID,
+    IS_USER_ACTIVE,
     LANGUAGE_IS_ACTIVE,
     LIST_ACTIVE_PUSH_TOKENS,
     LIST_ACTIVE_ROLES,
     LOCK_USER_BY_ID,
+    REPLACE_PHOTO_URL,
     SET_ACTIVE_ROLE,
     SET_PASSWORD_BY_PHONE,
     SET_PASSWORD_IF_MISSING,
-    SET_PHOTO_URL,
     TOUCH_LAST_LOGIN,
     UPDATE_USER_FIELDS,
     UPSERT_DEVICE,
@@ -64,6 +68,18 @@ async def lock_user(conn: asyncpg.Connection, user_id: UUID) -> None:
     await conn.fetchval(LOCK_USER_BY_ID, user_id)
 
 
+async def is_user_active(conn: asyncpg.Connection, user_id: UUID) -> bool | None:
+    return await conn.fetchval(IS_USER_ACTIVE, user_id)
+
+
+async def deactivate_account(conn: asyncpg.Connection, user_id: UUID) -> bool:
+    return await conn.fetchval(DEACTIVATE_USER_ACCOUNT, user_id) is not None
+
+
+async def deactivate_devices(conn: asyncpg.Connection, user_id: UUID) -> None:
+    await conn.execute(DEACTIVATE_USER_DEVICES, user_id)
+
+
 async def list_active_roles(conn: asyncpg.Connection, user_id: UUID) -> list[str]:
     return [row["role"] for row in await conn.fetch(LIST_ACTIVE_ROLES, user_id)]
 
@@ -91,8 +107,14 @@ async def set_active_role(conn: asyncpg.Connection, user_id: UUID, role: str) ->
     await conn.execute(SET_ACTIVE_ROLE, user_id, role)
 
 
-async def set_photo_url(conn: asyncpg.Connection, user_id: UUID, photo_url: str) -> None:
-    await conn.execute(SET_PHOTO_URL, user_id, photo_url)
+async def replace_photo_url(conn: asyncpg.Connection, user_id: UUID, photo_url: str) -> str | None:
+    """Set the personal photo and return the URL it replaced."""
+    return await conn.fetchval(REPLACE_PHOTO_URL, user_id, photo_url)
+
+
+async def list_profile_image_urls(conn: asyncpg.Connection, user_id: UUID) -> list[str]:
+    row = await conn.fetchrow(GET_PROFILE_IMAGE_URLS, user_id)
+    return [url for url in (row["photo_url"], row["logo_url"]) if url] if row else []
 
 
 async def grant_role(conn: asyncpg.Connection, user_id: UUID, role: str) -> None:

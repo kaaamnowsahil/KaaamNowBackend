@@ -88,33 +88,51 @@ async def login(client: httpx.AsyncClient, phone: str | None = None) -> Actor:
     )
 
 
-async def add_role(client: httpx.AsyncClient, actor: Actor, role: str) -> None:
-    resp = await client.post("/api/v1/me/roles", json={"role": role}, headers=actor.headers)
-    assert resp.status_code == 200, resp.text
-    actor.headers = {"Authorization": f"Bearer {resp.json()['tokens']['access_token']}"}
+async def signup(
+    client: httpx.AsyncClient, role: str, details: dict, phone: str | None = None
+) -> Actor:
+    """Register a role the only supported way: OTP ``sign_up`` + ``POST /auth/signup``."""
+    phone = phone or next_phone()
+    sent = await client.post("/api/v1/auth/otp/send", json={"phone": phone, "intent": "sign_up"})
+    assert sent.status_code == 200, sent.text
+    resp = await client.post(
+        "/api/v1/auth/signup",
+        json={
+            "phone": phone,
+            "code": TEST_OTP,
+            "password": "TestPassword123",
+            "role": role,
+            role: details,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    profile = body["me"][f"{role}_profile"]
+    return Actor(
+        phone=phone,
+        user_id=UUID(body["me"]["id"]),
+        headers={"Authorization": f"Bearer {body['tokens']['access_token']}"},
+        profile_id=UUID(profile["id"]),
+    )
 
 
 @pytest.fixture
 def make_business(app_client: httpx.AsyncClient):  # type: ignore[no-untyped-def]
     async def _make(name: str = "Cafe Bloom") -> Actor:
-        actor = await login(app_client)
-        await app_client.patch("/api/v1/me", json={"full_name": "Owner"}, headers=actor.headers)
-        await add_role(app_client, actor, "business")
-        resp = await app_client.patch(
-            "/api/v1/business/profile",
-            json={
+        return await signup(
+            app_client,
+            "business",
+            {
                 "business_name": name,
+                "contact_name": "Owner",
+                "business_type_slug": "hospitality",
                 "category_slug": "hospitality",
                 "address_text": "Block A, Connaught Place",
                 "locality": "Connaught Place",
                 "latitude": BUSINESS_LAT,
                 "longitude": BUSINESS_LNG,
             },
-            headers=actor.headers,
         )
-        assert resp.status_code == 200, resp.text
-        actor.profile_id = UUID(resp.json()["id"])
-        return actor
 
     return _make
 
@@ -122,21 +140,19 @@ def make_business(app_client: httpx.AsyncClient):  # type: ignore[no-untyped-def
 @pytest.fixture
 def make_worker(app_client: httpx.AsyncClient, db: asyncpg.Connection):  # type: ignore[no-untyped-def]
     async def _make(name: str = "Aarav", *, online: bool = True) -> Actor:
-        actor = await login(app_client)
-        await app_client.patch("/api/v1/me", json={"full_name": name}, headers=actor.headers)
-        await add_role(app_client, actor, "worker")
-        resp = await app_client.patch(
-            "/api/v1/worker/profile",
-            json={
+        actor = await signup(
+            app_client,
+            "worker",
+            {
+                "full_name": name,
+                "age": 25,
+                "address_text": "Connaught Place, New Delhi",
                 "locality": "Connaught Place",
                 "latitude": NEAR_LAT,
                 "longitude": NEAR_LNG,
-                "category_slugs": ["hospitality", "house-help"],
+                "work_type_slugs": ["hospitality", "house-help"],
             },
-            headers=actor.headers,
         )
-        assert resp.status_code == 200, resp.text
-        actor.profile_id = UUID(resp.json()["id"])
         await db.execute(
             "UPDATE worker_profiles SET verification_status = 'verified', verified_at = now() "
             "WHERE id = $1",
@@ -144,7 +160,7 @@ def make_worker(app_client: httpx.AsyncClient, db: asyncpg.Connection):  # type:
         )
         if online:
             resp = await app_client.put(
-                "/api/v1/worker/availability",
+                "/api/v1/me/availability",
                 json={"is_available": True, "latitude": NEAR_LAT, "longitude": NEAR_LNG},
                 headers=actor.headers,
             )

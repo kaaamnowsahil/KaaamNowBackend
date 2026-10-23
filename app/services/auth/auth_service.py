@@ -287,7 +287,6 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
                     user_id,
                     business_name=business.business_name.strip(),
                     category_id=category_id,
-                    logo_url=None,
                     address_text=business.address_text.strip(),
                     locality=resolve_locality(business.address_text, business.locality),
                     latitude=business.latitude,

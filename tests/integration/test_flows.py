@@ -13,6 +13,7 @@ from app.config.settings import load_settings
 from app.db.pool import get_pool
 from app.services.billing.validation.webhook_signature import sign_payload
 from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
+from app.services.users.deletion_service import process_deletion_requests
 from tests.integration.conftest import NEAR_LAT, NEAR_LNG, login
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -157,6 +158,149 @@ async def test_rbac_and_ownership(app_client, make_business, make_worker) -> Non
     )
 
 
+async def test_account_deletion_request_review_holds_and_anonymization(
+    app_client, make_business, make_worker, db
+) -> None:  # type: ignore[no-untyped-def]
+    business = await make_business()
+    shift = await _live_shift(app_client, business)
+    worker = await make_worker(online=False)
+
+    anonymous = await app_client.post(f"{API}/me/deletion-requests")
+    assert anonymous.status_code == 401
+    requested = await app_client.post(
+        f"{API}/me/deletion-requests", headers=business.headers
+    )
+    assert requested.status_code == 202, requested.text
+    request = requested.json()
+    assert request["status"] == "pending"
+    assert "1 active shifts" in request["blockers"]
+    assert await db.fetchval("SELECT is_active FROM users WHERE id = $1", business.user_id)
+
+    # An approved request must be rechecked when the background processor runs.
+    await db.execute(
+        "UPDATE account_deletion_requests SET status = 'approved', approved_at = now() "
+        "WHERE id = $1",
+        request["id"],
+    )
+    assert await process_deletion_requests(get_pool()) == 0
+    assert await db.fetchval("SELECT is_active FROM users WHERE id = $1", business.user_id)
+
+    cancelled = await app_client.post(
+        f"{API}/business/shifts/{shift['id']}/cancel",
+        json={},
+        headers=business.headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert (
+        await app_client.get(
+            f"{API}/me/deletion-requests/current", headers=business.headers
+        )
+    ).json()["status"] == "approved"
+
+    admin_phone = "+919099999999"
+    await db.execute("INSERT INTO users (phone) VALUES ($1)", admin_phone)
+    admin_id = await db.fetchval("SELECT id FROM users WHERE phone = $1", admin_phone)
+    await db.execute(
+        "INSERT INTO user_roles (user_id, role, status) VALUES ($1, 'admin', 'active')",
+        admin_id,
+    )
+    admin = await login(app_client, admin_phone)
+    hold = await app_client.post(
+        f"{API}/admin/account-deletion-requests/{request['id']}/holds",
+        json={
+            "basis": "legal_obligation",
+            "reason": "Retain this account data while the named review remains open.",
+            "reference": "CASE-001",
+            "expires_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+        },
+        headers=admin.headers,
+    )
+    assert hold.status_code == 200, hold.text
+    assert hold.json()["status"] == "on_hold"
+    hold_id = hold.json()["holds"][0]["id"]
+    released = await app_client.delete(
+        f"{API}/admin/account-deletion-requests/{request['id']}/holds/{hold_id}",
+        headers=admin.headers,
+    )
+    assert released.status_code == 200, released.text
+    assert released.json()["status"] == "pending"
+    approved = await app_client.post(
+        f"{API}/admin/account-deletion-requests/{request['id']}/approve",
+        headers=admin.headers,
+    )
+    assert approved.status_code == 200, approved.text
+
+    assert await process_deletion_requests(get_pool()) == 1
+    assert (
+        await db.fetchval("SELECT is_active FROM users WHERE id = $1", business.user_id)
+    ) is False
+    assert await db.fetchval("SELECT count(*) FROM users WHERE id = $1", business.user_id) == 1
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL",
+            business.user_id,
+        )
+    ) == 0
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM business_profiles WHERE id = $1",
+            business.profile_id,
+        )
+    ) == 1
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM shifts WHERE business_profile_id = $1",
+            business.profile_id,
+        )
+    ) == 1
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM shifts WHERE id::text = $1",
+            shift["id"],
+        )
+    ) == 1
+    stale_token = await app_client.get(f"{API}/me/profile", headers=business.headers)
+    assert stale_token.status_code == 401
+    assert stale_token.json()["code"] == "account_disabled"
+    completed = await app_client.get(
+        f"{API}/me/deletion-requests/current", headers=business.headers
+    )
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["completed_at"]
+    assert completed.json()["blockers"] == []
+    assert (
+        await db.fetchval("SELECT phone FROM users WHERE id = $1", business.user_id)
+    ) != business.phone
+    assert await db.fetchval("SELECT count(*) FROM shifts WHERE id = $1", shift["id"]) == 1
+
+    worker_request = await app_client.post(
+        f"{API}/me/deletion-requests", headers=worker.headers
+    )
+    assert worker_request.status_code == 202, worker_request.text
+    assert worker_request.json()["blockers"] == []
+    worker_approved = await app_client.post(
+        f"{API}/admin/account-deletion-requests/{worker_request.json()['id']}/approve",
+        headers=admin.headers,
+    )
+    assert worker_approved.status_code == 200, worker_approved.text
+    assert await process_deletion_requests(get_pool()) == 1
+    assert (
+        await db.fetchval("SELECT is_active FROM users WHERE id = $1", worker.user_id)
+    ) is False
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM worker_profiles WHERE id = $1", worker.profile_id
+        )
+        == 1
+    )
+    assert (
+        await app_client.get(
+            f"{API}/me/deletion-requests/current", headers=worker.headers
+        )
+    ).json()["status"] == "completed"
+
+
 async def test_live_flow_end_to_end(app_client, db, make_business, make_worker) -> None:  # type: ignore[no-untyped-def]
     business = await make_business()
     worker = await make_worker("Aarav")
@@ -225,8 +369,8 @@ async def test_live_flow_end_to_end(app_client, db, make_business, make_worker) 
         f"{API}/assignments/{assignment_id}/ratings", json={"stars": 3}, headers=business.headers
     )
     assert dup.status_code == 409
-    profile = (await app_client.get(f"{API}/worker/profile", headers=worker.headers)).json()
-    assert float(profile["rating_avg"]) == 4.0
+    profile = (await app_client.get(f"{API}/me/profile", headers=worker.headers)).json()
+    assert float(profile["worker"]["rating_avg"]) == 4.0
     notes = (await app_client.get(f"{API}/notifications", headers=worker.headers)).json()
     kinds = {n["kind"] for n in notes["items"]}
     assert {"earning_credited", "rating_received"} <= kinds

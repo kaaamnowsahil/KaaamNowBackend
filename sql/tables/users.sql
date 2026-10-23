@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     email            VARCHAR(254),
     photo_url        TEXT,
     language_code    VARCHAR(8) NOT NULL DEFAULT 'en',
-    theme_preference VARCHAR(8) NOT NULL DEFAULT 'system',
+    theme_preference VARCHAR(8) NOT NULL DEFAULT 'dark',
     active_role      VARCHAR(16),
     is_active        BOOLEAN NOT NULL DEFAULT true,
     last_login_at    TIMESTAMPTZ,
@@ -21,3 +21,5 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE users ALTER COLUMN language_code SET DEFAULT 'en';
+ALTER TABLE users ALTER COLUMN theme_preference SET DEFAULT 'dark';

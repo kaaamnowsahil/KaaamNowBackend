@@ -9,7 +9,6 @@ from app.repositories.catalog.catalog_queries import (
     GET_BUSINESS_TYPE_BY_SLUG,
     GET_CATEGORY_BY_SLUG,
     GET_CATEGORY_IDS_BY_SLUGS,
-    LIST_LANGUAGES,
 )
 
 
@@ -25,10 +24,6 @@ async def get_category_ids_by_slugs(
     conn: asyncpg.Connection, slugs: list[str]
 ) -> list[asyncpg.Record]:
     return await conn.fetch(GET_CATEGORY_IDS_BY_SLUGS, slugs)
-
-
-async def list_languages(conn: asyncpg.Connection) -> list[asyncpg.Record]:
-    return await conn.fetch(LIST_LANGUAGES)
 
 
 async def get_active_fee_policy(conn: asyncpg.Connection) -> asyncpg.Record | None:
