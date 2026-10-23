@@ -89,7 +89,7 @@ MARK_WEBHOOK_PROCESSED = """
 UPDATE payment_webhook_events SET processed_at = $2 WHERE id = $1
 """
 
-# $1 business, $2 statuses, $3 month start, $4 month end, $5 limit, $6 offset
+# $1 business entity ids, $2 statuses, $3 month start, $4 month end, $5 limit, $6 offset
 LIST_PAYMENT_HISTORY = """
 SELECT i.id AS invoice_id, i.reference AS invoice_reference, i.shift_id, s.job_title,
        s.starts_at AS shift_starts_at, i.status, i.total_minor, i.currency, i.paid_at,
@@ -99,7 +99,7 @@ SELECT i.id AS invoice_id, i.reference AS invoice_reference, i.shift_id, s.job_t
 FROM shift_invoices i
 JOIN shifts s ON s.id = i.shift_id
 LEFT JOIN payments p ON p.invoice_id = i.id AND p.status = 'succeeded'
-WHERE i.business_profile_id = $1
+WHERE i.business_profile_id = ANY($1::uuid[])
   AND i.status = ANY($2::varchar[])
   AND ($3::timestamptz IS NULL OR i.issued_at >= $3)
   AND ($4::timestamptz IS NULL OR i.issued_at < $4)
@@ -112,5 +112,5 @@ SELECT
     COALESCE(SUM(total_minor) FILTER (
         WHERE status = 'paid' AND paid_at >= $2 AND paid_at < $3), 0) AS paid_this_month_minor,
     COALESCE(SUM(total_minor) FILTER (WHERE status = 'pending'), 0) AS pending_minor
-FROM shift_invoices WHERE business_profile_id = $1
+FROM shift_invoices WHERE business_profile_id = ANY($1::uuid[])
 """

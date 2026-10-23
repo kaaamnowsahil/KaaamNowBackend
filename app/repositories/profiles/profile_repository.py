@@ -8,6 +8,7 @@ from uuid import UUID
 import asyncpg
 
 from app.repositories.profiles.profile_queries import (
+    DELETE_BUSINESS_TYPES,
     DELETE_WORKER_CATEGORIES,
     DELETE_WORKER_LOCATION,
     ENSURE_BUSINESS_PROFILE,
@@ -18,13 +19,18 @@ from app.repositories.profiles.profile_queries import (
     GET_WORKER_PROFILE_BY_ID,
     GET_WORKER_PROFILE_BY_USER,
     INCREMENT_COMPLETED_SHIFTS,
+    INSERT_BUSINESS_PROFILE,
+    INSERT_BUSINESS_TYPES,
     INSERT_WORKER_CATEGORIES,
+    LIST_BUSINESS_PROFILE_IDS_BY_USER,
+    LIST_BUSINESS_PROFILES_BY_USER,
     LIST_VERIFICATIONS_BUSINESSES,
     LIST_VERIFICATIONS_WORKERS,
     RECOMPUTE_BUSINESS_RATING,
     RECOMPUTE_WORKER_RATING,
     REPLACE_BUSINESS_LOGO_URL,
     SET_BUSINESS_VERIFICATION,
+    SET_PRIMARY_BUSINESS_TYPE,
     SET_WORKER_AVAILABILITY,
     SET_WORKER_VERIFICATION,
     UPDATE_BUSINESS_PROFILE,
@@ -41,9 +47,15 @@ async def ensure_worker_profile(conn: asyncpg.Connection, user_id: UUID) -> None
     await conn.execute(ENSURE_WORKER_PROFILE, user_id)
 
 
+async def insert_business_profile(conn: asyncpg.Connection, user_id: UUID) -> UUID:
+    """Add a non-primary Business / Work entity to an account."""
+    return await conn.fetchval(INSERT_BUSINESS_PROFILE, user_id)
+
+
 async def get_business_profile_by_user(
     conn: asyncpg.Connection, user_id: UUID
 ) -> asyncpg.Record | None:
+    """The account's primary Business / Work entity."""
     return await conn.fetchrow(GET_BUSINESS_PROFILE_BY_USER, user_id)
 
 
@@ -51,9 +63,17 @@ async def get_business_profile(conn: asyncpg.Connection, profile_id: UUID) -> as
     return await conn.fetchrow(GET_BUSINESS_PROFILE_BY_ID, profile_id)
 
 
+async def list_business_profiles(conn: asyncpg.Connection, user_id: UUID) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_BUSINESS_PROFILES_BY_USER, user_id)
+
+
+async def list_business_profile_ids(conn: asyncpg.Connection, user_id: UUID) -> list[UUID]:
+    return [row["id"] for row in await conn.fetch(LIST_BUSINESS_PROFILE_IDS_BY_USER, user_id)]
+
+
 async def update_business_profile(
     conn: asyncpg.Connection,
-    user_id: UUID,
+    business_profile_id: UUID,
     *,
     business_name: str | None,
     category_id: UUID | None,
@@ -67,7 +87,7 @@ async def update_business_profile(
 ) -> None:
     await conn.execute(
         UPDATE_BUSINESS_PROFILE,
-        user_id,
+        business_profile_id,
         business_name,
         category_id,
         address_text,
@@ -80,11 +100,25 @@ async def update_business_profile(
     )
 
 
+async def replace_business_types(
+    conn: asyncpg.Connection, business_profile_id: UUID, business_type_ids: list[UUID]
+) -> None:
+    """Replace the entity's Business / Work types; the first one becomes the primary type."""
+    await conn.execute(DELETE_BUSINESS_TYPES, business_profile_id)
+    if business_type_ids:
+        await conn.execute(INSERT_BUSINESS_TYPES, business_profile_id, business_type_ids)
+    await conn.execute(
+        SET_PRIMARY_BUSINESS_TYPE,
+        business_profile_id,
+        business_type_ids[0] if business_type_ids else None,
+    )
+
+
 async def replace_business_logo_url(
-    conn: asyncpg.Connection, user_id: UUID, logo_url: str
+    conn: asyncpg.Connection, business_profile_id: UUID, logo_url: str
 ) -> str | None:
-    """Set the business logo and return the URL it replaced."""
-    return await conn.fetchval(REPLACE_BUSINESS_LOGO_URL, user_id, logo_url)
+    """Set the entity's logo and return the URL it replaced."""
+    return await conn.fetchval(REPLACE_BUSINESS_LOGO_URL, business_profile_id, logo_url)
 
 
 async def get_worker_profile_by_user(
@@ -196,10 +230,8 @@ async def recompute_worker_rating(
     await conn.execute(RECOMPUTE_WORKER_RATING, worker_profile_id, worker_user_id)
 
 
-async def recompute_business_rating(
-    conn: asyncpg.Connection, business_profile_id: UUID, business_user_id: UUID
-) -> None:
-    await conn.execute(RECOMPUTE_BUSINESS_RATING, business_profile_id, business_user_id)
+async def recompute_business_rating(conn: asyncpg.Connection, business_profile_id: UUID) -> None:
+    await conn.execute(RECOMPUTE_BUSINESS_RATING, business_profile_id)
 
 
 async def increment_completed_shifts(

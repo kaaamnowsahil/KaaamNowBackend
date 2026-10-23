@@ -27,6 +27,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/account_deletion_events.sql",
     # Profiles
     "tables/business_profiles.sql",
+    "tables/business_profile_types.sql",
     "tables/worker_profiles.sql",
     "tables/worker_work_categories.sql",
     "tables/worker_locations.sql",

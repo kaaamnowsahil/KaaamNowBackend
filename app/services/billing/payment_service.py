@@ -53,7 +53,7 @@ from app.services.billing.invoice_service import build_invoice_response, load_ow
 from app.services.billing.sources.payment_provider_factory import get_payment_provider
 from app.services.billing.validation.webhook_signature import signature_matches
 from app.services.notifications.notification_service import notify
-from app.services.profiles.profile_lookup import require_business_profile
+from app.services.profiles.profile_lookup import business_scope
 from app.utils.clock import utc_now
 from app.utils.references import PAYMENT_REFERENCE_PREFIX, new_reference
 
@@ -77,14 +77,14 @@ def month_bounds(month: str | None, now: datetime) -> tuple[datetime, datetime]:
 
 
 async def _load_owned_payment(
-    conn: asyncpg.Connection, payment_id: UUID, business_profile_id: UUID, *, lock: bool
+    conn: asyncpg.Connection, payment_id: UUID, scope: list[UUID], *, lock: bool
 ) -> asyncpg.Record:
     row = await (
         billing_repository.lock_payment(conn, payment_id)
         if lock
         else billing_repository.get_payment(conn, payment_id)
     )
-    if row is None or row["business_profile_id"] != business_profile_id:
+    if row is None or row["business_profile_id"] not in scope:
         raise not_found("payment_not_found", MSG_PAYMENT_NOT_FOUND)
     return row
 
@@ -97,8 +97,7 @@ async def start_payment(
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            await load_owned_invoice(conn, invoice_id, business["id"])
+            await load_owned_invoice(conn, invoice_id, await business_scope(conn, user.user_id))
             invoice = await billing_repository.lock_invoice(conn, invoice_id)
             if invoice["status"] == INVOICE_PAID:
                 raise conflict("invoice_paid", MSG_INVOICE_ALREADY_PAID)
@@ -112,7 +111,7 @@ async def start_payment(
             payment_id = await billing_repository.insert_payment(
                 conn,
                 invoice_id=invoice_id,
-                business_profile_id=business["id"],
+                business_profile_id=invoice["business_profile_id"],
                 method=body.method,
                 provider=provider.name,
                 amount_minor=invoice["total_minor"],
@@ -172,8 +171,8 @@ async def confirm_payment(user: AuthenticatedUser, payment_id: UUID) -> PaymentR
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            payment = await _load_owned_payment(conn, payment_id, business["id"], lock=True)
+            scope = await business_scope(conn, user.user_id)
+            payment = await _load_owned_payment(conn, payment_id, scope, lock=True)
             if payment["status"] == PAYMENT_SUCCEEDED:
                 return _payment_response(payment)
             if payment["status"] != PAYMENT_PENDING:
@@ -240,9 +239,12 @@ async def handle_webhook(provider: str, raw_body: bytes, signature: str | None) 
 
 async def get_receipt(user: AuthenticatedUser, payment_id: UUID) -> ReceiptResponse:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        payment = await _load_owned_payment(conn, payment_id, business["id"], lock=False)
+        scope = await business_scope(conn, user.user_id)
+        payment = await _load_owned_payment(conn, payment_id, scope, lock=False)
         invoice = await build_invoice_response(conn, payment["invoice_id"])
+        business = await profile_repository.get_business_profile(
+            conn, payment["business_profile_id"]
+        )
     return ReceiptResponse(
         payment=_payment_response(payment),
         invoice=invoice,
@@ -252,10 +254,8 @@ async def get_receipt(user: AuthenticatedUser, payment_id: UUID) -> ReceiptRespo
 
 async def get_payment(user: AuthenticatedUser, payment_id: UUID) -> PaymentResponse:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        return _payment_response(
-            await _load_owned_payment(conn, payment_id, business["id"], lock=False)
-        )
+        scope = await business_scope(conn, user.user_id)
+        return _payment_response(await _load_owned_payment(conn, payment_id, scope, lock=False))
 
 
 async def history(
@@ -265,6 +265,7 @@ async def history(
     month: str | None,
     limit: int | None,
     offset: int,
+    business_profile_id: UUID | None = None,
 ) -> PaymentHistoryPage:
     settings = load_settings()
     now = utc_now()
@@ -273,10 +274,10 @@ async def history(
     filter_start, filter_end = month_bounds(month, now) if month else (None, None)
     statuses = [status] if status else ["pending", "paid"]
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
+        scope = await business_scope(conn, user.user_id, business_profile_id)
         rows = await billing_repository.list_payment_history(
             conn,
-            business["id"],
+            scope,
             statuses=statuses,
             month_start=filter_start,
             month_end=filter_end,
@@ -284,7 +285,7 @@ async def history(
             offset=offset,
         )
         summary = await billing_repository.payment_history_summary(
-            conn, business["id"], this_month_start, this_month_end
+            conn, scope, this_month_start, this_month_end
         )
     return PaymentHistoryPage(
         summary=PaymentHistorySummary(

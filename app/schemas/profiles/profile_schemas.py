@@ -1,14 +1,19 @@
-"""Business / worker profile schemas (Figma "Business profile", "Worker profile", "Go online")."""
+"""Business / Work and worker profile schemas (Figma "Business profile", "Worker profile",
+"Go online")."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.constants.profiles.profile_route_strings import MSG_COORDINATES_PAIR
+from app.constants.profiles.profile_route_strings import (
+    MAX_BUSINESS_TYPES,
+    MSG_BUSINESS_TYPE_REQUIRED,
+    MSG_COORDINATES_PAIR,
+)
 from app.schemas.users.user_schemas import MeResponse, ThemePreference
 
 VerificationStatus = Literal["pending", "verified", "rejected"]
@@ -29,6 +34,43 @@ class _CoordinatesPair(BaseModel):
     def _both_or_neither(self):  # type: ignore[no-untyped-def]
         if (self.latitude is None) != (self.longitude is None):  # type: ignore[attr-defined]
             raise ValueError(MSG_COORDINATES_PAIR)
+        return self
+
+
+BusinessTypeSlug = Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class _BusinessTypeChoice(BaseModel):
+    """``business_type_slugs`` (multi-select) or the legacy single ``business_type_slug``.
+
+    The first chosen type is the primary one, returned as ``business_type_slug``.
+    """
+
+    business_type_slug: str | None = Field(
+        default=None, max_length=64, description="Legacy single type; prefer business_type_slugs."
+    )
+    business_type_slugs: list[BusinessTypeSlug] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_BUSINESS_TYPES,
+        description="Business / Work types from GET /api/v1/business-types; the first is primary.",
+        examples=[["household", "rental-property"]],
+    )
+
+    def chosen_business_type_slugs(self) -> list[str] | None:
+        """Ordered, de-duplicated slugs, or ``None`` when neither field was sent."""
+        if self.business_type_slugs is None and self.business_type_slug is None:
+            return None
+        chosen = [self.business_type_slug] if self.business_type_slug else []
+        chosen.extend(self.business_type_slugs or [])
+        return list(dict.fromkeys(chosen))
+
+
+class _RequiredBusinessTypeChoice(_BusinessTypeChoice):
+    @model_validator(mode="after")
+    def _require_business_type(self):  # type: ignore[no-untyped-def]
+        if not self.chosen_business_type_slugs():
+            raise ValueError(MSG_BUSINESS_TYPE_REQUIRED)
         return self
 
 
@@ -59,22 +101,59 @@ class BusinessProfileResponse(BaseModel):
     owner_name: str
     contact_name: str
     email: str | None = None
-    business_type_slug: str | None = None
+    business_type_slug: str | None = Field(default=None, description="Primary (first) type.")
     business_type_name: str | None = None
+    business_type_slugs: list[str] = Field(
+        default_factory=list, description="All selected Business / Work types, primary first."
+    )
+    business_type_names: list[str] = Field(default_factory=list)
     phone: str
+    is_primary: bool = Field(
+        description="The entity created at signup; GET /api/v1/me/profile returns this one."
+    )
 
 
-class BusinessProfilePatch(_CoordinatesPair, _AccountPreferences):
-    """``full_name`` is the owner's name; ``email`` is the business contact email."""
-
-    model_config = ConfigDict(extra="forbid")
-
+class _BusinessEntityFields(_CoordinatesPair, _BusinessTypeChoice):
     business_name: str | None = Field(default=None, min_length=1, max_length=160)
     contact_name: str | None = Field(default=None, min_length=1, max_length=120)
     email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
-    business_type_slug: str | None = Field(default=None, max_length=64)
     category_slug: str | None = Field(default=None, max_length=64)
     address_text: str | None = Field(default=None, max_length=500)
+    locality: str | None = Field(default=None, max_length=160)
+    latitude: float | None = OptionalLatitude
+    longitude: float | None = OptionalLongitude
+
+
+class BusinessProfilePatch(_BusinessEntityFields, _AccountPreferences):
+    """Primary Business / Work entity plus account settings.
+
+    ``full_name`` is the owner's name; ``email`` is the Business / Work contact email.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class BusinessEntityPatch(_BusinessEntityFields):
+    """Edit one of my Business / Work entities. Omitted fields keep their value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class BusinessEntityCreate(_CoordinatesPair, _RequiredBusinessTypeChoice):
+    """Add another Business / Work entity (a household, shop, office, property, ...).
+
+    Send ``business_type_slugs`` (or the legacy ``business_type_slug``); at least one is required.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    business_name: str = Field(min_length=1, max_length=160, examples=["My Home"])
+    contact_name: str | None = Field(
+        default=None, min_length=1, max_length=120, description="Defaults to my name."
+    )
+    email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
+    category_slug: str | None = Field(default=None, max_length=64)
+    address_text: str = Field(min_length=3, max_length=500)
     locality: str | None = Field(default=None, max_length=160)
     latitude: float | None = OptionalLatitude
     longitude: float | None = OptionalLongitude
@@ -116,7 +195,7 @@ class WorkerProfilePatch(_CoordinatesPair, _AccountPreferences):
 
 
 class AccountProfilePatch(_AccountPreferences):
-    """Profile fields for an account without a Business or Worker profile."""
+    """Profile fields for an account without a Business / Work or Worker profile."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -138,7 +217,7 @@ class MyProfileResponse(BaseModel):
 
 
 class WorkerPublicProfile(BaseModel):
-    """What a business sees about an applicant or booked worker."""
+    """What a Business / Work hirer sees about an applicant or booked worker."""
 
     id: UUID
     full_name: str

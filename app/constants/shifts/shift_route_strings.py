@@ -15,7 +15,7 @@ BUSINESS_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_BUSINESS}"
 WORKER_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_WORKER}"
 ASSIGNMENTS_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_ASSIGNMENTS}"
 
-OPENAPI_TAG_BUSINESS_SHIFTS: Final[str] = "business shifts"
+OPENAPI_TAG_BUSINESS_SHIFTS: Final[str] = "business / work shifts"
 OPENAPI_TAG_WORKER_SHIFTS: Final[str] = "worker shifts"
 OPENAPI_TAG_ASSIGNMENTS: Final[str] = "assignments"
 

@@ -83,9 +83,7 @@ async def rate(user: AuthenticatedUser, assignment_id: UUID, body: RatingCreate)
             if row is None:
                 raise conflict("already_rated", MSG_ALREADY_RATED)
             if worker_rates:
-                await profile_repository.recompute_business_rating(
-                    conn, ctx["business_profile_id"], ratee_user_id
-                )
+                await profile_repository.recompute_business_rating(conn, ctx["business_profile_id"])
             else:
                 await profile_repository.recompute_worker_rating(
                     conn, ctx["worker_profile_id"], ratee_user_id

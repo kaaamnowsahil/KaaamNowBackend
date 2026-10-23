@@ -6,6 +6,10 @@ GET_BUSINESS_TYPE_BY_SLUG = """
 SELECT id, slug, name FROM business_types WHERE slug = $1 AND is_active
 """
 
+GET_BUSINESS_TYPE_IDS_BY_SLUGS = """
+SELECT id, slug FROM business_types WHERE slug = ANY($1::varchar[]) AND is_active
+"""
+
 GET_CATEGORY_BY_SLUG = "SELECT id, slug, name FROM work_categories WHERE slug = $1 AND is_active"
 
 GET_CATEGORY_IDS_BY_SLUGS = """

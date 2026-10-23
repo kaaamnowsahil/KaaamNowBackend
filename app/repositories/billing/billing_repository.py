@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -192,7 +193,7 @@ async def mark_webhook_processed(
 
 async def list_payment_history(
     conn: asyncpg.Connection,
-    business_profile_id: UUID,
+    business_profile_ids: Sequence[UUID],
     *,
     statuses: list[str],
     month_start: datetime | None,
@@ -201,11 +202,22 @@ async def list_payment_history(
     offset: int,
 ) -> list[asyncpg.Record]:
     return await conn.fetch(
-        LIST_PAYMENT_HISTORY, business_profile_id, statuses, month_start, month_end, limit, offset
+        LIST_PAYMENT_HISTORY,
+        list(business_profile_ids),
+        statuses,
+        month_start,
+        month_end,
+        limit,
+        offset,
     )
 
 
 async def payment_history_summary(
-    conn: asyncpg.Connection, business_profile_id: UUID, month_start: datetime, month_end: datetime
+    conn: asyncpg.Connection,
+    business_profile_ids: Sequence[UUID],
+    month_start: datetime,
+    month_end: datetime,
 ) -> asyncpg.Record:
-    return await conn.fetchrow(PAYMENT_HISTORY_SUMMARY, business_profile_id, month_start, month_end)
+    return await conn.fetchrow(
+        PAYMENT_HISTORY_SUMMARY, list(business_profile_ids), month_start, month_end
+    )

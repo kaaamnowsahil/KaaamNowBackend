@@ -1,7 +1,10 @@
-"""The caller's own profile (common /me/profile API), availability and live location.
+"""The caller's own profile (common /me/profile API), Business / Work entities, availability
+and live location.
 
-Business, Worker and plain accounts keep separate data models; the authenticated user's
-role decides which one is read, patched, or receives an uploaded image.
+Business / Work, Worker and plain accounts keep separate data models; the authenticated user's
+role decides which one is read, patched, or receives an uploaded image. A Business / Work
+account may own several entities; /me/profile shows the primary one and /me/businesses
+manages all of them.
 """
 
 from __future__ import annotations
@@ -17,6 +20,8 @@ from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_
 from app.constants.auth.auth_route_strings import MSG_PERMISSION_DENIED
 from app.constants.catalog.catalog_route_strings import DIRECTION_BUSINESS_TO_WORKER
 from app.constants.profiles.profile_route_strings import (
+    MAX_BUSINESS_ENTITIES,
+    MSG_BUSINESS_LIMIT_REACHED,
     MSG_WORKER_LOCATION_REQUIRED,
     MSG_WORKER_NOT_FOUND,
 )
@@ -26,7 +31,7 @@ from app.constants.users.user_route_strings import (
     MSG_LANGUAGE_UNKNOWN,
 )
 from app.db.pool import get_pool
-from app.exceptions.api_errors import AuthorizationError, bad_request, not_found
+from app.exceptions.api_errors import AuthorizationError, bad_request, conflict, not_found
 from app.repositories.profiles import profile_repository
 from app.repositories.ratings import rating_repository
 from app.repositories.users import user_repository
@@ -34,6 +39,8 @@ from app.schemas.profiles.profile_schemas import (
     AccountProfilePatch,
     AvailabilityRequest,
     AvailabilityResponse,
+    BusinessEntityCreate,
+    BusinessEntityPatch,
     BusinessProfilePatch,
     BusinessProfileResponse,
     LocationRequest,
@@ -58,6 +65,7 @@ from app.services.catalog import catalog_service
 from app.services.profiles.profile_lookup import (
     ensure_worker_can_work,
     require_business_profile,
+    require_owned_business,
     require_worker_profile,
 )
 from app.services.users.sources.photo_storage import (
@@ -160,7 +168,8 @@ async def update_my_profile(user: AuthenticatedUser, body: ProfilePatch) -> MyPr
             patch = _validate_patch(profile_type, body)
             if isinstance(patch, BusinessProfilePatch):
                 await _apply_user_fields(conn, user.user_id, patch, owns_email=False)
-                await _apply_business_patch(conn, user.user_id, patch)
+                primary = await require_business_profile(conn, user.user_id)
+                await _apply_business_fields(conn, primary["id"], patch)
             elif isinstance(patch, WorkerProfilePatch):
                 await _apply_user_fields(conn, user.user_id, patch, owns_email=True)
                 await _apply_worker_patch(conn, user.user_id, patch)
@@ -173,28 +182,38 @@ async def update_my_profile(user: AuthenticatedUser, body: ProfilePatch) -> MyPr
 async def upload_my_profile_image(
     user: AuthenticatedUser, content_type: str, data: bytes
 ) -> MyProfileResponse:
-    """Business accounts replace their logo; everyone else replaces their personal photo."""
+    """Business / Work accounts replace their primary entity's logo; everyone else replaces
+    their personal photo."""
     extension = validate_image(content_type, data)
     async with get_pool().acquire() as conn:
         _, profile_type = await _resolve_caller(conn, user, ACTION_WRITE)
         if profile_type == PROFILE_TYPE_BUSINESS:
-            await require_business_profile(conn, user.user_id)
-    is_logo = profile_type == PROFILE_TYPE_BUSINESS
-    folder = LOGO_STORAGE_FOLDER if is_logo else AVATAR_STORAGE_FOLDER
-    url = await get_photo_storage().save(folder, data, extension)
+            primary = await require_business_profile(conn, user.user_id)
+    if profile_type == PROFILE_TYPE_BUSINESS:
+        await _replace_logo(primary["id"], data, extension)
+    else:
+        url = await get_photo_storage().save(AVATAR_STORAGE_FOLDER, data, extension)
+        try:
+            async with get_pool().acquire() as conn:
+                previous = await user_repository.replace_photo_url(conn, user.user_id, url)
+        except BaseException:
+            await delete_images([url])
+            raise
+        await delete_images([previous])
+    return await get_my_profile(user)
+
+
+async def _replace_logo(business_profile_id: UUID, data: bytes, extension: str) -> None:
+    url = await get_photo_storage().save(LOGO_STORAGE_FOLDER, data, extension)
     try:
         async with get_pool().acquire() as conn:
-            if is_logo:
-                previous = await profile_repository.replace_business_logo_url(
-                    conn, user.user_id, url
-                )
-            else:
-                previous = await user_repository.replace_photo_url(conn, user.user_id, url)
+            previous = await profile_repository.replace_business_logo_url(
+                conn, business_profile_id, url
+            )
     except BaseException:
         await delete_images([url])
         raise
     await delete_images([previous])
-    return await get_my_profile(user)
 
 
 async def _apply_user_fields(
@@ -204,7 +223,7 @@ async def _apply_user_fields(
     *,
     owns_email: bool,
 ) -> None:
-    """Write users-table fields; a Business patch's ``email`` belongs to the business row."""
+    """Write users-table fields; a Business / Work patch's ``email`` belongs to the entity row."""
     fields = patch.model_dump(exclude_unset=True)
     email_set = owns_email and "email" in fields
     language = fields.get("language_code")
@@ -222,23 +241,25 @@ async def _apply_user_fields(
         )
 
 
-async def _apply_business_patch(
-    conn: asyncpg.Connection, user_id: UUID, body: BusinessProfilePatch
+async def _apply_business_fields(
+    conn: asyncpg.Connection,
+    business_profile_id: UUID,
+    body: BusinessProfilePatch | BusinessEntityPatch,
 ) -> None:
-    await require_business_profile(conn, user_id)
     category_id = (
         await catalog_service.resolve_category_id(conn, body.category_slug)
         if body.category_slug
         else None
     )
-    business_type_id = (
-        await catalog_service.resolve_business_type_id(conn, body.business_type_slug)
-        if body.business_type_slug
+    chosen_types = body.chosen_business_type_slugs()
+    business_type_ids = (
+        await catalog_service.resolve_business_type_ids(conn, chosen_types)
+        if chosen_types
         else None
     )
     await profile_repository.update_business_profile(
         conn,
-        user_id,
+        business_profile_id,
         business_name=body.business_name,
         category_id=category_id,
         address_text=body.address_text,
@@ -247,8 +268,11 @@ async def _apply_business_patch(
         longitude=body.longitude,
         contact_name=body.contact_name,
         email=body.email,
-        business_type_id=business_type_id,
     )
+    if business_type_ids:
+        await profile_repository.replace_business_types(
+            conn, business_profile_id, business_type_ids
+        )
 
 
 async def _apply_worker_patch(
@@ -360,3 +384,82 @@ async def get_worker_public_profile(
     async with get_pool().acquire() as conn:
         await require_business_profile(conn, user.user_id)
         return await build_worker_public_profile(conn, worker_profile_id)
+
+
+# --- Business / Work entities ----------------------------------------------------------
+
+
+async def list_my_businesses(user: AuthenticatedUser) -> list[BusinessProfileResponse]:
+    async with get_pool().acquire() as conn:
+        rows = await profile_repository.list_business_profiles(conn, user.user_id)
+    return [business_profile_response(row) for row in rows]
+
+
+async def get_my_business(
+    user: AuthenticatedUser, business_profile_id: UUID
+) -> BusinessProfileResponse:
+    async with get_pool().acquire() as conn:
+        row = await require_owned_business(conn, user.user_id, business_profile_id)
+    return business_profile_response(row)
+
+
+async def create_my_business(
+    user: AuthenticatedUser, body: BusinessEntityCreate
+) -> BusinessProfileResponse:
+    """Add an entity to an existing Business / Work account; the role itself comes from signup."""
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            await user_repository.lock_user(conn, user.user_id)
+            primary = await require_business_profile(conn, user.user_id)
+            owned = await profile_repository.list_business_profile_ids(conn, user.user_id)
+            if len(owned) >= MAX_BUSINESS_ENTITIES:
+                raise conflict(
+                    "business_limit_reached",
+                    MSG_BUSINESS_LIMIT_REACHED,
+                    {"limit": MAX_BUSINESS_ENTITIES},
+                )
+            business_type_ids = await catalog_service.resolve_business_type_ids(
+                conn, body.chosen_business_type_slugs() or []
+            )
+            category_id = (
+                await catalog_service.resolve_category_id(conn, body.category_slug)
+                if body.category_slug
+                else None
+            )
+            entity_id = await profile_repository.insert_business_profile(conn, user.user_id)
+            await profile_repository.update_business_profile(
+                conn,
+                entity_id,
+                business_name=body.business_name.strip(),
+                category_id=category_id,
+                address_text=body.address_text.strip(),
+                locality=resolve_locality(body.address_text, body.locality),
+                latitude=body.latitude,
+                longitude=body.longitude,
+                contact_name=(body.contact_name or primary["owner_name"] or "").strip() or None,
+                email=body.email,
+            )
+            await profile_repository.replace_business_types(conn, entity_id, business_type_ids)
+            row = await profile_repository.get_business_profile(conn, entity_id)
+    return business_profile_response(row)
+
+
+async def update_my_business(
+    user: AuthenticatedUser, business_profile_id: UUID, body: BusinessEntityPatch
+) -> BusinessProfileResponse:
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            await require_owned_business(conn, user.user_id, business_profile_id)
+            await _apply_business_fields(conn, business_profile_id, body)
+            row = await profile_repository.get_business_profile(conn, business_profile_id)
+    return business_profile_response(row)
+
+
+async def upload_my_business_logo(
+    user: AuthenticatedUser, business_profile_id: UUID, content_type: str, data: bytes
+) -> BusinessProfileResponse:
+    extension = validate_image(content_type, data)
+    async with get_pool().acquire() as conn:
+        await require_owned_business(conn, user.user_id, business_profile_id)
+    await _replace_logo(business_profile_id, data, extension)
+    return await get_my_business(user, business_profile_id)

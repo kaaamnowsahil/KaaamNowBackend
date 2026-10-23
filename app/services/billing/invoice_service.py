@@ -32,7 +32,7 @@ from app.repositories.billing import billing_repository
 from app.repositories.shifts import assignment_repository, shift_repository
 from app.schemas.billing.billing_schemas import InvoiceLine, InvoiceResponse
 from app.security.authenticated_user import AuthenticatedUser
-from app.services.profiles.profile_lookup import require_business_profile
+from app.services.profiles.profile_lookup import business_scope
 from app.utils.clock import utc_now
 from app.utils.money import pay_for_minutes, platform_fee
 from app.utils.references import INVOICE_REFERENCE_PREFIX, new_reference
@@ -50,10 +50,10 @@ async def build_invoice_response(conn: asyncpg.Connection, invoice_id: UUID) -> 
 
 
 async def load_owned_invoice(
-    conn: asyncpg.Connection, invoice_id: UUID, business_profile_id: UUID
+    conn: asyncpg.Connection, invoice_id: UUID, scope: list[UUID]
 ) -> asyncpg.Record:
     row = await billing_repository.get_invoice(conn, invoice_id)
-    if row is None or row["business_profile_id"] != business_profile_id:
+    if row is None or row["business_profile_id"] not in scope:
         raise not_found("invoice_not_found", MSG_INVOICE_NOT_FOUND)
     return row
 
@@ -63,9 +63,9 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
+            scope = await business_scope(conn, user.user_id)
             shift = await shift_repository.lock_shift(conn, shift_id)
-            if shift is None or shift["business_profile_id"] != business["id"]:
+            if shift is None or shift["business_profile_id"] not in scope:
                 raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
             existing = await billing_repository.get_invoice_by_shift(conn, shift_id)
             if existing is not None:
@@ -101,7 +101,7 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
             invoice_id = await billing_repository.insert_invoice(
                 conn,
                 shift_id=shift_id,
-                business_profile_id=business["id"],
+                business_profile_id=shift["business_profile_id"],
                 reference=new_reference(INVOICE_REFERENCE_PREFIX),
                 status=INVOICE_PENDING if subtotal + fee > 0 else INVOICE_PAID,
                 currency=shift["currency"],
@@ -149,15 +149,14 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
 
 async def get_shift_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceResponse:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
+        scope = await business_scope(conn, user.user_id)
         row = await billing_repository.get_invoice_by_shift(conn, shift_id)
-        if row is None or row["business_profile_id"] != business["id"]:
+        if row is None or row["business_profile_id"] not in scope:
             raise not_found("invoice_not_found", MSG_INVOICE_NOT_FOUND)
         return await build_invoice_response(conn, row["id"])
 
 
 async def get_invoice(user: AuthenticatedUser, invoice_id: UUID) -> InvoiceResponse:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        await load_owned_invoice(conn, invoice_id, business["id"])
+        await load_owned_invoice(conn, invoice_id, await business_scope(conn, user.user_id))
         return await build_invoice_response(conn, invoice_id)

@@ -45,7 +45,10 @@ UPDATE shifts SET
 WHERE id = $1 AND status = 'draft'
 """
 
-GET_BUSINESS_SHIFT = f"{_BUSINESS_SHIFT_SELECT} WHERE s.id = $1 AND s.business_profile_id = $2"
+# Business-side reads take the caller's owned entity ids as a uuid[].
+GET_BUSINESS_SHIFT = f"""
+{_BUSINESS_SHIFT_SELECT} WHERE s.id = $1 AND s.business_profile_id = ANY($2::uuid[])
+"""
 
 LOCK_SHIFT = "SELECT * FROM shifts WHERE id = $1 FOR UPDATE"
 
@@ -109,7 +112,7 @@ SELECT count(*) FROM shift_assignments WHERE shift_id = $1 AND status IN {SEAT_S
 
 LIST_BUSINESS_SHIFTS = f"""
 {_BUSINESS_SHIFT_SELECT}
-WHERE s.business_profile_id = $1
+WHERE s.business_profile_id = ANY($1::uuid[])
   AND ($2::varchar IS NULL OR s.shift_type = $2)
   AND ($3::varchar[] IS NULL OR s.status = ANY($3))
 ORDER BY s.starts_at DESC
@@ -118,11 +121,11 @@ LIMIT $4 OFFSET $5
 
 LIST_DASHBOARD_SHIFTS = f"""
 {_BUSINESS_SHIFT_SELECT}
-WHERE s.business_profile_id = $1 AND s.shift_type = $2
+WHERE s.business_profile_id = ANY($1::uuid[]) AND s.shift_type = $2
   AND (
       s.status IN ('searching', 'open', 'filled', 'in_progress')
       OR (s.status = 'completed' AND (i.status IS NULL OR i.status = 'pending'))
-      OR (s.status = 'expired' AND s.updated_at > $3 - interval '1 day')
+      OR (s.status = 'expired' AND s.updated_at > $3::timestamptz - interval '1 day')
   )
 ORDER BY s.starts_at
 """
@@ -130,19 +133,20 @@ ORDER BY s.starts_at
 DASHBOARD_SUMMARY = """
 SELECT
     (SELECT count(*) FROM shifts s
-     WHERE s.business_profile_id = $1
+     WHERE s.business_profile_id = ANY($1::uuid[])
        AND s.status IN ('searching', 'open', 'filled', 'in_progress')) AS active_shifts,
     (SELECT count(*) FROM shift_assignments sa JOIN shifts s ON s.id = sa.shift_id
-     WHERE s.business_profile_id = $1
+     WHERE s.business_profile_id = ANY($1::uuid[])
        AND s.status IN ('searching', 'open', 'filled', 'in_progress')
        AND sa.status IN ('confirmed', 'en_route', 'checked_in')) AS workers_booked,
     (SELECT count(*) FROM shift_applications ap JOIN shifts s ON s.id = ap.shift_id
-     WHERE s.business_profile_id = $1 AND s.status = 'open'
+     WHERE s.business_profile_id = ANY($1::uuid[]) AND s.status = 'open'
        AND ap.status = 'applied') AS pending_applications,
     (SELECT count(*) FROM shift_assignments sa JOIN shifts s ON s.id = sa.shift_id
-     WHERE s.business_profile_id = $1 AND sa.status = 'checked_out') AS awaiting_review,
+     WHERE s.business_profile_id = ANY($1::uuid[])
+       AND sa.status = 'checked_out') AS awaiting_review,
     (SELECT count(*) FROM shift_invoices i
-     WHERE i.business_profile_id = $1 AND i.status = 'pending') AS unpaid_invoices
+     WHERE i.business_profile_id = ANY($1::uuid[]) AND i.status = 'pending') AS unpaid_invoices
 """
 
 COUNT_ACTIVE_WORKERS_NEAR = """

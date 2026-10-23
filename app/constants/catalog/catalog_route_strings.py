@@ -45,5 +45,5 @@ RATING_TAGS: Final[dict[str, tuple[str, ...]]] = {
 }
 
 MSG_CATEGORY_UNKNOWN: Final[str] = "Unknown work category."
-MSG_BUSINESS_TYPE_UNKNOWN: Final[str] = "Unknown business type."
+MSG_BUSINESS_TYPE_UNKNOWN: Final[str] = "Unknown Business / Work type."
 MSG_NO_ACTIVE_FEE_POLICY: Final[str] = "No active platform fee policy is configured."

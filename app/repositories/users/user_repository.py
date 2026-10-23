@@ -114,7 +114,9 @@ async def replace_photo_url(conn: asyncpg.Connection, user_id: UUID, photo_url: 
 
 async def list_profile_image_urls(conn: asyncpg.Connection, user_id: UUID) -> list[str]:
     row = await conn.fetchrow(GET_PROFILE_IMAGE_URLS, user_id)
-    return [url for url in (row["photo_url"], row["logo_url"]) if url] if row else []
+    if row is None:
+        return []
+    return [url for url in (row["photo_url"], *row["logo_urls"]) if url]
 
 
 async def grant_role(conn: asyncpg.Connection, user_id: UUID, role: str) -> None:

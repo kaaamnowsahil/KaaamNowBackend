@@ -208,8 +208,8 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
                 conn, body.worker.work_type_slugs
             )
         if body.business is not None:
-            business_type_id = await catalog_service.resolve_business_type_id(
-                conn, body.business.business_type_slug
+            business_type_ids = await catalog_service.resolve_business_type_ids(
+                conn, body.business.chosen_business_type_slugs() or []
             )
             category_id = (
                 await catalog_service.resolve_category_id(conn, body.business.category_slug)
@@ -282,9 +282,10 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
                 )
                 await user_repository.grant_role(conn, user_id, ROLE_BUSINESS)
                 await profile_repository.ensure_business_profile(conn, user_id)
+                primary = await profile_repository.get_business_profile_by_user(conn, user_id)
                 await profile_repository.update_business_profile(
                     conn,
-                    user_id,
+                    primary["id"],
                     business_name=business.business_name.strip(),
                     category_id=category_id,
                     address_text=business.address_text.strip(),
@@ -293,7 +294,9 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
                     longitude=business.longitude,
                     contact_name=business.contact_name.strip(),
                     email=business.email,
-                    business_type_id=business_type_id,
+                )
+                await profile_repository.replace_business_types(
+                    conn, primary["id"], business_type_ids
                 )
                 role = ROLE_BUSINESS
             await user_repository.set_active_role(conn, user_id, role)

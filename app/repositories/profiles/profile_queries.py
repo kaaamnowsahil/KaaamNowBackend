@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 ENSURE_BUSINESS_PROFILE = """
-INSERT INTO business_profiles (user_id) VALUES ($1)
-ON CONFLICT (user_id) DO NOTHING
+INSERT INTO business_profiles (user_id, is_primary) VALUES ($1, true)
+ON CONFLICT (user_id) WHERE is_primary DO NOTHING
+"""
+
+INSERT_BUSINESS_PROFILE = """
+INSERT INTO business_profiles (user_id, is_primary) VALUES ($1, false)
+RETURNING id
 """
 
 ENSURE_WORKER_PROFILE = """
@@ -17,25 +22,53 @@ bp.id, bp.user_id, bp.business_name, bp.category_id, wc.slug AS category_slug,
 wc.name AS category_name, bp.logo_url, bp.address_text, bp.locality, bp.latitude, bp.longitude,
 bp.verification_status, bp.verification_note, bp.verified_at, bp.rating_avg, bp.rating_count,
 u.phone, u.full_name AS owner_name, bp.contact_name, bp.email, bp.business_type_id,
-bt.slug AS business_type_slug, bt.name AS business_type_name, bp.created_at, bp.updated_at
+bt.slug AS business_type_slug, bt.name AS business_type_name, bp.is_primary, bp.created_at,
+bp.updated_at,
+COALESCE(
+    (SELECT array_agg(t.slug ORDER BY bpt.position, t.sort_order)
+     FROM business_profile_types bpt JOIN business_types t ON t.id = bpt.business_type_id
+     WHERE bpt.business_profile_id = bp.id),
+    ARRAY_REMOVE(ARRAY[bt.slug], NULL)
+) AS business_type_slugs,
+COALESCE(
+    (SELECT array_agg(t.name ORDER BY bpt.position, t.sort_order)
+     FROM business_profile_types bpt JOIN business_types t ON t.id = bpt.business_type_id
+     WHERE bpt.business_profile_id = bp.id),
+    ARRAY_REMOVE(ARRAY[bt.name], NULL)
+) AS business_type_names
+"""
+
+_BUSINESS_FROM = """
+FROM business_profiles bp
+JOIN users u ON u.id = bp.user_id
+LEFT JOIN work_categories wc ON wc.id = bp.category_id
+LEFT JOIN business_types bt ON bt.id = bp.business_type_id
 """
 
 GET_BUSINESS_PROFILE_BY_USER = f"""
 SELECT {_BUSINESS_COLUMNS}
-FROM business_profiles bp
-JOIN users u ON u.id = bp.user_id
-LEFT JOIN work_categories wc ON wc.id = bp.category_id
-LEFT JOIN business_types bt ON bt.id = bp.business_type_id
+{_BUSINESS_FROM}
 WHERE bp.user_id = $1
+ORDER BY bp.is_primary DESC, bp.created_at, bp.id
+LIMIT 1
 """
 
 GET_BUSINESS_PROFILE_BY_ID = f"""
 SELECT {_BUSINESS_COLUMNS}
-FROM business_profiles bp
-JOIN users u ON u.id = bp.user_id
-LEFT JOIN work_categories wc ON wc.id = bp.category_id
-LEFT JOIN business_types bt ON bt.id = bp.business_type_id
+{_BUSINESS_FROM}
 WHERE bp.id = $1
+"""
+
+LIST_BUSINESS_PROFILES_BY_USER = f"""
+SELECT {_BUSINESS_COLUMNS}
+{_BUSINESS_FROM}
+WHERE bp.user_id = $1
+ORDER BY bp.is_primary DESC, bp.created_at, bp.id
+"""
+
+LIST_BUSINESS_PROFILE_IDS_BY_USER = """
+SELECT id FROM business_profiles WHERE user_id = $1
+ORDER BY is_primary DESC, created_at, id
 """
 
 UPDATE_BUSINESS_PROFILE = """
@@ -50,12 +83,25 @@ UPDATE business_profiles SET
     email = COALESCE($9, email),
     business_type_id = COALESCE($10, business_type_id),
     updated_at = now()
-WHERE user_id = $1
+WHERE id = $1
+"""
+
+DELETE_BUSINESS_TYPES = "DELETE FROM business_profile_types WHERE business_profile_id = $1"
+
+INSERT_BUSINESS_TYPES = """
+INSERT INTO business_profile_types (business_profile_id, business_type_id, position)
+SELECT $1, type_id, (ord - 1)::smallint
+FROM unnest($2::uuid[]) WITH ORDINALITY AS chosen(type_id, ord)
+ON CONFLICT DO NOTHING
+"""
+
+SET_PRIMARY_BUSINESS_TYPE = """
+UPDATE business_profiles SET business_type_id = $2, updated_at = now() WHERE id = $1
 """
 
 REPLACE_BUSINESS_LOGO_URL = """
 UPDATE business_profiles bp SET logo_url = $2, updated_at = now()
-FROM (SELECT id, logo_url FROM business_profiles WHERE user_id = $1 FOR UPDATE) previous
+FROM (SELECT id, logo_url FROM business_profiles WHERE id = $1 FOR UPDATE) previous
 WHERE bp.id = previous.id
 RETURNING previous.logo_url
 """
@@ -137,10 +183,7 @@ LIMIT $2 OFFSET $3
 
 LIST_VERIFICATIONS_BUSINESSES = f"""
 SELECT {_BUSINESS_COLUMNS}
-FROM business_profiles bp
-JOIN users u ON u.id = bp.user_id
-LEFT JOIN work_categories wc ON wc.id = bp.category_id
-LEFT JOIN business_types bt ON bt.id = bp.business_type_id
+{_BUSINESS_FROM}
 WHERE bp.verification_status = $1
 ORDER BY bp.created_at
 LIMIT $2 OFFSET $3
@@ -176,10 +219,11 @@ RECOMPUTE_BUSINESS_RATING = """
 UPDATE business_profiles bp SET
     rating_avg = COALESCE(agg.avg_stars, 0), rating_count = agg.n, updated_at = now()
 FROM (
-    SELECT round(avg(stars)::numeric, 2) AS avg_stars, count(*) AS n
-    FROM ratings WHERE ratee_user_id = $2 AND direction = 'worker_to_business'
+    SELECT round(avg(r.stars)::numeric, 2) AS avg_stars, count(*) AS n
+    FROM ratings r JOIN shifts s ON s.id = r.shift_id
+    WHERE s.business_profile_id = $1 AND r.direction = 'worker_to_business'
 ) agg
-WHERE bp.user_id = $2 AND bp.id = $1
+WHERE bp.id = $1
 """
 
 INCREMENT_COMPLETED_SHIFTS = """

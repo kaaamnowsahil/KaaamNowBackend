@@ -1,4 +1,4 @@
-"""Business / worker profile + admin verification route constants."""
+"""Business / Work and worker profile + admin verification route constants."""
 
 from __future__ import annotations
 
@@ -18,12 +18,22 @@ VERIFICATION_PENDING: Final[str] = "pending"
 VERIFICATION_VERIFIED: Final[str] = "verified"
 VERIFICATION_REJECTED: Final[str] = "rejected"
 
-MSG_BUSINESS_PROFILE_MISSING: Final[str] = "Sign up as a Business first (POST /api/v1/auth/signup)."
+MAX_BUSINESS_ENTITIES: Final[int] = 50
+MAX_BUSINESS_TYPES: Final[int] = 10
+
+MSG_BUSINESS_TYPE_REQUIRED: Final[str] = "Choose at least one Business / Work type."
+
+MSG_BUSINESS_PROFILE_MISSING: Final[str] = (
+    "Sign up as a Business / Work account first (POST /api/v1/auth/signup)."
+)
 MSG_WORKER_PROFILE_MISSING: Final[str] = "Sign up as a Worker first (POST /api/v1/auth/signup)."
 MSG_WORKER_NOT_FOUND: Final[str] = "Worker not found."
-MSG_BUSINESS_NOT_FOUND: Final[str] = "Business not found."
+MSG_BUSINESS_NOT_FOUND: Final[str] = "Business / Work profile not found."
 MSG_BUSINESS_PROFILE_INCOMPLETE: Final[str] = (
-    "Complete your business name and location before posting shifts."
+    "Complete your Business / Work name and location before posting shifts."
+)
+MSG_BUSINESS_LIMIT_REACHED: Final[str] = (
+    "You have reached the maximum number of Business / Work profiles."
 )
 MSG_WORKER_NOT_VERIFIED: Final[str] = "Your worker profile is awaiting verification."
 MSG_WORKER_LOCATION_REQUIRED: Final[str] = "Share your location to go online."

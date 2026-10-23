@@ -25,6 +25,7 @@ from app.security.permissions import (
     ACTION_READ,
     ACTION_WRITE,
     RESOURCE_BILLING,
+    RESOURCE_BUSINESS_PROFILE,
     RESOURCE_EARNINGS,
     RESOURCE_SHIFTS,
     RESOURCE_VERIFICATION,
@@ -107,6 +108,12 @@ CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 AuthenticatedTokenUser = Annotated[AuthenticatedUser, Depends(get_authenticated_user)]
 OptionalUser = Annotated[AuthenticatedUser | None, Depends(get_optional_user)]
 
+RequireBusinessProfileRead = Annotated[
+    AuthenticatedUser, Depends(require_access(RESOURCE_BUSINESS_PROFILE, ACTION_READ))
+]
+RequireBusinessProfileWrite = Annotated[
+    AuthenticatedUser, Depends(require_access(RESOURCE_BUSINESS_PROFILE, ACTION_WRITE))
+]
 RequireShiftsRead = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_SHIFTS, ACTION_READ))
 ]
