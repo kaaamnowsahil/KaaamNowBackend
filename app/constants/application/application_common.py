@@ -39,10 +39,14 @@ OPENAPI_TAG_HEALTH: Final[str] = "health"
 # --- Swagger summary role suffixes ---
 SWAGGER_ROLE_PUBLIC: Final[str] = "Public"
 SWAGGER_ROLE_ANY_USER: Final[str] = "Any signed-in user"
-SWAGGER_ROLE_BUSINESS: Final[str] = "Business"
+SWAGGER_ROLE_BUSINESS: Final[str] = "Business / Work"
 SWAGGER_ROLE_WORKER: Final[str] = "Worker"
 SWAGGER_ROLE_PARTICIPANT: Final[str] = "Shift participant"
 SWAGGER_ROLE_ADMIN: Final[str] = "Admin"
+
+DESC_ENTITY_FILTER: Final[str] = (
+    "Only this Business / Work entity (must be yours). Omit for all of your entities."
+)
 
 
 def swagger_summary(title: str, *roles: str) -> str:

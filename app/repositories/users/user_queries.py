@@ -81,7 +81,7 @@ SELECT {_USER_COLUMNS},
        bp.verification_status AS business_verification,
        wp.id AS worker_profile_id, wp.verification_status AS worker_verification, wp.is_available
 FROM users u
-LEFT JOIN business_profiles bp ON bp.user_id = u.id
+LEFT JOIN business_profiles bp ON bp.user_id = u.id AND bp.is_primary
 LEFT JOIN worker_profiles wp ON wp.user_id = u.id
 WHERE u.id = $1
 """
@@ -106,8 +106,10 @@ RETURNING previous.photo_url
 """
 
 GET_PROFILE_IMAGE_URLS = """
-SELECT u.photo_url, bp.logo_url
-FROM users u LEFT JOIN business_profiles bp ON bp.user_id = u.id
+SELECT u.photo_url,
+       ARRAY(SELECT bp.logo_url FROM business_profiles bp
+             WHERE bp.user_id = u.id AND bp.logo_url IS NOT NULL) AS logo_urls
+FROM users u
 WHERE u.id = $1
 """
 

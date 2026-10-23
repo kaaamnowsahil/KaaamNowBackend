@@ -48,42 +48,152 @@ INSERT INTO work_categories (slug, name, icon, sort_order) VALUES
     ('pet-care',         'Pet Care',                 'paw-print',     27),
     ('cook',             'Cook (Hotel / Restaurant)', 'chef-hat',     28),
     ('hotel-staff',      'Hotel Staff',              'bed',           29),
+    ('ac-technician',           'AC Technician / Repair',          'air-vent',        30),
+    ('appliance-repair',        'Appliance Repair Technician',     'plug',            31),
+    ('ro-technician',           'RO / Water Purifier Technician',  'droplet',         32),
+    ('pest-control',            'Pest Control Worker',             'bug',             33),
+    ('deep-cleaning',           'Deep Cleaning',                   'spray-can',       34),
+    ('chef',                    'Chef / Head Cook',                'chef-hat',        35),
+    ('dishwasher',              'Dishwasher / Kitchen Steward',    'utensils-crossed', 36),
+    ('catering-staff',          'Catering Staff',                  'utensils',        37),
+    ('barista',                 'Barista',                         'coffee',          38),
+    ('cashier',                 'Cashier / Billing Staff',         'receipt',         39),
+    ('sales-executive',         'Sales Executive',                 'trending-up',     40),
+    ('storekeeper',             'Storekeeper',                     'boxes',           41),
+    ('inventory-assistant',     'Inventory Assistant',             'clipboard-list',  42),
+    ('receptionist',            'Receptionist / Front Desk',       'bell',            43),
+    ('data-entry',              'Data Entry Operator',             'keyboard',        44),
+    ('computer-operator',       'Computer Operator',               'monitor',         45),
+    ('customer-support',        'Customer Support Executive',      'headphones',      46),
+    ('bike-delivery',           'Bike Delivery Partner',           'bike',            47),
+    ('courier',                 'Courier / Parcel Delivery',       'package',         48),
+    ('picker-packer',           'Picker / Packer',                 'package-check',   49),
+    ('forklift-operator',       'Forklift Operator',               'forklift',        50),
+    ('factory-helper',          'Factory Helper',                  'factory',         51),
+    ('machine-operator',        'Machine Operator',                'cog',             52),
+    ('production-line',         'Production Line Worker',          'settings',        53),
+    ('packaging',               'Packaging Worker',                'package-open',    54),
+    ('quality-checker',         'Quality Checker',                 'badge-check',     55),
+    ('mason',                   'Mason / Raj Mistri',              'brick-wall',      56),
+    ('tile-fitter',             'Tile / Marble Fitter',            'grid-3x3',        57),
+    ('welder',                  'Welder',                          'flame',           58),
+    ('fabricator',              'Fabricator',                      'wrench',          59),
+    ('false-ceiling',           'False Ceiling Worker',            'layers',          60),
+    ('glass-fitter',            'Glass / Aluminium Fitter',        'square',          61),
+    ('construction-supervisor', 'Construction Supervisor',         'hard-hat',        62),
+    ('event-setup',             'Event Setup Crew',                'tent',            63),
+    ('sound-light',             'Sound / Light Technician',        'speaker',         64),
+    ('photographer',            'Photographer / Videographer',     'camera',          65),
+    ('housekeeping',            'Housekeeping Staff',              'bed-double',      66),
+    ('facility-maintenance',    'Facility Maintenance Technician', 'hammer',          67),
+    ('beautician',              'Beautician / Salon Staff',        'sparkle',         68),
+    ('barber',                  'Hairdresser / Barber',            'scissors',        69),
+    ('makeup-artist',           'Makeup Artist',                   'brush',           70),
+    ('mobile-repair',           'Mobile Repair Technician',        'smartphone',      71),
+    ('it-technician',           'Computer / IT Technician',        'laptop',          72),
+    ('tutor',                   'Tutor / Home Tutor',              'book-open',       73),
+    ('waste-collection',        'Waste Collection Worker',         'trash-2',         74),
     ('other',            'Other',                    'more-horizontal', 99)
 ON CONFLICT (slug) DO NOTHING;
 
--- App business signup "Business type" chips.
+-- Business / Work type chips: one list for households and commercial hirers alike.
 INSERT INTO business_types (slug, name, icon, sort_order) VALUES
-    ('hospitality', 'Hospitality',       'coffee',          1),
-    ('retail',      'Retail',            'shopping-bag',    2),
-    ('events',      'Events',            'calendar',        3),
-    ('delivery',    'Delivery',          'truck',           4),
-    ('household',   'Household',         'home',            5),
-    ('office',      'Office',            'briefcase',       6),
-    ('restaurant',     'Restaurant / Cafe',        'utensils',        7),
-    ('hotel',          'Hotel / Guest House',      'bed',             8),
-    ('catering',       'Catering',                 'chef-hat',        9),
-    ('grocery',        'Grocery / Kirana Store',   'shopping-cart',   10),
-    ('supermarket',    'Supermarket / Mall',       'store',           11),
-    ('warehouse',      'Warehouse / Logistics',    'warehouse',       12),
-    ('manufacturing',  'Factory / Manufacturing',  'factory',         13),
-    ('construction',   'Construction',             'hard-hat',        14),
-    ('real-estate',    'Real Estate / Society',    'building',        15),
-    ('healthcare',     'Hospital / Clinic',        'stethoscope',     16),
-    ('education',      'School / Coaching',        'graduation-cap',  17),
-    ('salon',          'Salon / Spa',              'scissors',        18),
-    ('gym',            'Gym / Fitness',            'dumbbell',        19),
-    ('cleaning',       'Cleaning / Facility',      'sparkles',        20),
-    ('security',       'Security Services',        'shield',          21),
-    ('automobile',     'Automobile / Garage',      'car',             22),
-    ('car-wash',       'Car Wash',                 'droplets',        23),
-    ('laundry',        'Laundry / Dry Clean',      'shirt',           24),
-    ('bakery',         'Bakery / Sweet Shop',      'cake',            25),
-    ('pharmacy',       'Pharmacy',                 'pill',            26),
-    ('ecommerce',      'E-commerce',               'package',         27),
-    ('agriculture',    'Farm / Agriculture',       'leaf',            28),
-    ('wedding',        'Wedding / Banquet Hall',   'party-popper',    29),
-    ('other',       'Other',             'more-horizontal', 99)
+    ('household',             'Household',                         'home',            1),
+    ('personal-residence',    'Personal Residence',                'house',           2),
+    ('apartment',             'Apartment / Flat',                  'building-2',      3),
+    ('independent-house',     'Independent House / Villa',         'house-plus',      4),
+    ('rental-property',       'Rental Property',                   'key-round',       5),
+    ('residential-society',   'Residential Society',               'building',        6),
+    ('office',                'Office',                            'briefcase',       7),
+    ('corporate-office',      'Corporate Office',                  'landmark',        8),
+    ('hospitality',           'Hospitality',                       'coffee',          9),
+    ('retail',                'Retail',                            'shopping-bag',    10),
+    ('events',                'Events',                            'calendar',        11),
+    ('delivery',              'Delivery',                          'truck',           12),
+    ('restaurant',            'Restaurant / Cafe',                 'utensils',        13),
+    ('hotel',                 'Hotel / Guest House',               'bed',             14),
+    ('catering',              'Catering',                          'chef-hat',        15),
+    ('grocery',               'Grocery / Kirana Store',            'shopping-cart',   16),
+    ('supermarket',           'Supermarket / Mall',                'store',           17),
+    ('warehouse',             'Warehouse / Logistics',             'warehouse',       18),
+    ('manufacturing',         'Factory / Manufacturing',           'factory',         19),
+    ('construction',          'Construction',                      'hard-hat',        20),
+    ('real-estate',           'Real Estate / Property Management', 'building',        21),
+    ('healthcare',            'Hospital / Clinic',                 'stethoscope',     22),
+    ('education',             'School / Coaching',                 'graduation-cap',  23),
+    ('college',               'College / University',              'school',          24),
+    ('salon',                 'Salon / Spa',                       'scissors',        25),
+    ('gym',                   'Gym / Fitness Center',              'dumbbell',        26),
+    ('cleaning',              'Cleaning / Facility Management',    'sparkles',        27),
+    ('security',              'Security Services',                 'shield',          28),
+    ('automobile',            'Automobile / Garage',               'car',             29),
+    ('car-wash',              'Car Wash',                          'droplets',        30),
+    ('laundry',               'Laundry / Dry Cleaning',            'shirt',           31),
+    ('bakery',                'Bakery / Sweet Shop',               'cake',            32),
+    ('pharmacy',              'Pharmacy',                          'pill',            33),
+    ('ecommerce',             'E-commerce',                        'package',         34),
+    ('agriculture',           'Farm / Agriculture',                'leaf',            35),
+    ('wedding',               'Wedding / Banquet Hall',            'party-popper',    36),
+    ('travel',                'Travel / Tourism',                  'plane',           37),
+    ('call-center',           'Call Center / BPO',                 'headset',         38),
+    ('it-software',           'IT / Software Company',             'laptop',          39),
+    ('professional-services', 'Professional Services',             'briefcase-business', 40),
+    ('ngo',                   'NGO / Non-profit',                  'hand-heart',      41),
+    ('small-business',        'Shop / Small Business',             'store',           42),
+    ('other',                 'Other',                             'more-horizontal', 99)
 ON CONFLICT (slug) DO NOTHING;
+
+-- Bring rows seeded by the earlier list to the new names and order. A row an admin has since
+-- renamed or reordered no longer matches its old values and is left alone.
+UPDATE business_types bt
+SET name = v.new_name, sort_order = v.new_sort, updated_at = now()
+FROM (VALUES
+    ('hospitality',   'Hospitality',             1,  'Hospitality',                       9),
+    ('retail',        'Retail',                  2,  'Retail',                            10),
+    ('events',        'Events',                  3,  'Events',                            11),
+    ('delivery',      'Delivery',                4,  'Delivery',                          12),
+    ('household',     'Household',               5,  'Household',                         1),
+    ('office',        'Office',                  6,  'Office',                            7),
+    ('restaurant',    'Restaurant / Cafe',       7,  'Restaurant / Cafe',                 13),
+    ('hotel',         'Hotel / Guest House',     8,  'Hotel / Guest House',               14),
+    ('catering',      'Catering',                9,  'Catering',                          15),
+    ('grocery',       'Grocery / Kirana Store',  10, 'Grocery / Kirana Store',            16),
+    ('supermarket',   'Supermarket / Mall',      11, 'Supermarket / Mall',                17),
+    ('warehouse',     'Warehouse / Logistics',   12, 'Warehouse / Logistics',             18),
+    ('manufacturing', 'Factory / Manufacturing', 13, 'Factory / Manufacturing',           19),
+    ('construction',  'Construction',            14, 'Construction',                      20),
+    ('real-estate',   'Real Estate / Society',   15, 'Real Estate / Property Management', 21),
+    ('healthcare',    'Hospital / Clinic',       16, 'Hospital / Clinic',                 22),
+    ('education',     'School / Coaching',       17, 'School / Coaching',                 23),
+    ('salon',         'Salon / Spa',             18, 'Salon / Spa',                       25),
+    ('gym',           'Gym / Fitness',           19, 'Gym / Fitness Center',              26),
+    ('cleaning',      'Cleaning / Facility',     20, 'Cleaning / Facility Management',    27),
+    ('security',      'Security Services',       21, 'Security Services',                 28),
+    ('automobile',    'Automobile / Garage',     22, 'Automobile / Garage',               29),
+    ('car-wash',      'Car Wash',                23, 'Car Wash',                          30),
+    ('laundry',       'Laundry / Dry Clean',     24, 'Laundry / Dry Cleaning',            31),
+    ('bakery',        'Bakery / Sweet Shop',     25, 'Bakery / Sweet Shop',               32),
+    ('pharmacy',      'Pharmacy',                26, 'Pharmacy',                          33),
+    ('ecommerce',     'E-commerce',              27, 'E-commerce',                        34),
+    ('agriculture',   'Farm / Agriculture',      28, 'Farm / Agriculture',                35),
+    ('wedding',       'Wedding / Banquet Hall',  29, 'Wedding / Banquet Hall',            36)
+) AS v(slug, old_name, old_sort, new_name, new_sort)
+WHERE bt.slug = v.slug AND bt.name = v.old_name AND bt.sort_order = v.old_sort;
+
+-- Entities that only carry the legacy work-category get the Business / Work type of the same slug.
+UPDATE business_profiles bp
+SET business_type_id = bt.id, updated_at = now()
+FROM work_categories wc
+JOIN business_types bt ON bt.slug = wc.slug
+WHERE bp.business_type_id IS NULL AND bp.category_id = wc.id;
+
+-- Profiles that predate multi-select keep their single type as the primary chip.
+INSERT INTO business_profile_types (business_profile_id, business_type_id, position)
+SELECT bp.id, bp.business_type_id, 0
+FROM business_profiles bp
+WHERE bp.business_type_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM business_profile_types t WHERE t.business_profile_id = bp.id)
+ON CONFLICT DO NOTHING;
 
 -- OWNER DECISION: Figma shows an illustrative 5% fee paid by the business on top of worker pay.
 INSERT INTO platform_fee_policies (version, percentage, is_active, notes)

@@ -1,4 +1,4 @@
-"""Business: final cost, pay, receipts, payment history. Provider webhook."""
+"""Business / Work: final cost, pay, receipts, payment history. Provider webhook."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request, status
 
 from app.constants.application.application_common import (
+    DESC_ENTITY_FILTER,
     SWAGGER_ROLE_BUSINESS,
     SWAGGER_ROLE_PUBLIC,
     swagger_summary,
@@ -91,9 +92,15 @@ async def history(
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
+    business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
 ) -> PaymentHistoryPage:
     return await payment_service.history(
-        user, status=status_filter, month=month, limit=limit, offset=offset
+        user,
+        status=status_filter,
+        month=month,
+        limit=limit,
+        offset=offset,
+        business_profile_id=business_profile_id,
     )
 
 

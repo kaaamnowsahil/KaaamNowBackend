@@ -61,7 +61,8 @@ from app.security.authenticated_user import AuthenticatedUser
 from app.services.catalog import catalog_service
 from app.services.notifications.notification_service import notify_many
 from app.services.profiles.profile_lookup import (
-    require_business_profile,
+    business_scope,
+    ensure_postable,
     require_postable_business,
 )
 from app.services.shifts import live_dispatch_service
@@ -99,27 +100,27 @@ async def _estimate_for(conn: asyncpg.Connection, row: asyncpg.Record) -> ShiftC
 
 
 async def _load_owned(
-    conn: asyncpg.Connection, business_profile_id: UUID, shift_id: UUID
+    conn: asyncpg.Connection, scope: list[UUID], shift_id: UUID
 ) -> asyncpg.Record:
-    row = await shift_repository.get_business_shift(conn, shift_id, business_profile_id)
+    row = await shift_repository.get_business_shift(conn, shift_id, scope)
     if row is None:
         raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
     return row
 
 
 async def _lock_owned(
-    conn: asyncpg.Connection, business_profile_id: UUID, shift_id: UUID
+    conn: asyncpg.Connection, scope: list[UUID], shift_id: UUID
 ) -> asyncpg.Record:
     row = await shift_repository.lock_shift(conn, shift_id)
-    if row is None or row["business_profile_id"] != business_profile_id:
+    if row is None or row["business_profile_id"] not in scope:
         raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
     return row
 
 
 async def build_shift_response(
-    conn: asyncpg.Connection, business_profile_id: UUID, shift_id: UUID
+    conn: asyncpg.Connection, scope: list[UUID], shift_id: UUID
 ) -> ShiftResponse:
-    row = await _load_owned(conn, business_profile_id, shift_id)
+    row = await _load_owned(conn, scope, shift_id)
     return shift_response(row, await _estimate_for(conn, row), utc_now())
 
 
@@ -264,7 +265,7 @@ async def create_shift(user: AuthenticatedUser, body: ShiftCreate) -> ShiftRespo
     )
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_postable_business(conn, user.user_id)
+            business = await require_postable_business(conn, user.user_id, body.business_profile_id)
             base = {
                 "category_id": await catalog_service.resolve_category_id(conn, body.category_slug),
                 "responsibilities": "",
@@ -300,17 +301,20 @@ async def create_shift(user: AuthenticatedUser, body: ShiftCreate) -> ShiftRespo
                 await _publish_locked(
                     conn, await shift_repository.lock_shift(conn, shift_id), user, now
                 )
-            return await build_shift_response(conn, business["id"], shift_id)
+            return await build_shift_response(conn, [business["id"]], shift_id)
 
 
 async def update_draft(user: AuthenticatedUser, shift_id: UUID, body: ShiftPatch) -> ShiftResponse:
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            shift = await _lock_owned(conn, business["id"], shift_id)
+            scope = await business_scope(conn, user.user_id)
+            shift = await _lock_owned(conn, scope, shift_id)
             if shift["status"] != SHIFT_DRAFT:
                 raise conflict("shift_not_draft", MSG_SHIFT_NOT_DRAFT)
+            business = await profile_repository.get_business_profile(
+                conn, shift["business_profile_id"]
+            )
             values = _merged_values({k: shift[k] for k in shift.keys()}, body, business)
             if body.category_slug:
                 values["category_id"] = await catalog_service.resolve_category_id(
@@ -336,17 +340,20 @@ async def update_draft(user: AuthenticatedUser, shift_id: UUID, body: ShiftPatch
                     now=now,
                 )
             await shift_repository.update_draft_shift(conn, shift_id, values)
-            return await build_shift_response(conn, business["id"], shift_id)
+            return await build_shift_response(conn, scope, shift_id)
 
 
 async def publish(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_postable_business(conn, user.user_id)
-            shift = await _lock_owned(conn, business["id"], shift_id)
+            scope = await business_scope(conn, user.user_id)
+            shift = await _lock_owned(conn, scope, shift_id)
+            ensure_postable(
+                await profile_repository.get_business_profile(conn, shift["business_profile_id"])
+            )
             await _publish_locked(conn, shift, user, now)
-            return await build_shift_response(conn, business["id"], shift_id)
+            return await build_shift_response(conn, scope, shift_id)
 
 
 async def cancel(
@@ -355,8 +362,8 @@ async def cancel(
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            shift = await _lock_owned(conn, business["id"], shift_id)
+            scope = await business_scope(conn, user.user_id)
+            shift = await _lock_owned(conn, scope, shift_id)
             if shift["status"] not in SHIFT_CANCELLABLE_STATUSES:
                 raise conflict("shift_not_cancellable", MSG_SHIFT_NOT_CANCELLABLE)
             if await assignment_repository.count_in(conn, shift_id, [ASG_CHECKED_IN]):
@@ -389,7 +396,7 @@ async def cancel(
                 body.reason,
                 {"shift_id": shift_id},
             )
-            return await build_shift_response(conn, business["id"], shift_id)
+            return await build_shift_response(conn, scope, shift_id)
 
 
 async def convert_to_scheduled(
@@ -398,8 +405,8 @@ async def convert_to_scheduled(
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            shift = await _lock_owned(conn, business["id"], shift_id)
+            scope = await business_scope(conn, user.user_id)
+            shift = await _lock_owned(conn, scope, shift_id)
             seats = await shift_repository.count_seats(conn, shift_id)
             allowed = shift["shift_type"] == SHIFT_LIVE and (
                 shift["status"] == SHIFT_EXPIRED
@@ -430,7 +437,7 @@ async def convert_to_scheduled(
                 conn, shift_id, shift["status"], SHIFT_OPEN, user.user_id, "converted_to_scheduled"
             )
             await _notify_nearby_scheduled(conn, await shift_repository.lock_shift(conn, shift_id))
-            return await build_shift_response(conn, business["id"], shift_id)
+            return await build_shift_response(conn, scope, shift_id)
 
 
 async def retry_live(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
@@ -438,8 +445,8 @@ async def retry_live(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            shift = await _lock_owned(conn, business["id"], shift_id)
+            scope = await business_scope(conn, user.user_id)
+            shift = await _lock_owned(conn, scope, shift_id)
             if shift["shift_type"] != SHIFT_LIVE or shift["status"] != SHIFT_EXPIRED:
                 raise conflict("retry_not_allowed", MSG_RETRY_NOT_ALLOWED)
             duration = shift["ends_at"] - shift["starts_at"]
@@ -461,13 +468,13 @@ async def retry_live(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
             await live_dispatch_service.dispatch_round(
                 conn, await shift_repository.lock_shift(conn, shift_id), now
             )
-            return await build_shift_response(conn, business["id"], shift_id)
+            return await build_shift_response(conn, scope, shift_id)
 
 
 async def get_shift(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        return await build_shift_response(conn, business["id"], shift_id)
+        scope = await business_scope(conn, user.user_id)
+        return await build_shift_response(conn, scope, shift_id)
 
 
 async def list_shifts(
@@ -477,13 +484,14 @@ async def list_shifts(
     statuses: list[str] | None,
     limit: int | None,
     offset: int,
+    business_profile_id: UUID | None = None,
 ) -> ShiftPage:
     page_limit = clamp_page_limit(limit)
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
+        scope = await business_scope(conn, user.user_id, business_profile_id)
         rows = await shift_repository.list_business_shifts(
             conn,
-            business["id"],
+            scope,
             shift_type=shift_type,
             statuses=statuses or None,
             limit=page_limit,
@@ -492,11 +500,13 @@ async def list_shifts(
     return ShiftPage(items=[shift_list_item(r) for r in rows], limit=page_limit, offset=offset)
 
 
-async def dashboard(user: AuthenticatedUser, tab: str) -> DashboardResponse:
+async def dashboard(
+    user: AuthenticatedUser, tab: str, business_profile_id: UUID | None = None
+) -> DashboardResponse:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        summary = await shift_repository.dashboard_summary(conn, business["id"])
-        rows = await shift_repository.list_dashboard_shifts(conn, business["id"], tab, utc_now())
+        scope = await business_scope(conn, user.user_id, business_profile_id)
+        summary = await shift_repository.dashboard_summary(conn, scope)
+        rows = await shift_repository.list_dashboard_shifts(conn, scope, tab, utc_now())
     return DashboardResponse(
         tab=tab,  # type: ignore[arg-type]
         summary=DashboardSummary.model_validate(dict(summary)),
@@ -508,8 +518,8 @@ async def live_search_status(user: AuthenticatedUser, shift_id: UUID) -> LiveSea
     settings = load_settings()
     now = utc_now()
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        row = await _load_owned(conn, business["id"], shift_id)
+        scope = await business_scope(conn, user.user_id)
+        row = await _load_owned(conn, scope, shift_id)
         radius = row["max_search_radius_km"] or settings.live_max_radius_km
         lat_delta, lng_delta = bounding_box_deltas(row["latitude"], radius)
         nearby = await shift_repository.count_active_workers_near(

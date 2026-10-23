@@ -18,6 +18,7 @@ from app.schemas.profiles.profile_schemas import (
     OptionalLatitude,
     OptionalLongitude,
     _CoordinatesPair,
+    _RequiredBusinessTypeChoice,
 )
 from app.schemas.users.user_schemas import MeResponse, SelfServiceRole
 
@@ -69,7 +70,8 @@ class OtpSendRequest(BaseModel):
     )
     role: SelfServiceRole | None = Field(
         default=None,
-        description="With intent: check the account for this role (worker or business).",
+        description="With intent: check the account for this role (worker or business, "
+        "shown as Business / Work).",
     )
 
 
@@ -129,8 +131,12 @@ class SignupWorkerDetails(_CoordinatesPair):
     work_type_slugs: list[str] = Field(min_length=1, max_length=20)
 
 
-class SignupBusinessDetails(_CoordinatesPair):
-    """App business signup step 2 ("Tell us about your business")."""
+class SignupBusinessDetails(_CoordinatesPair, _RequiredBusinessTypeChoice):
+    """App Business / Work signup step 2: the first (primary) Business / Work entity.
+
+    ``business_type_slugs`` come from GET /api/v1/business-types (pick ``household`` for a
+    home); the legacy single ``business_type_slug`` is still accepted. At least one is required.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -141,7 +147,6 @@ class SignupBusinessDetails(_CoordinatesPair):
     locality: str | None = Field(default=None, max_length=160)
     latitude: float | None = OptionalLatitude
     longitude: float | None = OptionalLongitude
-    business_type_slug: str = Field(max_length=64)
     category_slug: str | None = Field(default=None, max_length=64)
 
 
@@ -188,7 +193,7 @@ class OtpVerifyResponse(BaseModel):
     tokens: TokenPair
     is_new_user: bool
     needs_role_selection: bool = Field(
-        description="True until the user picks Business or Worker (Figma role screen)."
+        description="True until the user picks Business / Work or Worker (Figma role screen)."
     )
     me: MeResponse
 

@@ -56,7 +56,7 @@ from app.schemas.shifts.assignment_schemas import (
 )
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.notifications.notification_service import notify
-from app.services.profiles.profile_lookup import require_business_profile
+from app.services.profiles.profile_lookup import business_scope
 from app.services.shifts.domain.shift_mappers import (
     attendance_summary,
     business_card,
@@ -151,8 +151,8 @@ async def get_assignment(user: AuthenticatedUser, assignment_id: UUID) -> Assign
 
 async def roster(user: AuthenticatedUser, shift_id: UUID) -> Roster:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        shift = await shift_repository.get_business_shift(conn, shift_id, business["id"])
+        scope = await business_scope(conn, user.user_id)
+        shift = await shift_repository.get_business_shift(conn, shift_id, scope)
         if shift is None:
             raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
         rows = await assignment_repository.list_roster(conn, shift_id)

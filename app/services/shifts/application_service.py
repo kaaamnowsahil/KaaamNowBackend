@@ -1,4 +1,4 @@
-"""Scheduled shifts: apply → business selects → worker confirms within the window."""
+"""Scheduled shifts: apply → Business / Work selects → worker confirms within the window."""
 
 from __future__ import annotations
 
@@ -49,8 +49,8 @@ from app.schemas.shifts.application_schemas import (
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.notifications.notification_service import notify, notify_many
 from app.services.profiles.profile_lookup import (
+    business_scope,
     ensure_worker_can_work,
-    require_business_profile,
     require_worker_profile,
 )
 from app.services.shifts.domain.shift_mappers import applicant_item
@@ -75,10 +75,10 @@ async def _lock_for_worker(
 
 
 async def _lock_for_business(
-    conn: asyncpg.Connection, application_id: UUID, business_profile_id: UUID
+    conn: asyncpg.Connection, application_id: UUID, scope: list[UUID]
 ) -> asyncpg.Record:
     app_row = await application_repository.lock_application(conn, application_id)
-    if app_row is None or app_row["business_profile_id"] != business_profile_id:
+    if app_row is None or app_row["business_profile_id"] not in scope:
         raise not_found("application_not_found", MSG_APPLICATION_NOT_FOUND)
     return app_row
 
@@ -155,8 +155,8 @@ async def list_applicants(
     user: AuthenticatedUser, shift_id: UUID, statuses: list[str] | None
 ) -> ApplicantList:
     async with get_pool().acquire() as conn:
-        business = await require_business_profile(conn, user.user_id)
-        shift = await shift_repository.get_business_shift(conn, shift_id, business["id"])
+        scope = await business_scope(conn, user.user_id)
+        shift = await shift_repository.get_business_shift(conn, shift_id, scope)
         if shift is None:
             raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
         rows = await application_repository.list_applicants(conn, shift_id, statuses or None)
@@ -174,9 +174,12 @@ async def select(user: AuthenticatedUser, application_id: UUID) -> ApplicationRe
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            app_row = await _lock_for_business(conn, application_id, business["id"])
+            scope = await business_scope(conn, user.user_id)
+            app_row = await _lock_for_business(conn, application_id, scope)
             shift = await _open_scheduled_shift(conn, app_row["shift_id"])
+            business = await profile_repository.get_business_profile(
+                conn, shift["business_profile_id"]
+            )
             if app_row["status"] != APP_APPLIED:
                 raise conflict("application_state", MSG_APPLICATION_STATE)
             seats = await shift_repository.count_seats(conn, shift["id"])
@@ -209,8 +212,8 @@ async def reject(user: AuthenticatedUser, application_id: UUID) -> ApplicationRe
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
-            business = await require_business_profile(conn, user.user_id)
-            app_row = await _lock_for_business(conn, application_id, business["id"])
+            scope = await business_scope(conn, user.user_id)
+            app_row = await _lock_for_business(conn, application_id, scope)
             if app_row["status"] not in (APP_APPLIED, APP_SELECTED):
                 raise conflict("application_state", MSG_APPLICATION_STATE)
             await application_repository.set_decision(
@@ -222,7 +225,7 @@ async def reject(user: AuthenticatedUser, application_id: UUID) -> ApplicationRe
                 worker["user_id"],
                 KIND_APPLICATION_REJECTED,
                 "Application update",
-                "The business went with other applicants this time.",
+                "The hirer went with other applicants this time.",
                 {"shift_id": app_row["shift_id"], "application_id": application_id},
             )
             return await _application_response(conn, application_id)

@@ -1,7 +1,7 @@
-"""Shift posting, business dashboard and worker discovery schemas.
+"""Shift posting, Business / Work dashboard and worker discovery schemas.
 
 Figma: "Tell us about the work", "When is the shift?", "Review and post", "Finding workers
-nearby", business Home tabs, worker "Shifts near you" / shift detail / "My shifts".
+nearby", Business / Work Home tabs, worker "Shifts near you" / shift detail / "My shifts".
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class _ShiftFields(BaseModel):
     break_minutes: int | None = Field(default=None, ge=0, le=240)
     workplace_name: str | None = Field(default=None, max_length=160)
     address_text: str | None = Field(
-        default=None, max_length=500, description="Defaults to the business address."
+        default=None, max_length=500, description="Defaults to the Business / Work address."
     )
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -53,6 +53,10 @@ class _ShiftFields(BaseModel):
 
 
 class ShiftCreate(_ShiftFields):
+    business_profile_id: UUID | None = Field(
+        default=None,
+        description="Business / Work entity the shift is for. Defaults to the primary one.",
+    )
     shift_type: ShiftType
     category_slug: str = Field(max_length=64)
     job_title: str = Field(min_length=2, max_length=120)
@@ -114,9 +118,10 @@ class LiveSearchState(BaseModel):
 
 
 class ShiftResponse(BaseModel):
-    """Business view of one shift."""
+    """Business / Work view of one shift."""
 
     id: UUID
+    business_profile_id: UUID
     shift_type: ShiftType
     status: ShiftStatus
     category_slug: str
@@ -154,6 +159,7 @@ class ShiftResponse(BaseModel):
 
 class ShiftListItem(BaseModel):
     id: UUID
+    business_profile_id: UUID
     shift_type: ShiftType
     status: ShiftStatus
     job_title: str
@@ -186,7 +192,7 @@ class DashboardSummary(BaseModel):
 
 
 class DashboardResponse(BaseModel):
-    """Business Home: "Live now" / "Scheduled" tabs."""
+    """Business / Work Home: "Live now" / "Scheduled" tabs."""
 
     tab: Literal["live", "scheduled"]
     summary: DashboardSummary

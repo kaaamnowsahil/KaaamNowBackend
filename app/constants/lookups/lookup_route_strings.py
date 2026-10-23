@@ -1,4 +1,4 @@
-"""Slug-based lookup tables (work categories, business types): one CRUD group each."""
+"""Slug-based lookup tables (work categories, Business / Work types): one CRUD group each."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ WORK_CATEGORIES: Final[LookupResource] = LookupResource(
 BUSINESS_TYPES: Final[LookupResource] = LookupResource(
     table="business_types",
     path=f"{API_V1}/business-types",
-    tag="business types",
-    label="business type",
+    tag="business / work types",
+    label="Business / Work type",
     error_prefix="business_type",
 )
 LOOKUP_RESOURCES: Final[tuple[LookupResource, ...]] = (WORK_CATEGORIES, BUSINESS_TYPES)

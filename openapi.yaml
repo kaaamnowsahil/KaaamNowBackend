@@ -254,7 +254,7 @@ paths:
     get:
       tags:
       - me
-      summary: Get my Business, Worker or account profile · Any signed-in user
+      summary: Get my Business / Work, Worker or account profile · Any signed-in user
       operationId: get_profile_api_v1_me_profile_get
       responses:
         '200':
@@ -299,8 +299,8 @@ paths:
     post:
       tags:
       - me
-      summary: 'Upload my profile photo (Business: logo) — JPEG, PNG or WebP · Any
-        signed-in user'
+      summary: 'Upload my profile photo (Business / Work: primary logo) — JPEG, PNG
+        or WebP · Any signed-in user'
       operationId: upload_profile_image_api_v1_me_profile_image_post
       requestBody:
         content:
@@ -323,6 +323,148 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - HTTPBearer: []
+  /api/v1/me/businesses:
+    get:
+      tags:
+      - me
+      summary: List my Business / Work profiles · Business / Work
+      operationId: list_businesses_api_v1_me_businesses_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/BusinessProfileResponse'
+                type: array
+                title: Response List Businesses Api V1 Me Businesses Get
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - me
+      summary: Add a Business / Work profile · Business / Work
+      operationId: create_business_api_v1_me_businesses_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessEntityCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/businesses/{business_profile_id}:
+    get:
+      tags:
+      - me
+      summary: Get one of my Business / Work profiles · Business / Work
+      operationId: get_business_api_v1_me_businesses__business_profile_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: business_profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Business Profile Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - me
+      summary: Update one of my Business / Work profiles · Business / Work
+      operationId: update_business_api_v1_me_businesses__business_profile_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: business_profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Business Profile Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessEntityPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/me/businesses/{business_profile_id}/logo:
+    post:
+      tags:
+      - me
+      summary: Upload a Business / Work logo — JPEG, PNG or WebP · Business / Work
+      operationId: upload_business_logo_api_v1_me_businesses__business_profile_id__logo_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: business_profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Business Profile Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_business_logo_api_v1_me_businesses__business_profile_id__logo_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/me/availability:
     put:
       tags:
@@ -381,7 +523,7 @@ paths:
     get:
       tags:
       - me
-      summary: View a worker's public profile · Business
+      summary: View a worker's public profile · Business / Work
       operationId: get_worker_api_v1_me_workers__worker_profile_id__get
       security:
       - HTTPBearer: []
@@ -650,8 +792,8 @@ paths:
   /api/v1/business-types:
     get:
       tags:
-      - business types
-      summary: List business types · Public
+      - business / work types
+      summary: List Business / Work types · Public
       description: 'Public: active items only, for sign-up and pickers. include_inactive=true
         requires an admin token.'
       operationId: list_items_api_v1_business_types_get
@@ -692,8 +834,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
       tags:
-      - business types
-      summary: Create business type · Admin
+      - business / work types
+      summary: Create Business / Work type · Admin
       operationId: create_item_api_v1_business_types_post
       security:
       - HTTPBearer: []
@@ -719,8 +861,8 @@ paths:
   /api/v1/business-types/{item_id}:
     get:
       tags:
-      - business types
-      summary: Get business type · Public
+      - business / work types
+      summary: Get Business / Work type · Public
       description: Public for active items; inactive items are visible to admins only.
       operationId: get_item_api_v1_business_types__item_id__get
       security:
@@ -748,8 +890,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
       tags:
-      - business types
-      summary: Update business type · Admin
+      - business / work types
+      summary: Update Business / Work type · Admin
       operationId: update_item_api_v1_business_types__item_id__patch
       security:
       - HTTPBearer: []
@@ -782,8 +924,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
-      - business types
-      summary: Delete business type · Admin
+      - business / work types
+      summary: Delete Business / Work type · Admin
       description: 'Soft delete: sets is_active=false so it disappears from sign-up
         and pickers. Existing links are kept. PATCH is_active=true to restore.'
       operationId: delete_item_api_v1_business_types__item_id__delete
@@ -1000,7 +1142,7 @@ paths:
     post:
       tags:
       - admin
-      summary: Verify / reject business · Admin
+      summary: Verify / reject Business / Work profile · Admin
       operationId: decide_business_api_v1_admin_businesses__business_profile_id__verification_post
       security:
       - HTTPBearer: []
@@ -1501,8 +1643,8 @@ paths:
   /api/v1/business/dashboard:
     get:
       tags:
-      - business shifts
-      summary: Business home (Live now / Scheduled) · Business
+      - business / work shifts
+      summary: Business / Work home (Live now / Scheduled) · Business / Work
       operationId: dashboard_api_v1_business_dashboard_get
       security:
       - HTTPBearer: []
@@ -1517,6 +1659,19 @@ paths:
           type: string
           default: live
           title: Tab
+      - name: business_profile_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Only this Business / Work entity (must be yours). Omit for
+            all of your entities.
+          title: Business Profile Id
+        description: Only this Business / Work entity (must be yours). Omit for all
+          of your entities.
       responses:
         '200':
           description: Successful Response
@@ -1533,8 +1688,8 @@ paths:
   /api/v1/business/shifts/estimate:
     post:
       tags:
-      - business shifts
-      summary: Estimate shift cost · Business
+      - business / work shifts
+      summary: Estimate shift cost · Business / Work
       operationId: estimate_api_v1_business_shifts_estimate_post
       requestBody:
         content:
@@ -1560,8 +1715,8 @@ paths:
   /api/v1/business/shifts:
     post:
       tags:
-      - business shifts
-      summary: Create shift (optionally publish) · Business
+      - business / work shifts
+      summary: Create shift (optionally publish) · Business / Work
       operationId: create_shift_api_v1_business_shifts_post
       security:
       - HTTPBearer: []
@@ -1586,8 +1741,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
-      - business shifts
-      summary: List my shifts · Business
+      - business / work shifts
+      summary: List my shifts · Business / Work
       operationId: list_shifts_api_v1_business_shifts_get
       security:
       - HTTPBearer: []
@@ -1639,6 +1794,19 @@ paths:
           minimum: 0
           default: 0
           title: Offset
+      - name: business_profile_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Only this Business / Work entity (must be yours). Omit for
+            all of your entities.
+          title: Business Profile Id
+        description: Only this Business / Work entity (must be yours). Omit for all
+          of your entities.
       responses:
         '200':
           description: Successful Response
@@ -1655,8 +1823,8 @@ paths:
   /api/v1/business/shifts/{shift_id}:
     get:
       tags:
-      - business shifts
-      summary: Get shift · Business
+      - business / work shifts
+      summary: Get shift · Business / Work
       operationId: get_shift_api_v1_business_shifts__shift_id__get
       security:
       - HTTPBearer: []
@@ -1683,8 +1851,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
       tags:
-      - business shifts
-      summary: Edit draft shift · Business
+      - business / work shifts
+      summary: Edit draft shift · Business / Work
       operationId: update_shift_api_v1_business_shifts__shift_id__patch
       security:
       - HTTPBearer: []
@@ -1718,8 +1886,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/publish:
     post:
       tags:
-      - business shifts
-      summary: Publish shift · Business
+      - business / work shifts
+      summary: Publish shift · Business / Work
       operationId: publish_api_v1_business_shifts__shift_id__publish_post
       security:
       - HTTPBearer: []
@@ -1747,8 +1915,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/cancel:
     post:
       tags:
-      - business shifts
-      summary: Cancel shift · Business
+      - business / work shifts
+      summary: Cancel shift · Business / Work
       operationId: cancel_api_v1_business_shifts__shift_id__cancel_post
       security:
       - HTTPBearer: []
@@ -1782,8 +1950,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/convert-to-scheduled:
     post:
       tags:
-      - business shifts
-      summary: Convert live search to scheduled · Business
+      - business / work shifts
+      summary: Convert live search to scheduled · Business / Work
       operationId: convert_api_v1_business_shifts__shift_id__convert_to_scheduled_post
       security:
       - HTTPBearer: []
@@ -1817,8 +1985,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/retry-live:
     post:
       tags:
-      - business shifts
-      summary: Retry expired live search · Business
+      - business / work shifts
+      summary: Retry expired live search · Business / Work
       operationId: retry_live_api_v1_business_shifts__shift_id__retry_live_post
       security:
       - HTTPBearer: []
@@ -1846,8 +2014,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/live-search:
     get:
       tags:
-      - business shifts
-      summary: Live search progress · Business
+      - business / work shifts
+      summary: Live search progress · Business / Work
       operationId: live_search_api_v1_business_shifts__shift_id__live_search_get
       security:
       - HTTPBearer: []
@@ -1875,8 +2043,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/roster:
     get:
       tags:
-      - business shifts
-      summary: Confirmed roster · Business
+      - business / work shifts
+      summary: Confirmed roster · Business / Work
       operationId: roster_api_v1_business_shifts__shift_id__roster_get
       security:
       - HTTPBearer: []
@@ -1904,8 +2072,8 @@ paths:
   /api/v1/business/shifts/{shift_id}/applications:
     get:
       tags:
-      - business shifts
-      summary: Review applicants · Business
+      - business / work shifts
+      summary: Review applicants · Business / Work
       operationId: applicants_api_v1_business_shifts__shift_id__applications_get
       security:
       - HTTPBearer: []
@@ -1951,8 +2119,8 @@ paths:
   /api/v1/business/applications/{application_id}/select:
     post:
       tags:
-      - business shifts
-      summary: Select applicant · Business
+      - business / work shifts
+      summary: Select applicant · Business / Work
       operationId: select_api_v1_business_applications__application_id__select_post
       security:
       - HTTPBearer: []
@@ -1980,8 +2148,8 @@ paths:
   /api/v1/business/applications/{application_id}/reject:
     post:
       tags:
-      - business shifts
-      summary: Reject applicant · Business
+      - business / work shifts
+      summary: Reject applicant · Business / Work
       operationId: reject_api_v1_business_applications__application_id__reject_post
       security:
       - HTTPBearer: []
@@ -2009,8 +2177,8 @@ paths:
   /api/v1/business/assignments/{assignment_id}/cancel:
     post:
       tags:
-      - business shifts
-      summary: Remove booked worker · Business
+      - business / work shifts
+      summary: Remove booked worker · Business / Work
       operationId: cancel_assignment_api_v1_business_assignments__assignment_id__cancel_post
       security:
       - HTTPBearer: []
@@ -2725,7 +2893,7 @@ paths:
     post:
       tags:
       - attendance
-      summary: Approve attendance · Business
+      summary: Approve attendance · Business / Work
       operationId: approve_api_v1_business_assignments__assignment_id__attendance_approve_post
       security:
       - HTTPBearer: []
@@ -2760,7 +2928,7 @@ paths:
     post:
       tags:
       - attendance
-      summary: Mark no-show · Business
+      summary: Mark no-show · Business / Work
       operationId: no_show_api_v1_business_assignments__assignment_id__no_show_post
       security:
       - HTTPBearer: []
@@ -2789,7 +2957,7 @@ paths:
     post:
       tags:
       - billing
-      summary: Generate final cost · Business
+      summary: Generate final cost · Business / Work
       operationId: generate_invoice_api_v1_business_shifts__shift_id__invoice_post
       security:
       - HTTPBearer: []
@@ -2817,7 +2985,7 @@ paths:
     get:
       tags:
       - billing
-      summary: Get shift final cost · Business
+      summary: Get shift final cost · Business / Work
       operationId: get_shift_invoice_api_v1_business_shifts__shift_id__invoice_get
       security:
       - HTTPBearer: []
@@ -2846,7 +3014,7 @@ paths:
     get:
       tags:
       - billing
-      summary: Get invoice · Business
+      summary: Get invoice · Business / Work
       operationId: get_invoice_api_v1_business_invoices__invoice_id__get
       security:
       - HTTPBearer: []
@@ -2875,7 +3043,7 @@ paths:
     post:
       tags:
       - billing
-      summary: Start payment (UPI / QR / card) · Business
+      summary: Start payment (UPI / QR / card) · Business / Work
       operationId: start_payment_api_v1_business_invoices__invoice_id__payments_post
       security:
       - HTTPBearer: []
@@ -2910,7 +3078,7 @@ paths:
     get:
       tags:
       - billing
-      summary: Payment history · Business
+      summary: Payment history · Business / Work
       operationId: history_api_v1_business_payments_get
       security:
       - HTTPBearer: []
@@ -2952,6 +3120,19 @@ paths:
           minimum: 0
           default: 0
           title: Offset
+      - name: business_profile_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Only this Business / Work entity (must be yours). Omit for
+            all of your entities.
+          title: Business Profile Id
+        description: Only this Business / Work entity (must be yours). Omit for all
+          of your entities.
       responses:
         '200':
           description: Successful Response
@@ -2969,7 +3150,7 @@ paths:
     get:
       tags:
       - billing
-      summary: Payment receipt · Business
+      summary: Payment receipt · Business / Work
       operationId: receipt_api_v1_business_payments__payment_id__get
       security:
       - HTTPBearer: []
@@ -2998,7 +3179,7 @@ paths:
     post:
       tags:
       - billing
-      summary: Confirm payment status · Business
+      summary: Confirm payment status · Business / Work
       operationId: confirm_api_v1_business_payments__payment_id__confirm_post
       security:
       - HTTPBearer: []
@@ -3724,7 +3905,8 @@ components:
       additionalProperties: false
       type: object
       title: AccountProfilePatch
-      description: Profile fields for an account without a Business or Worker profile.
+      description: Profile fields for an account without a Business / Work or Worker
+        profile.
     AdminAccountDeletionRequest:
       properties:
         id:
@@ -4461,6 +4643,16 @@ components:
       required:
       - is_available
       title: AvailabilityResponse
+    Body_upload_business_logo_api_v1_me_businesses__business_profile_id__logo_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_business_logo_api_v1_me_businesses__business_profile_id__logo_post
     Body_upload_profile_image_api_v1_me_profile_image_post:
       properties:
         file:
@@ -4502,6 +4694,179 @@ components:
       - rating_count
       - verification_status
       title: BusinessCard
+    BusinessEntityCreate:
+      properties:
+        business_type_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Business Type Slug
+          description: Legacy single type; prefer business_type_slugs.
+        business_type_slugs:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 64
+              minLength: 1
+            type: array
+            maxItems: 10
+            minItems: 1
+          - type: 'null'
+          title: Business Type Slugs
+          description: Business / Work types from GET /api/v1/business-types; the
+            first is primary.
+          examples:
+          - - household
+            - rental-property
+        business_name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Business Name
+          examples:
+          - My Home
+        contact_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Contact Name
+          description: Defaults to my name.
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        category_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Category Slug
+        address_text:
+          type: string
+          maxLength: 500
+          minLength: 3
+          title: Address Text
+        locality:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Locality
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+      additionalProperties: false
+      type: object
+      required:
+      - business_name
+      - address_text
+      title: BusinessEntityCreate
+      description: 'Add another Business / Work entity (a household, shop, office,
+        property, ...).
+
+
+        Send ``business_type_slugs`` (or the legacy ``business_type_slug``); at least
+        one is required.'
+    BusinessEntityPatch:
+      properties:
+        business_type_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Business Type Slug
+          description: Legacy single type; prefer business_type_slugs.
+        business_type_slugs:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 64
+              minLength: 1
+            type: array
+            maxItems: 10
+            minItems: 1
+          - type: 'null'
+          title: Business Type Slugs
+          description: Business / Work types from GET /api/v1/business-types; the
+            first is primary.
+          examples:
+          - - household
+            - rental-property
+        business_name:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Business Name
+        contact_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Contact Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        category_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Category Slug
+        address_text:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Address Text
+        locality:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Locality
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+      additionalProperties: false
+      type: object
+      title: BusinessEntityPatch
+      description: Edit one of my Business / Work entities. Omitted fields keep their
+        value.
     BusinessProfilePatch:
       properties:
         full_name:
@@ -4527,6 +4892,29 @@ components:
             - dark
           - type: 'null'
           title: Theme Preference
+        business_type_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Business Type Slug
+          description: Legacy single type; prefer business_type_slugs.
+        business_type_slugs:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 64
+              minLength: 1
+            type: array
+            maxItems: 10
+            minItems: 1
+          - type: 'null'
+          title: Business Type Slugs
+          description: Business / Work types from GET /api/v1/business-types; the
+            first is primary.
+          examples:
+          - - household
+            - rental-property
         business_name:
           anyOf:
           - type: string
@@ -4548,12 +4936,6 @@ components:
             pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
           - type: 'null'
           title: Email
-        business_type_slug:
-          anyOf:
-          - type: string
-            maxLength: 64
-          - type: 'null'
-          title: Business Type Slug
         category_slug:
           anyOf:
           - type: string
@@ -4589,8 +4971,11 @@ components:
       additionalProperties: false
       type: object
       title: BusinessProfilePatch
-      description: '``full_name`` is the owner''s name; ``email`` is the business
-        contact email.'
+      description: 'Primary Business / Work entity plus account settings.
+
+
+        ``full_name`` is the owner''s name; ``email`` is the Business / Work contact
+        email.'
     BusinessProfileResponse:
       properties:
         id:
@@ -4675,14 +5060,31 @@ components:
           - type: string
           - type: 'null'
           title: Business Type Slug
+          description: Primary (first) type.
         business_type_name:
           anyOf:
           - type: string
           - type: 'null'
           title: Business Type Name
+        business_type_slugs:
+          items:
+            type: string
+          type: array
+          title: Business Type Slugs
+          description: All selected Business / Work types, primary first.
+        business_type_names:
+          items:
+            type: string
+          type: array
+          title: Business Type Names
         phone:
           type: string
           title: Phone
+        is_primary:
+          type: boolean
+          title: Is Primary
+          description: The entity created at signup; GET /api/v1/me/profile returns
+            this one.
       type: object
       required:
       - id
@@ -4696,6 +5098,7 @@ components:
       - owner_name
       - contact_name
       - phone
+      - is_primary
       title: BusinessProfileResponse
     BusinessProfileSummary:
       properties:
@@ -4881,7 +5284,7 @@ components:
       - summary
       - shifts
       title: DashboardResponse
-      description: 'Business Home: "Live now" / "Scheduled" tabs.'
+      description: 'Business / Work Home: "Live now" / "Scheduled" tabs.'
     DashboardSummary:
       properties:
         active_shifts:
@@ -5876,7 +6279,8 @@ components:
             - worker
           - type: 'null'
           title: Role
-          description: 'With intent: check the account for this role (worker or business).'
+          description: 'With intent: check the account for this role (worker or business,
+            shown as Business / Work).'
       additionalProperties: false
       type: object
       required:
@@ -5949,7 +6353,8 @@ components:
         needs_role_selection:
           type: boolean
           title: Needs Role Selection
-          description: True until the user picks Business or Worker (Figma role screen).
+          description: True until the user picks Business / Work or Worker (Figma
+            role screen).
         me:
           $ref: '#/components/schemas/MeResponse'
       type: object
@@ -6722,7 +7127,7 @@ components:
             maxLength: 500
           - type: 'null'
           title: Address Text
-          description: Defaults to the business address.
+          description: Defaults to the Business / Work address.
         latitude:
           anyOf:
           - type: number
@@ -6756,6 +7161,14 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Cancellation Cutoff Hours
+        business_profile_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Business Profile Id
+          description: Business / Work entity the shift is for. Defaults to the primary
+            one.
         shift_type:
           type: string
           enum:
@@ -6825,6 +7238,10 @@ components:
           type: string
           format: uuid
           title: Id
+        business_profile_id:
+          type: string
+          format: uuid
+          title: Business Profile Id
         shift_type:
           type: string
           enum:
@@ -6889,6 +7306,7 @@ components:
       type: object
       required:
       - id
+      - business_profile_id
       - shift_type
       - status
       - job_title
@@ -7004,7 +7422,7 @@ components:
             maxLength: 500
           - type: 'null'
           title: Address Text
-          description: Defaults to the business address.
+          description: Defaults to the Business / Work address.
         latitude:
           anyOf:
           - type: number
@@ -7048,6 +7466,10 @@ components:
           type: string
           format: uuid
           title: Id
+        business_profile_id:
+          type: string
+          format: uuid
+          title: Business Profile Id
         shift_type:
           type: string
           enum:
@@ -7190,6 +7612,7 @@ components:
       type: object
       required:
       - id
+      - business_profile_id
       - shift_type
       - status
       - category_slug
@@ -7216,9 +7639,32 @@ components:
       - estimate
       - created_at
       title: ShiftResponse
-      description: Business view of one shift.
+      description: Business / Work view of one shift.
     SignupBusinessDetails:
       properties:
+        business_type_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Business Type Slug
+          description: Legacy single type; prefer business_type_slugs.
+        business_type_slugs:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 64
+              minLength: 1
+            type: array
+            maxItems: 10
+            minItems: 1
+          - type: 'null'
+          title: Business Type Slugs
+          description: Business / Work types from GET /api/v1/business-types; the
+            first is primary.
+          examples:
+          - - household
+            - rental-property
         business_name:
           type: string
           maxLength: 160
@@ -7261,10 +7707,6 @@ components:
             minimum: -180.0
           - type: 'null'
           title: Longitude
-        business_type_slug:
-          type: string
-          maxLength: 64
-          title: Business Type Slug
         category_slug:
           anyOf:
           - type: string
@@ -7277,9 +7719,16 @@ components:
       - business_name
       - contact_name
       - address_text
-      - business_type_slug
       title: SignupBusinessDetails
-      description: App business signup step 2 ("Tell us about your business").
+      description: 'App Business / Work signup step 2: the first (primary) Business
+        / Work entity.
+
+
+        ``business_type_slugs`` come from GET /api/v1/business-types (pick ``household``
+        for a
+
+        home); the legacy single ``business_type_slug`` is still accepted. At least
+        one is required.'
     SignupRequest:
       properties:
         phone:
@@ -7991,7 +8440,8 @@ components:
       - completed_shift_count
       - member_since
       title: WorkerPublicProfile
-      description: What a business sees about an applicant or booked worker.
+      description: What a Business / Work hirer sees about an applicant or booked
+        worker.
     WorkerShiftCard:
       properties:
         id:

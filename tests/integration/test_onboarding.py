@@ -161,7 +161,15 @@ async def test_password_login_and_otp_password_reset(app_client: httpx.AsyncClie
 
 async def test_business_signup_logo_and_catalog(app_client: httpx.AsyncClient) -> None:
     types = (await app_client.get(f"{API}/business-types")).json()
-    assert [t["slug"] for t in types][:3] == ["hospitality", "retail", "events"]
+    slugs = [t["slug"] for t in types]
+    assert slugs[:3] == ["household", "personal-residence", "apartment"]
+    assert slugs[-1] == "other" and len(slugs) == 43
+    names = {t["slug"]: t["name"] for t in types}
+    assert names["real-estate"] == "Real Estate / Property Management"
+    assert names["laundry"] == "Laundry / Dry Cleaning"
+    work_types = (await app_client.get(f"{API}/work-categories")).json()
+    assert len(work_types) == 75 and work_types[-1]["slug"] == "other"
+    assert {"mason", "barista", "waste-collection"} <= {t["slug"] for t in work_types}
 
     phone = next_phone()
     assert (await _send(app_client, phone, "sign_up")).status_code == 200

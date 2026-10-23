@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -100,9 +101,9 @@ async def update_draft_shift(
 
 
 async def get_business_shift(
-    conn: asyncpg.Connection, shift_id: UUID, business_profile_id: UUID
+    conn: asyncpg.Connection, shift_id: UUID, business_profile_ids: Sequence[UUID]
 ) -> asyncpg.Record | None:
-    return await conn.fetchrow(GET_BUSINESS_SHIFT, shift_id, business_profile_id)
+    return await conn.fetchrow(GET_BUSINESS_SHIFT, shift_id, list(business_profile_ids))
 
 
 async def lock_shift(conn: asyncpg.Connection, shift_id: UUID) -> asyncpg.Record | None:
@@ -204,7 +205,7 @@ async def count_seats(conn: asyncpg.Connection, shift_id: UUID) -> int:
 
 async def list_business_shifts(
     conn: asyncpg.Connection,
-    business_profile_id: UUID,
+    business_profile_ids: Sequence[UUID],
     *,
     shift_type: str | None,
     statuses: list[str] | None,
@@ -212,18 +213,20 @@ async def list_business_shifts(
     offset: int,
 ) -> list[asyncpg.Record]:
     return await conn.fetch(
-        LIST_BUSINESS_SHIFTS, business_profile_id, shift_type, statuses, limit, offset
+        LIST_BUSINESS_SHIFTS, list(business_profile_ids), shift_type, statuses, limit, offset
     )
 
 
 async def list_dashboard_shifts(
-    conn: asyncpg.Connection, business_profile_id: UUID, shift_type: str, now: datetime
+    conn: asyncpg.Connection, business_profile_ids: Sequence[UUID], shift_type: str, now: datetime
 ) -> list[asyncpg.Record]:
-    return await conn.fetch(LIST_DASHBOARD_SHIFTS, business_profile_id, shift_type, now)
+    return await conn.fetch(LIST_DASHBOARD_SHIFTS, list(business_profile_ids), shift_type, now)
 
 
-async def dashboard_summary(conn: asyncpg.Connection, business_profile_id: UUID) -> asyncpg.Record:
-    return await conn.fetchrow(DASHBOARD_SUMMARY, business_profile_id)
+async def dashboard_summary(
+    conn: asyncpg.Connection, business_profile_ids: Sequence[UUID]
+) -> asyncpg.Record:
+    return await conn.fetchrow(DASHBOARD_SUMMARY, list(business_profile_ids))
 
 
 async def count_active_workers_near(

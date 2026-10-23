@@ -1,5 +1,5 @@
-"""Current user: profile + image, worker availability / live location, worker lookup
-for businesses, deletion, push devices.
+"""Current user: profile + image, Business / Work entities, worker availability / live
+location, worker lookup for hirers, deletion, push devices.
 
 Roles are chosen once, at ``POST /api/v1/auth/signup``.
 """
@@ -21,6 +21,9 @@ from app.constants.users.user_route_strings import (
     ME_ROUTE_PREFIX,
     OPENAPI_TAG_ME,
     PATH_AVAILABILITY,
+    PATH_BUSINESS,
+    PATH_BUSINESS_LOGO,
+    PATH_BUSINESSES,
     PATH_CURRENT_DELETION_REQUEST,
     PATH_DELETION_REQUESTS,
     PATH_DEVICE,
@@ -33,12 +36,17 @@ from app.constants.users.user_route_strings import (
 from app.dependencies import (
     AuthenticatedTokenUser,
     CurrentUser,
+    RequireBusinessProfileRead,
+    RequireBusinessProfileWrite,
     RequireShiftsRead,
     RequireWorkWrite,
 )
 from app.schemas.profiles.profile_schemas import (
     AvailabilityRequest,
     AvailabilityResponse,
+    BusinessEntityCreate,
+    BusinessEntityPatch,
+    BusinessProfileResponse,
     LocationRequest,
     MyProfileResponse,
     ProfilePatch,
@@ -58,7 +66,9 @@ router = APIRouter(prefix=ME_ROUTE_PREFIX, tags=[OPENAPI_TAG_ME])
 @router.get(
     PATH_PROFILE,
     response_model=MyProfileResponse,
-    summary=swagger_summary("Get my Business, Worker or account profile", SWAGGER_ROLE_ANY_USER),
+    summary=swagger_summary(
+        "Get my Business / Work, Worker or account profile", SWAGGER_ROLE_ANY_USER
+    ),
 )
 async def get_profile(user: CurrentUser) -> MyProfileResponse:
     return await profile_service.get_my_profile(user)
@@ -77,7 +87,8 @@ async def update_profile(body: ProfilePatch, user: CurrentUser) -> MyProfileResp
     PATH_PROFILE_IMAGE,
     response_model=MyProfileResponse,
     summary=swagger_summary(
-        "Upload my profile photo (Business: logo) — JPEG, PNG or WebP", SWAGGER_ROLE_ANY_USER
+        "Upload my profile photo (Business / Work: primary logo) — JPEG, PNG or WebP",
+        SWAGGER_ROLE_ANY_USER,
     ),
 )
 async def upload_profile_image(
@@ -85,6 +96,65 @@ async def upload_profile_image(
 ) -> MyProfileResponse:
     data = await file.read(load_settings().max_photo_bytes + 1)
     return await profile_service.upload_my_profile_image(user, file.content_type or "", data)
+
+
+@router.get(
+    PATH_BUSINESSES,
+    response_model=list[BusinessProfileResponse],
+    summary=swagger_summary("List my Business / Work profiles", SWAGGER_ROLE_BUSINESS),
+)
+async def list_businesses(user: RequireBusinessProfileRead) -> list[BusinessProfileResponse]:
+    return await profile_service.list_my_businesses(user)
+
+
+@router.post(
+    PATH_BUSINESSES,
+    response_model=BusinessProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=swagger_summary("Add a Business / Work profile", SWAGGER_ROLE_BUSINESS),
+)
+async def create_business(
+    body: BusinessEntityCreate, user: RequireBusinessProfileWrite
+) -> BusinessProfileResponse:
+    return await profile_service.create_my_business(user, body)
+
+
+@router.get(
+    PATH_BUSINESS,
+    response_model=BusinessProfileResponse,
+    summary=swagger_summary("Get one of my Business / Work profiles", SWAGGER_ROLE_BUSINESS),
+)
+async def get_business(
+    business_profile_id: UUID, user: RequireBusinessProfileRead
+) -> BusinessProfileResponse:
+    return await profile_service.get_my_business(user, business_profile_id)
+
+
+@router.patch(
+    PATH_BUSINESS,
+    response_model=BusinessProfileResponse,
+    summary=swagger_summary("Update one of my Business / Work profiles", SWAGGER_ROLE_BUSINESS),
+)
+async def update_business(
+    business_profile_id: UUID, body: BusinessEntityPatch, user: RequireBusinessProfileWrite
+) -> BusinessProfileResponse:
+    return await profile_service.update_my_business(user, business_profile_id, body)
+
+
+@router.post(
+    PATH_BUSINESS_LOGO,
+    response_model=BusinessProfileResponse,
+    summary=swagger_summary(
+        "Upload a Business / Work logo — JPEG, PNG or WebP", SWAGGER_ROLE_BUSINESS
+    ),
+)
+async def upload_business_logo(
+    business_profile_id: UUID, user: RequireBusinessProfileWrite, file: UploadFile = File(...)
+) -> BusinessProfileResponse:
+    data = await file.read(load_settings().max_photo_bytes + 1)
+    return await profile_service.upload_my_business_logo(
+        user, business_profile_id, file.content_type or "", data
+    )
 
 
 @router.put(

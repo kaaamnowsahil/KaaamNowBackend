@@ -55,6 +55,17 @@ async def resolve_business_type_id(conn: asyncpg.Connection, slug: str) -> UUID:
     return row["id"]
 
 
+async def resolve_business_type_ids(conn: asyncpg.Connection, slugs: list[str]) -> list[UUID]:
+    """Resolve slugs in the caller's order (first one becomes the primary type)."""
+    ordered = list(dict.fromkeys(slugs))
+    rows = await catalog_repository.get_business_type_ids_by_slugs(conn, ordered)
+    found = {r["slug"]: r["id"] for r in rows}
+    missing = [s for s in ordered if s not in found]
+    if missing:
+        raise bad_request("business_type_unknown", MSG_BUSINESS_TYPE_UNKNOWN, {"slugs": missing})
+    return [found[s] for s in ordered]
+
+
 async def resolve_category_ids(conn: asyncpg.Connection, slugs: list[str]) -> list[UUID]:
     unique = sorted(set(slugs))
     rows = await catalog_repository.get_category_ids_by_slugs(conn, unique)

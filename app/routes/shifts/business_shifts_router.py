@@ -1,4 +1,4 @@
-"""Business: post and manage shifts, live search, applicants, roster."""
+"""Business / Work: post and manage shifts, live search, applicants, roster."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.constants.application.application_common import SWAGGER_ROLE_BUSINESS, swagger_summary
+from app.constants.application.application_common import (
+    DESC_ENTITY_FILTER,
+    SWAGGER_ROLE_BUSINESS,
+    swagger_summary,
+)
 from app.constants.shifts.shift_route_strings import (
     BUSINESS_ROUTE_PREFIX,
     OPENAPI_TAG_BUSINESS_SHIFTS,
@@ -56,12 +60,14 @@ router = APIRouter(prefix=BUSINESS_ROUTE_PREFIX, tags=[OPENAPI_TAG_BUSINESS_SHIF
 @router.get(
     PATH_DASHBOARD,
     response_model=DashboardResponse,
-    summary=swagger_summary("Business home (Live now / Scheduled)", SWAGGER_ROLE_BUSINESS),
+    summary=swagger_summary("Business / Work home (Live now / Scheduled)", SWAGGER_ROLE_BUSINESS),
 )
 async def dashboard(
-    user: RequireShiftsRead, tab: Literal["live", "scheduled"] = "live"
+    user: RequireShiftsRead,
+    tab: Literal["live", "scheduled"] = "live",
+    business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
 ) -> DashboardResponse:
-    return await shift_service.dashboard(user, tab)
+    return await shift_service.dashboard(user, tab, business_profile_id)
 
 
 @router.post(
@@ -94,9 +100,15 @@ async def list_shifts(
     status_in: list[ShiftStatus] | None = Query(default=None, alias="status"),
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
+    business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
 ) -> ShiftPage:
     return await shift_service.list_shifts(
-        user, shift_type=shift_type, statuses=status_in, limit=limit, offset=offset
+        user,
+        shift_type=shift_type,
+        statuses=status_in,
+        limit=limit,
+        offset=offset,
+        business_profile_id=business_profile_id,
     )
 
 

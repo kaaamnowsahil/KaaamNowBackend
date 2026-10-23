@@ -24,8 +24,9 @@ SELECT r.stars, r.tags, r.review, r.created_at,
        ) AS rater_name
 FROM ratings r
 JOIN users u ON u.id = r.rater_user_id
+JOIN shifts s ON s.id = r.shift_id
 LEFT JOIN business_profiles bp
-    ON bp.user_id = r.rater_user_id AND r.direction = 'business_to_worker'
+    ON bp.id = s.business_profile_id AND r.direction = 'business_to_worker'
 WHERE r.ratee_user_id = $1 AND r.direction = $2
 ORDER BY r.created_at DESC
 LIMIT $3

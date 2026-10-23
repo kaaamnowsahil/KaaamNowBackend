@@ -55,7 +55,7 @@ async def decide_worker(
 @router.post(
     PATH_ADMIN_BUSINESS_VERIFICATION,
     response_model=BusinessProfileResponse,
-    summary=swagger_summary("Verify / reject business", SWAGGER_ROLE_ADMIN),
+    summary=swagger_summary("Verify / reject Business / Work profile", SWAGGER_ROLE_ADMIN),
 )
 async def decide_business(
     business_profile_id: UUID, body: VerificationDecision, user: RequireVerificationWrite
