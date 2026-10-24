@@ -24,7 +24,7 @@ from app.schemas.users.deletion_schemas import (
 )
 from app.services.users import deletion_service
 
-router = APIRouter(prefix=ADMIN_DELETION_ROUTE_PREFIX, tags=["admin account deletion"])
+router = APIRouter(prefix=ADMIN_DELETION_ROUTE_PREFIX, tags=["admin - account deletion"])
 
 
 @router.get(

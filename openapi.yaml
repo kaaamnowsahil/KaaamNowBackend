@@ -181,6 +181,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/admin/login:
+    post:
+      tags:
+      - auth
+      summary: Admin panel sign in with email and password · Public
+      operationId: admin_login_api_v1_auth_admin_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/auth/password/reset/confirm:
     post:
       tags:
@@ -948,6 +973,593 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/verifications:
+    get:
+      tags:
+      - admin - verification
+      summary: Verification queue · Admin
+      operationId: list_verifications_api_v1_admin_verifications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          enum:
+          - pending
+          - verified
+          - rejected
+          type: string
+          default: pending
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationQueue'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/workers/{worker_profile_id}/verification:
+    post:
+      tags:
+      - admin - verification
+      summary: Verify / reject worker · Admin
+      operationId: decide_worker_api_v1_admin_workers__worker_profile_id__verification_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: worker_profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Worker Profile Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationDecision'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/businesses/{business_profile_id}/verification:
+    post:
+      tags:
+      - admin - verification
+      summary: Verify / reject Business / Work profile · Admin
+      operationId: decide_business_api_v1_admin_businesses__business_profile_id__verification_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: business_profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Business Profile Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationDecision'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProfileResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests:
+    get:
+      tags:
+      - admin - account deletion
+      summary: List account deletion requests · Admin
+      operationId: list_deletion_requests_api_v1_admin_account_deletion_requests_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - pending
+            - approved
+            - on_hold
+            - completed
+            type: string
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionRequestPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}:
+    get:
+      tags:
+      - admin - account deletion
+      summary: Get account deletion request · Admin
+      operationId: get_deletion_request_api_v1_admin_account_deletion_requests__request_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}/approve:
+    post:
+      tags:
+      - admin - account deletion
+      summary: Approve account deletion request · Admin
+      operationId: approve_deletion_request_api_v1_admin_account_deletion_requests__request_id__approve_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}/holds:
+    post:
+      tags:
+      - admin - account deletion
+      summary: Add a documented account deletion hold · Admin
+      operationId: add_deletion_hold_api_v1_admin_account_deletion_requests__request_id__holds_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeletionHoldCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/account-deletion-requests/{request_id}/holds/{hold_id}:
+    delete:
+      tags:
+      - admin - account deletion
+      summary: Release an account deletion hold · Admin
+      operationId: release_deletion_hold_api_v1_admin_account_deletion_requests__request_id__holds__hold_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      - name: hold_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Hold Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/resources:
+    get:
+      tags:
+      - admin - data
+      summary: Admin resources & columns · Admin
+      operationId: list_resources_api_v1_admin_resources_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminResourceList'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/metrics/overview:
+    get:
+      tags:
+      - admin - data
+      summary: Dashboard overview metrics · Admin
+      operationId: metrics_overview_api_v1_admin_metrics_overview_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMetricsOverview'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/{resource}/export.csv:
+    get:
+      tags:
+      - admin - data
+      summary: Export filtered list as CSV · Admin
+      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
+        on searchable columns), sort (field or -field). Any other query param is an
+        exact-match filter on a filterable column (use the literal `null` to match
+        NULL). Composite keys in paths are joined with '',''.'
+      operationId: export_records_api_v1_admin__resource__export_csv_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: sort
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/{resource}:
+    get:
+      tags:
+      - admin - data
+      summary: List / search / filter records · Admin
+      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
+        on searchable columns), sort (field or -field). Any other query param is an
+        exact-match filter on a filterable column (use the literal `null` to match
+        NULL). Composite keys in paths are joined with '',''.'
+      operationId: list_records_api_v1_admin__resource__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: sort
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRecordPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - admin - data
+      summary: Create record · Admin
+      operationId: create_record_api_v1_admin__resource__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Record Api V1 Admin  Resource  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/{resource}/{record_id}:
+    get:
+      tags:
+      - admin - data
+      summary: Get record · Admin
+      operationId: get_record_api_v1_admin__resource___record_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Record Api V1 Admin  Resource   Record Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - admin - data
+      summary: Update record (partial) · Admin
+      operationId: update_record_api_v1_admin__resource___record_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Update Record Api V1 Admin  Resource   Record Id  Patch
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - admin - data
+      summary: Delete record (soft or hard per resource) · Admin
+      operationId: delete_record_api_v1_admin__resource___record_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Resource
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Record Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/notifications:
     get:
       tags:
@@ -1047,593 +1659,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnreadCountResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/verifications:
-    get:
-      tags:
-      - admin
-      summary: Verification queue · Admin
-      operationId: list_verifications_api_v1_admin_verifications_get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: status
-        in: query
-        required: false
-        schema:
-          enum:
-          - pending
-          - verified
-          - rejected
-          type: string
-          default: pending
-          title: Status
-      - name: limit
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: integer
-            minimum: 1
-          - type: 'null'
-          title: Limit
-      - name: offset
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
-          title: Offset
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VerificationQueue'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/workers/{worker_profile_id}/verification:
-    post:
-      tags:
-      - admin
-      summary: Verify / reject worker · Admin
-      operationId: decide_worker_api_v1_admin_workers__worker_profile_id__verification_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: worker_profile_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Worker Profile Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VerificationDecision'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkerProfileResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/businesses/{business_profile_id}/verification:
-    post:
-      tags:
-      - admin
-      summary: Verify / reject Business / Work profile · Admin
-      operationId: decide_business_api_v1_admin_businesses__business_profile_id__verification_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: business_profile_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Business Profile Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VerificationDecision'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BusinessProfileResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/account-deletion-requests:
-    get:
-      tags:
-      - admin account deletion
-      summary: List account deletion requests · Admin
-      operationId: list_deletion_requests_api_v1_admin_account_deletion_requests_get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: status
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - enum:
-            - pending
-            - approved
-            - on_hold
-            - completed
-            type: string
-          - type: 'null'
-          title: Status
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 100
-          minimum: 1
-          default: 20
-          title: Limit
-      - name: offset
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
-          title: Offset
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountDeletionRequestPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/account-deletion-requests/{request_id}:
-    get:
-      tags:
-      - admin account deletion
-      summary: Get account deletion request · Admin
-      operationId: get_deletion_request_api_v1_admin_account_deletion_requests__request_id__get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: request_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Request Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/account-deletion-requests/{request_id}/approve:
-    post:
-      tags:
-      - admin account deletion
-      summary: Approve account deletion request · Admin
-      operationId: approve_deletion_request_api_v1_admin_account_deletion_requests__request_id__approve_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: request_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Request Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/account-deletion-requests/{request_id}/holds:
-    post:
-      tags:
-      - admin account deletion
-      summary: Add a documented account deletion hold · Admin
-      operationId: add_deletion_hold_api_v1_admin_account_deletion_requests__request_id__holds_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: request_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Request Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AccountDeletionHoldCreate'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/account-deletion-requests/{request_id}/holds/{hold_id}:
-    delete:
-      tags:
-      - admin account deletion
-      summary: Release an account deletion hold · Admin
-      operationId: release_deletion_hold_api_v1_admin_account_deletion_requests__request_id__holds__hold_id__delete
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: request_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Request Id
-      - name: hold_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Hold Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminAccountDeletionRequestDetail'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/resources:
-    get:
-      tags:
-      - admin data
-      summary: Admin resources & columns · Admin
-      operationId: list_resources_api_v1_admin_resources_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminResourceList'
-      security:
-      - HTTPBearer: []
-  /api/v1/admin/metrics/overview:
-    get:
-      tags:
-      - admin data
-      summary: Dashboard overview metrics · Admin
-      operationId: metrics_overview_api_v1_admin_metrics_overview_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminMetricsOverview'
-      security:
-      - HTTPBearer: []
-  /api/v1/admin/{resource}/export.csv:
-    get:
-      tags:
-      - admin data
-      summary: Export filtered list as CSV · Admin
-      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
-        on searchable columns), sort (field or -field). Any other query param is an
-        exact-match filter on a filterable column (use the literal `null` to match
-        NULL). Composite keys in paths are joined with '',''.'
-      operationId: export_records_api_v1_admin__resource__export_csv_get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: resource
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Resource
-      - name: q
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-            maxLength: 200
-          - type: 'null'
-          title: Q
-      - name: sort
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Sort
-      responses:
-        '200':
-          description: Successful Response
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/{resource}:
-    get:
-      tags:
-      - admin data
-      summary: List / search / filter records · Admin
-      description: 'Paginated list. Reserved params: limit, offset, q (ILIKE search
-        on searchable columns), sort (field or -field). Any other query param is an
-        exact-match filter on a filterable column (use the literal `null` to match
-        NULL). Composite keys in paths are joined with '',''.'
-      operationId: list_records_api_v1_admin__resource__get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: resource
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Resource
-      - name: limit
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: integer
-            minimum: 1
-          - type: 'null'
-          title: Limit
-      - name: offset
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
-          title: Offset
-      - name: q
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-            maxLength: 200
-          - type: 'null'
-          title: Q
-      - name: sort
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Sort
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminRecordPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-      - admin data
-      summary: Create record · Admin
-      operationId: create_record_api_v1_admin__resource__post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: resource
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Resource
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-              title: Body
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-                title: Response Create Record Api V1 Admin  Resource  Post
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/admin/{resource}/{record_id}:
-    get:
-      tags:
-      - admin data
-      summary: Get record · Admin
-      operationId: get_record_api_v1_admin__resource___record_id__get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: resource
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Resource
-      - name: record_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Record Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-                title: Response Get Record Api V1 Admin  Resource   Record Id  Get
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    patch:
-      tags:
-      - admin data
-      summary: Update record (partial) · Admin
-      operationId: update_record_api_v1_admin__resource___record_id__patch
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: resource
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Resource
-      - name: record_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Record Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-              title: Body
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-                title: Response Update Record Api V1 Admin  Resource   Record Id  Patch
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - admin data
-      summary: Delete record (soft or hard per resource) · Admin
-      operationId: delete_record_api_v1_admin__resource___record_id__delete
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: resource
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Resource
-      - name: record_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Record Id
-      responses:
-        '204':
-          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -4117,6 +4142,26 @@ components:
       - key
       - count
       title: AdminCount
+    AdminLoginRequest:
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          minLength: 3
+          title: Email
+          examples:
+          - admin@kaaamnow.com
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Password
+      additionalProperties: false
+      type: object
+      required:
+      - email
+      - password
+      title: AdminLoginRequest
     AdminMetricsOverview:
       properties:
         users_total:

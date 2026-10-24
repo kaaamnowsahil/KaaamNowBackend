@@ -191,7 +191,7 @@ LIMIT $2 OFFSET $3
 
 SET_WORKER_VERIFICATION = """
 UPDATE worker_profiles SET verification_status = $2::varchar, verification_note = $3,
-    verified_at = CASE WHEN $2::varchar = 'verified' THEN $4 ELSE NULL END,
+    verified_at = CASE WHEN $2::varchar = 'verified' THEN $4::timestamptz ELSE NULL END,
     verified_by_user_id = $5, updated_at = now()
 WHERE id = $1
 RETURNING user_id
@@ -199,7 +199,7 @@ RETURNING user_id
 
 SET_BUSINESS_VERIFICATION = """
 UPDATE business_profiles SET verification_status = $2::varchar, verification_note = $3,
-    verified_at = CASE WHEN $2::varchar = 'verified' THEN $4 ELSE NULL END,
+    verified_at = CASE WHEN $2::varchar = 'verified' THEN $4::timestamptz ELSE NULL END,
     verified_by_user_id = $5, updated_at = now()
 WHERE id = $1
 RETURNING user_id

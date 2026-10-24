@@ -7,7 +7,7 @@ from typing import Final
 from app.constants.application.application_common import API_V1, SEGMENT_ADMIN
 
 ADMIN_CRUD_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_ADMIN}"
-OPENAPI_TAG_ADMIN_DATA: Final[str] = "admin data"
+OPENAPI_TAG_ADMIN_DATA: Final[str] = "admin - data"
 
 PATH_ADMIN_RESOURCES: Final[str] = "/resources"
 PATH_ADMIN_METRICS_OVERVIEW: Final[str] = "/metrics/overview"
