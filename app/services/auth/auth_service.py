@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import timedelta
 from uuid import UUID
 
 import asyncpg
 
 from app.config.settings import load_settings
-from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_WORKER
+from app.constants.application.application_constants import ROLE_ADMIN, ROLE_BUSINESS, ROLE_WORKER
 from app.constants.auth.auth_route_strings import (
+    ADMIN_ACCOUNT_NAME,
+    ADMIN_ACCOUNT_PHONE_HASH_CHARS,
+    ADMIN_ACCOUNT_PHONE_PREFIX,
     INTENT_PASSWORD_RESET,
     INTENT_SIGN_IN,
     INTENT_SIGN_UP,
     MSG_ACCOUNT_DISABLED,
     MSG_ACCOUNT_NOT_FOUND,
+    MSG_ADMIN_CREDENTIALS_INVALID,
+    MSG_ADMIN_LOGIN_NOT_CONFIGURED,
     MSG_OTP_ATTEMPTS_EXCEEDED,
     MSG_OTP_COOLDOWN,
     MSG_OTP_INVALID,
@@ -41,6 +48,7 @@ from app.repositories.auth import auth_repository
 from app.repositories.profiles import profile_repository
 from app.repositories.users import user_repository
 from app.schemas.auth.auth_schemas import (
+    AdminLoginRequest,
     OtpSendResponse,
     OtpVerifyResponse,
     PasswordLoginRequest,
@@ -349,6 +357,52 @@ async def password_login(body: PasswordLoginRequest) -> OtpVerifyResponse:
     if body.role is not None:
         _require_role(list(user["roles"]), body.role)
     return await _sign_in(phone, body.role)
+
+
+def _secret_matches(given: str, expected: str) -> bool:
+    return hmac.compare_digest(given.encode(), expected.encode())
+
+
+def _admin_account_phone(email: str) -> str:
+    digest = hashlib.sha256(email.encode()).hexdigest()[:ADMIN_ACCOUNT_PHONE_HASH_CHARS]
+    return f"{ADMIN_ACCOUNT_PHONE_PREFIX}{digest}"
+
+
+async def admin_login(body: AdminLoginRequest) -> OtpVerifyResponse:
+    """Sign in an admin listed in ADMIN_EMAIL using the shared ADMIN_PASSWORD."""
+    settings = load_settings()
+    admin_emails = settings.admin_emails
+    if not admin_emails or not settings.admin_password:
+        raise bad_request("admin_login_not_configured", MSG_ADMIN_LOGIN_NOT_CONFIGURED)
+    email = body.email.strip().lower()
+    email_ok = any([_secret_matches(email, candidate) for candidate in admin_emails])
+    password_ok = _secret_matches(body.password, settings.admin_password)
+    if not (email_ok and password_ok):
+        raise AuthenticationError(MSG_ADMIN_CREDENTIALS_INVALID, code="credentials_invalid")
+    account_phone = _admin_account_phone(email)
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            user = await user_repository.upsert_user_by_phone(conn, account_phone)
+            if not user["is_active"]:
+                raise forbidden("account_disabled", MSG_ACCOUNT_DISABLED)
+            user_id = user["id"]
+            await user_repository.update_user_fields(
+                conn,
+                user_id,
+                full_name=ADMIN_ACCOUNT_NAME if user["created"] else None,
+                email_set=True,
+                email=email,
+                language_code=None,
+                theme_preference=None,
+            )
+            await user_repository.grant_role(conn, user_id, ROLE_ADMIN)
+            await user_repository.set_active_role(conn, user_id, ROLE_ADMIN)
+            await user_repository.touch_last_login(conn, user_id, utc_now())
+            tokens, _ = await issue_token_pair(conn, user_id=user_id, phone=account_phone)
+            me = await user_service.build_me(conn, user_id)
+    return OtpVerifyResponse(
+        tokens=tokens, is_new_user=bool(user["created"]), needs_role_selection=False, me=me
+    )
 
 
 async def confirm_password_reset(body: PasswordResetConfirmRequest) -> None:

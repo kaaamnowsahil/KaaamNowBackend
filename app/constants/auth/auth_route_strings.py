@@ -16,6 +16,13 @@ PATH_SIGNUP: Final[str] = "/signup"
 PATH_PASSWORD_LOGIN: Final[str] = "/password/login"
 PATH_PASSWORD_RESET_CONFIRM: Final[str] = "/password/reset/confirm"
 PATH_PHONE_CHECK: Final[str] = "/phone/check"
+PATH_ADMIN_LOGIN: Final[str] = "/admin/login"
+
+# users.phone is NOT NULL (VARCHAR(16)); env-backed admins get a non-E.164 value
+# (prefix + email hash) so phone login can never match them.
+ADMIN_ACCOUNT_PHONE_PREFIX: Final[str] = "admin-"
+ADMIN_ACCOUNT_PHONE_HASH_CHARS: Final[int] = 10
+ADMIN_ACCOUNT_NAME: Final[str] = "Admin"
 
 INTENT_SIGN_IN: Final[str] = "sign_in"
 INTENT_SIGN_UP: Final[str] = "sign_up"
@@ -65,3 +72,5 @@ MSG_FIREBASE_TOKEN_INVALID: Final[str] = "Invalid or expired Firebase sign-in to
 MSG_FIREBASE_PHONE_MISSING: Final[str] = "Firebase token has no verified phone number."
 MSG_FIREBASE_UNAVAILABLE: Final[str] = "Could not reach Firebase to verify sign-in. Try again."
 MSG_SIGNUP_IDENTITY: Final[str] = "Send either phone + code (SMS OTP) or id_token (Firebase)."
+MSG_ADMIN_CREDENTIALS_INVALID: Final[str] = "Invalid email or password."
+MSG_ADMIN_LOGIN_NOT_CONFIGURED: Final[str] = "Admin login is not configured on this server."

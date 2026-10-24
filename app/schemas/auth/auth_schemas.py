@@ -48,6 +48,13 @@ class PasswordLoginRequest(BaseModel):
         return _validate_password_strength(value)
 
 
+class AdminLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=254, examples=["admin@kaaamnow.com"])
+    password: str = Field(min_length=1, max_length=128)
+
+
 class PasswordResetConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

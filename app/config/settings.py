@@ -70,6 +70,11 @@ class KaaamNowSettings(BaseSettings):
     jwt_access_minutes: int = Field(default=15, ge=1)
     jwt_refresh_days: int = Field(default=30, ge=1)
 
+    # --- Admin panel login (env-backed admin accounts) ---
+    # Comma-separated; every listed email signs in with the shared ADMIN_PASSWORD.
+    admin_email: str = ""
+    admin_password: str = ""
+
     # --- OTP ---
     otp_provider: str = "console"
     otp_length: int = Field(default=6, ge=4, le=8)
@@ -136,6 +141,10 @@ class KaaamNowSettings(BaseSettings):
                 )
             )
         return storage
+
+    @property
+    def admin_emails(self) -> list[str]:
+        return [email.strip().lower() for email in self.admin_email.split(",") if email.strip()]
 
     @property
     def env_profile(self) -> str:

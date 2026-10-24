@@ -12,6 +12,7 @@ from app.constants.application.application_common import (
 from app.constants.auth.auth_route_strings import (
     AUTH_ROUTE_PREFIX,
     OPENAPI_TAG_AUTH,
+    PATH_ADMIN_LOGIN,
     PATH_FIREBASE_VERIFY,
     PATH_LOGOUT,
     PATH_OTP_SEND,
@@ -24,6 +25,7 @@ from app.constants.auth.auth_route_strings import (
 )
 from app.dependencies import CurrentUser
 from app.schemas.auth.auth_schemas import (
+    AdminLoginRequest,
     FirebaseVerifyRequest,
     OtpSendRequest,
     OtpSendResponse,
@@ -98,6 +100,15 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
 )
 async def password_login(body: PasswordLoginRequest) -> OtpVerifyResponse:
     return await auth_service.password_login(body)
+
+
+@router.post(
+    PATH_ADMIN_LOGIN,
+    response_model=OtpVerifyResponse,
+    summary=swagger_summary("Admin panel sign in with email and password", SWAGGER_ROLE_PUBLIC),
+)
+async def admin_login(body: AdminLoginRequest) -> OtpVerifyResponse:
+    return await auth_service.admin_login(body)
 
 
 @router.post(

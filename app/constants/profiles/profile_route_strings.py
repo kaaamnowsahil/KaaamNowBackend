@@ -8,7 +8,7 @@ from app.constants.application.application_common import API_V1, SEGMENT_ADMIN
 
 ADMIN_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_ADMIN}"
 
-OPENAPI_TAG_ADMIN: Final[str] = "admin"
+OPENAPI_TAG_ADMIN: Final[str] = "admin - verification"
 
 PATH_ADMIN_VERIFICATIONS: Final[str] = "/verifications"
 PATH_ADMIN_WORKER_VERIFICATION: Final[str] = "/workers/{worker_profile_id}/verification"
