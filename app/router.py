@@ -18,6 +18,7 @@ from app.routes.content.content_router import support_router
 from app.routes.earnings.earnings_router import router as earnings_router
 from app.routes.health_router import router as health_router
 from app.routes.lookups.lookup_router import LOOKUP_ROUTERS
+from app.routes.lookups.shift_filter_router import router as shift_filter_router
 from app.routes.notifications.notifications_router import router as notifications_router
 from app.routes.profiles.admin_verification_router import router as admin_verification_router
 from app.routes.ratings.ratings_router import router as ratings_router
@@ -34,6 +35,7 @@ _ROUTERS = (
     auth_router,
     me_router,
     *LOOKUP_ROUTERS,
+    shift_filter_router,
     admin_verification_router,
     admin_account_deletion_router,
     admin_crud_router,

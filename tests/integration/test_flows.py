@@ -301,6 +301,31 @@ async def test_account_deletion_request_review_holds_and_anonymization(
     ).json()["status"] == "completed"
 
 
+async def test_worker_feed_filters_by_business_type(
+    app_client, make_business, make_worker
+) -> None:  # type: ignore[no-untyped-def]
+    business = await make_business()
+    worker = await make_worker("Business type filter worker")
+    shift = await _live_shift(app_client, business)
+    params = {"lat": NEAR_LAT, "lng": NEAR_LNG, "shift_type": "live"}
+
+    matching = await app_client.get(
+        f"{API}/worker/feed",
+        params={**params, "business_type_slugs": "hospitality"},
+        headers=worker.headers,
+    )
+    assert matching.status_code == 200, matching.text
+    assert any(item["id"] == shift["id"] for item in matching.json()["items"])
+
+    non_matching = await app_client.get(
+        f"{API}/worker/feed",
+        params={**params, "business_type_slugs": "hotel"},
+        headers=worker.headers,
+    )
+    assert non_matching.status_code == 200, non_matching.text
+    assert all(item["id"] != shift["id"] for item in non_matching.json()["items"])
+
+
 async def test_live_flow_end_to_end(app_client, db, make_business, make_worker) -> None:  # type: ignore[no-untyped-def]
     business = await make_business()
     worker = await make_worker("Aarav")

@@ -307,6 +307,7 @@ async def list_feed(
     lng_delta: float,
     shift_type: str | None,
     category_slug: str | None,
+    business_type_slugs: list[str] | None,
     query: str | None,
     sort: str,
     now: datetime,
@@ -331,6 +332,7 @@ async def list_feed(
         now,
         limit,
         offset,
+        business_type_slugs,
     )
 
 

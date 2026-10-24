@@ -227,7 +227,7 @@ LEFT JOIN LATERAL (
 GET_WORKER_SHIFT = f"{WORKER_CARD_SELECT} WHERE s.id = $4"
 
 # $4 type, $5 category slug, $6 search text, $7..$10 bbox, $11 radius km, $12 own user id,
-# $13 now, $14 limit, $15 offset.
+# $13 now, $14 limit, $15 offset, $16 business type slugs.
 FEED_TEMPLATE = f"""
 SELECT * FROM (
     {WORKER_CARD_SELECT}
@@ -235,6 +235,17 @@ SELECT * FROM (
       AND bp.user_id <> $12
       AND ($4::varchar IS NULL OR s.shift_type = $4)
       AND ($5::varchar IS NULL OR wc.slug = $5)
+      AND (
+          $16::varchar[] IS NULL
+          OR EXISTS (
+              SELECT 1
+              FROM business_profile_types bpt
+              JOIN business_types bt ON bt.id = bpt.business_type_id
+              WHERE bpt.business_profile_id = bp.id
+                AND bt.is_active
+                AND bt.slug = ANY($16::varchar[])
+          )
+      )
       AND ($6::text IS NULL OR s.job_title ILIKE '%' || $6 || '%'
            OR bp.business_name ILIKE '%' || $6 || '%'
            OR s.workplace_name ILIKE '%' || $6 || '%')
