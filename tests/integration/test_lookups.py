@@ -81,6 +81,14 @@ async def test_lookup_reads_public_writes_admin(
     assert forbidden.status_code == 403
 
 
+async def test_seeded_business_types_are_publicly_available(
+    app_client: httpx.AsyncClient,
+) -> None:
+    response = await app_client.get(f"{API}/business-types")
+    assert response.status_code == 200
+    assert {"hospitality", "retail", "events", "restaurant", "hotel"} <= _slugs(response)
+
+
 @pytest.mark.parametrize(("path", "prefix", "signup_body"), LOOKUPS)
 async def test_lookup_crud_drives_signup(
     app_client: httpx.AsyncClient,

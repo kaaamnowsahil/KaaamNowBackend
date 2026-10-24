@@ -63,6 +63,7 @@ async def feed(
     radius_km: float | None = Query(default=None, gt=0, le=50),
     shift_type: ShiftType | None = None,
     category: str | None = Query(default=None, max_length=64),
+    business_type_slugs: str | None = Query(default=None, max_length=1024),
     q: str | None = Query(default=None, max_length=80),
     sort: Literal["distance", "starts_at", "pay"] = "distance",
     limit: int | None = Query(default=None, ge=1),
@@ -75,6 +76,15 @@ async def feed(
         radius_km=radius_km,
         shift_type=shift_type,
         category_slug=category,
+        business_type_slugs=(
+            list(
+                dict.fromkeys(
+                    slug.strip() for slug in business_type_slugs.split(",") if slug.strip()
+                )
+            )
+            if business_type_slugs
+            else None
+        ),
         query=q,
         sort=sort,
         limit=limit,

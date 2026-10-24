@@ -973,6 +973,151 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/shift-filter-options:
+    get:
+      tags:
+      - shift filter options
+      summary: List worker shift filter options · Public
+      operationId: list_options_api_v1_shift_filter_options_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: include_inactive
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Inactive
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShiftFilterOption'
+                title: Response List Options Api V1 Shift Filter Options Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - shift filter options
+      summary: Create worker shift filter option · Admin
+      operationId: create_option_api_v1_shift_filter_options_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftFilterOptionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftFilterOption'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/shift-filter-options/{option_id}:
+    get:
+      tags:
+      - shift filter options
+      summary: Get worker shift filter option · Public
+      operationId: get_option_api_v1_shift_filter_options__option_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: option_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Option Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftFilterOption'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - shift filter options
+      summary: Update worker shift filter option · Admin
+      operationId: update_option_api_v1_shift_filter_options__option_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: option_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Option Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftFilterOptionUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftFilterOption'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - shift filter options
+      summary: Deactivate worker shift filter option · Admin
+      operationId: delete_option_api_v1_shift_filter_options__option_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: option_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Option Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/admin/verifications:
     get:
       tags:
@@ -2371,6 +2516,15 @@ paths:
             maxLength: 64
           - type: 'null'
           title: Category
+      - name: business_type_slugs
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Business Type Slugs
       - name: q
         in: query
         required: false
@@ -7799,6 +7953,158 @@ components:
       - hourly_rate_minor
       - workers_required
       title: ShiftEstimateRequest
+    ShiftFilterOption:
+      properties:
+        filter_type:
+          $ref: '#/components/schemas/ShiftFilterType'
+        slug:
+          type: string
+          maxLength: 64
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          title: Slug
+        label:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Label
+        min_value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Min Value
+        max_value:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Max Value
+        sort_order:
+          type: integer
+          minimum: 0.0
+          title: Sort Order
+          default: 0
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+        id:
+          type: string
+          format: uuid
+          title: Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      additionalProperties: false
+      type: object
+      required:
+      - filter_type
+      - slug
+      - label
+      - id
+      - created_at
+      - updated_at
+      title: ShiftFilterOption
+    ShiftFilterOptionCreate:
+      properties:
+        filter_type:
+          $ref: '#/components/schemas/ShiftFilterType'
+        slug:
+          type: string
+          maxLength: 64
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          title: Slug
+        label:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Label
+        min_value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Min Value
+        max_value:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Max Value
+        sort_order:
+          type: integer
+          minimum: 0.0
+          title: Sort Order
+          default: 0
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - filter_type
+      - slug
+      - label
+      title: ShiftFilterOptionCreate
+    ShiftFilterOptionUpdate:
+      properties:
+        filter_type:
+          anyOf:
+          - $ref: '#/components/schemas/ShiftFilterType'
+          - type: 'null'
+        slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+            pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          - type: 'null'
+          title: Slug
+        label:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Label
+        min_value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Min Value
+        max_value:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Max Value
+        sort_order:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Sort Order
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      additionalProperties: false
+      type: object
+      title: ShiftFilterOptionUpdate
+    ShiftFilterType:
+      type: string
+      enum:
+      - distance
+      - minimum_pay
+      - shift_length
+      title: ShiftFilterType
     ShiftGroupCount:
       properties:
         key:
@@ -8064,8 +8370,6 @@ components:
         cancellation_cutoff_hours:
           type: integer
           title: Cancellation Cutoff Hours
-        estimate:
-          $ref: '#/components/schemas/ShiftCostEstimate'
         booked_count:
           type: integer
           title: Booked Count
@@ -8148,7 +8452,6 @@ components:
       - site_contact_name
       - check_in_code
       - cancellation_cutoff_hours
-      - estimate
       - booked_count
       - pending_applications
       - estimate

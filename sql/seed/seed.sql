@@ -143,6 +143,20 @@ INSERT INTO business_types (slug, name, icon, sort_order) VALUES
     ('other',                 'Other',                             'more-horizontal', 99)
 ON CONFLICT (slug) DO NOTHING;
 
+INSERT INTO shift_filter_options
+    (filter_type, slug, label, min_value, max_value, sort_order)
+VALUES
+    ('distance', 'within-1-km', 'Within 1 km', NULL, 1, 1),
+    ('distance', 'within-3-km', 'Within 3 km', NULL, 3, 2),
+    ('distance', 'within-5-km', 'Within 5 km', NULL, 5, 3),
+    ('minimum_pay', '130-per-hour', '₹130+ / hr', 130, NULL, 1),
+    ('minimum_pay', '150-per-hour', '₹150+ / hr', 150, NULL, 2),
+    ('minimum_pay', '175-per-hour', '₹175+ / hr', 175, NULL, 3),
+    ('shift_length', 'up-to-4-hours', 'Up to 4 hours', 0, 4, 1),
+    ('shift_length', '5-to-6-hours', '5–6 hours', 5, 6, 2),
+    ('shift_length', '7-plus-hours', '7+ hours', 7, NULL, 3)
+ON CONFLICT (filter_type, slug) DO NOTHING;
+
 -- Bring rows seeded by the earlier list to the new names and order. A row an admin has since
 -- renamed or reordered no longer matches its old values and is left alone.
 UPDATE business_types bt
