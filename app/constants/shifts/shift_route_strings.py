@@ -36,6 +36,7 @@ PATH_SHIFT_RETRY_LIVE: Final[str] = "/shifts/{shift_id}/retry-live"
 PATH_SHIFT_LIVE_SEARCH: Final[str] = "/shifts/{shift_id}/live-search"
 PATH_SHIFT_ROSTER: Final[str] = "/shifts/{shift_id}/roster"
 PATH_SHIFT_APPLICATIONS: Final[str] = "/shifts/{shift_id}/applications"
+PATH_BUSINESS_APPLICATIONS: Final[str] = "/applications"
 PATH_APPLICATION_SELECT: Final[str] = "/applications/{application_id}/select"
 PATH_APPLICATION_REJECT: Final[str] = "/applications/{application_id}/reject"
 PATH_BUSINESS_ASSIGNMENT_CANCEL: Final[str] = "/assignments/{assignment_id}/cancel"
@@ -156,6 +157,10 @@ MSG_SHIFT_NOT_CANCELLABLE: Final[str] = "This shift can no longer be cancelled."
 MSG_SHIFT_CANCELLATION_CUTOFF: Final[str] = (
     "This shift can only be cancelled at least {hours} hours before it starts."
 )
+MSG_WORKER_CANCELLATION_CUTOFF: Final[str] = (
+    "You can only withdraw at least {hours} hours before the shift starts."
+)
+MSG_CANCEL_REASON_REQUIRED: Final[str] = "Tell the business why you're withdrawing."
 MSG_SHIFT_NOT_RECRUITING: Final[str] = "This shift is no longer accepting workers."
 MSG_SHIFT_FULL: Final[str] = "All spots for this shift are filled."
 MSG_SHIFT_STARTED: Final[str] = "This shift has already started."
@@ -175,6 +180,7 @@ MSG_NOT_SCHEDULED_SHIFT: Final[str] = "This action is only for scheduled shifts.
 MSG_NO_LIVE_OFFER: Final[str] = "This request is no longer available to you."
 MSG_ALREADY_BOOKED: Final[str] = "You are already booked on this shift."
 MSG_OVERLAPPING_SHIFT: Final[str] = "You already have a shift at this time."
+MSG_WORKER_UNAVAILABLE: Final[str] = "This worker is already booked for another shift at this time."
 MSG_TOO_FAR_FROM_SHIFT: Final[str] = "You are outside this shift's search radius."
 MSG_SHIFT_BEYOND_MAX_DISTANCE: Final[str] = (
     "You're too far from this shift (more than {km:g} km). Try finding shifts nearby."

@@ -9,9 +9,7 @@ import asyncpg
 from app.repositories.lookups import shift_filter_queries
 
 
-async def list_options(
-    conn: asyncpg.Connection, *, include_inactive: bool
-) -> list[asyncpg.Record]:
+async def list_options(conn: asyncpg.Connection, *, include_inactive: bool) -> list[asyncpg.Record]:
     return await conn.fetch(shift_filter_queries.LIST_OPTIONS, include_inactive)
 
 

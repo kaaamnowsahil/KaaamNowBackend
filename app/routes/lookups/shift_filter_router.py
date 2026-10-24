@@ -95,8 +95,6 @@ async def update_option(
     status_code=status.HTTP_204_NO_CONTENT,
     summary=swagger_summary("Deactivate worker shift filter option", SWAGGER_ROLE_ADMIN),
 )
-async def delete_option(
-    option_id: UUID, _: RequireVerificationWrite
-) -> Response:
+async def delete_option(option_id: UUID, _: RequireVerificationWrite) -> Response:
     await shift_filter_service.delete_option(option_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -19,12 +19,15 @@ SELECT a.*, s.business_profile_id, s.status AS shift_status, s.shift_type, s.sta
        wp.user_id AS worker_user_id,
        ar.id AS attendance_id, ar.checked_in_at, ar.check_in_distance_m, ar.checked_out_at,
        ar.worker_note, ar.recorded_minutes, ar.approved_minutes, ar.business_note,
-       ar.approved_at
+       ar.approved_at,
+       ap.applied_at AS application_applied_at, ap.decided_at AS application_decided_at,
+       ap.responded_at AS application_responded_at
 FROM shift_assignments a
 JOIN shifts s ON s.id = a.shift_id
 JOIN business_profiles bp ON bp.id = s.business_profile_id
 JOIN worker_profiles wp ON wp.id = a.worker_profile_id
 LEFT JOIN attendance_records ar ON ar.assignment_id = a.id
+LEFT JOIN shift_applications ap ON ap.id = a.application_id
 """
 
 GET_ASSIGNMENT_CONTEXT = f"{_CONTEXT_SELECT} WHERE a.id = $1"

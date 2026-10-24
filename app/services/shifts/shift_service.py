@@ -462,9 +462,7 @@ async def cancel(
             if late:
                 raise conflict(
                     "shift_cancellation_cutoff",
-                    MSG_SHIFT_CANCELLATION_CUTOFF.format(
-                        hours=shift["cancellation_cutoff_hours"]
-                    ),
+                    MSG_SHIFT_CANCELLATION_CUTOFF.format(hours=shift["cancellation_cutoff_hours"]),
                 )
             worker_ids = await assignment_repository.cancel_shift_assignments(
                 conn,
@@ -609,11 +607,13 @@ async def list_shifts(
         for row in rows:
             estimate = await _estimate_for(conn, row, default_fee_percentage)
             items.append(
-                BusinessShiftItem.model_validate({
-                    **dict(row),
-                    "estimate": estimate,
-                    "group": row["shift_group"],
-                })
+                BusinessShiftItem.model_validate(
+                    {
+                        **dict(row),
+                        "estimate": estimate,
+                        "group": row["shift_group"],
+                    }
+                )
             )
     return ShiftPage(
         items=items,
@@ -650,11 +650,13 @@ async def dashboard(
     for row, estimate in rows_with_estimates:  # ordered by starts_at ascending
         group = dashboard_group(row["status"], row["ends_at"], now)
         buckets[group].append(
-            DashboardShift.model_validate({
-                **dict(row),
-                "estimate": estimate,
-                "dashboard_group": group,
-            })
+            DashboardShift.model_validate(
+                {
+                    **dict(row),
+                    "estimate": estimate,
+                    "dashboard_group": group,
+                }
+            )
         )
     for key in (DASHBOARD_GROUP_COMPLETED, DASHBOARD_GROUP_EXPIRED):
         buckets[key].reverse()

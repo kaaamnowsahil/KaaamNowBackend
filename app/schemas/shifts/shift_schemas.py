@@ -372,6 +372,13 @@ class MyShiftItem(BaseModel):
     application_id: UUID | None = None
     application_status: str | None = None
     confirm_by: datetime | None = None
+    applied_at: datetime | None = None
+    decided_at: datetime | None = Field(
+        default=None, description="When the business selected, rejected or it expired."
+    )
+    responded_at: datetime | None = Field(
+        default=None, description="When the worker confirmed, declined or withdrew."
+    )
     earned_minor: int | None = None
     shift: WorkerShiftCard
 
