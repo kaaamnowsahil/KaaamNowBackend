@@ -7,11 +7,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.profiles.profile_schemas import _CoordinatesPair
 
-class ApplicationCreate(BaseModel):
+
+class ApplicationCreate(_CoordinatesPair):
     model_config = ConfigDict(extra="forbid")
 
     cover_note: str = Field(default="", max_length=500)
+    latitude: float | None = Field(
+        default=None, ge=-90, le=90, description="Device's current location; not saved."
+    )
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class ApplicationResponse(BaseModel):

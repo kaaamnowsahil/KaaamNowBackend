@@ -30,7 +30,7 @@ MSG_WORKER_PROFILE_MISSING: Final[str] = "Sign up as a Worker first (POST /api/v
 MSG_WORKER_NOT_FOUND: Final[str] = "Worker not found."
 MSG_BUSINESS_NOT_FOUND: Final[str] = "Business / Work profile not found."
 MSG_BUSINESS_PROFILE_INCOMPLETE: Final[str] = (
-    "Complete your Business / Work name and location before posting shifts."
+    "Complete your Business / Work name before posting shifts."
 )
 MSG_BUSINESS_LIMIT_REACHED: Final[str] = (
     "You have reached the maximum number of Business / Work profiles."

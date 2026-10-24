@@ -439,6 +439,21 @@ async def test_scheduled_flow(app_client, make_business, make_worker) -> None:  
     my = (await app_client.get(f"{API}/worker/my-shifts", headers=worker.headers)).json()
     assert my["items"]
 
+    assignment_id = my["items"][0]["assignment_id"]
+    cancelled = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/cancel",
+        json={"reason": "Not feeling well"},
+        headers=worker.headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["late_cancellation"] is False
+    assert cancelled.json()["shift_status"] == "open"
+    again = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/cancel", json={}, headers=worker.headers
+    )
+    assert again.status_code == 409, again.text
+
 
 async def test_withdrawals_paid_failed_and_idempotent(  # type: ignore[no-untyped-def]
     app_client, db: asyncpg.Connection, make_worker

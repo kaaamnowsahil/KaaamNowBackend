@@ -16,6 +16,7 @@ from app.constants.notifications.notification_route_strings import (
     KIND_APPLICATION_SELECTED,
     KIND_LIVE_FILLED,
 )
+from app.constants.profiles.profile_route_strings import MSG_WORKER_LOCATION_REQUIRED
 from app.constants.shifts.shift_route_strings import (
     APP_APPLIED,
     APP_CONFIRMED,
@@ -30,6 +31,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_CONFIRM_EXPIRED,
     MSG_NOT_SCHEDULED_SHIFT,
     MSG_OVERLAPPING_SHIFT,
+    MSG_SHIFT_BEYOND_MAX_DISTANCE,
     MSG_SHIFT_FULL,
     MSG_SHIFT_NOT_FOUND,
     MSG_SHIFT_NOT_RECRUITING,
@@ -52,6 +54,7 @@ from app.services.profiles.profile_lookup import (
     business_scope,
     ensure_worker_can_work,
     require_worker_profile,
+    worker_home_point,
 )
 from app.services.shifts.domain.shift_mappers import applicant_item
 from app.utils.clock import utc_now
@@ -109,14 +112,16 @@ async def apply(
                 raise conflict("shift_not_recruiting", MSG_SHIFT_NOT_RECRUITING)
             if await shift_repository.count_seats(conn, shift_id) >= shift["workers_required"]:
                 raise conflict("shift_full", MSG_SHIFT_FULL)
-            location = await profile_repository.get_worker_location(conn, worker["id"])
-            lat = location["latitude"] if location else worker["latitude"]
-            lng = location["longitude"] if location else worker["longitude"]
-            distance = (
-                haversine_km(lat, lng, shift["latitude"], shift["longitude"])
-                if lat is not None and lng is not None
-                else None
-            )
+            if body.latitude is not None and body.longitude is not None:
+                lat, lng = body.latitude, body.longitude
+            else:
+                lat, lng = await worker_home_point(conn, worker)
+            if lat is None or lng is None:
+                raise bad_request("location_required", MSG_WORKER_LOCATION_REQUIRED)
+            distance = haversine_km(lat, lng, shift["latitude"], shift["longitude"])
+            max_km = load_settings().worker_max_shift_distance_km
+            if distance > max_km:
+                raise bad_request("too_far", MSG_SHIFT_BEYOND_MAX_DISTANCE.format(km=max_km))
             row = await application_repository.upsert_application(
                 conn,
                 shift_id=shift_id,

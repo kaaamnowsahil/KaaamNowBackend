@@ -110,13 +110,37 @@ COUNT_SEATS = f"""
 SELECT count(*) FROM shift_assignments WHERE shift_id = $1 AND status IN {SEAT_STATUSES_SQL}
 """
 
+
+def _shift_group_sql(alias: str, now_param: str) -> str:
+    """Business Shifts page section; recruiting/filled shifts past their end count as expired."""
+    return f"""CASE
+        WHEN {alias}.status IN ('draft', 'cancelled', 'completed', 'in_progress')
+            THEN {alias}.status
+        WHEN {alias}.status IN ('searching', 'open', 'filled')
+            AND {alias}.ends_at > {now_param}::timestamptz THEN 'upcoming'
+        ELSE 'expired'
+    END"""
+
+
 LIST_BUSINESS_SHIFTS = f"""
-{_BUSINESS_SHIFT_SELECT}
-WHERE s.business_profile_id = ANY($1::uuid[])
-  AND ($2::varchar IS NULL OR s.shift_type = $2)
-  AND ($3::varchar[] IS NULL OR s.status = ANY($3))
-ORDER BY s.starts_at DESC
+SELECT * FROM (
+    SELECT b.*, {_shift_group_sql("b", "$6")} AS shift_group
+    FROM ({_BUSINESS_SHIFT_SELECT}
+          WHERE s.business_profile_id = ANY($1::uuid[])
+            AND ($2::varchar IS NULL OR s.shift_type = $2)
+            AND ($3::varchar[] IS NULL OR s.status = ANY($3))) b
+) x
+WHERE $7::varchar IS NULL OR x.shift_group = $7
+ORDER BY CASE WHEN $7 IN ('upcoming', 'in_progress', 'draft') THEN x.starts_at END,
+         x.starts_at DESC
 LIMIT $4 OFFSET $5
+"""
+
+COUNT_BUSINESS_SHIFT_GROUPS = f"""
+SELECT {_shift_group_sql("s", "$3")} AS shift_group, count(*) AS count
+FROM shifts s
+WHERE s.business_profile_id = ANY($1::uuid[]) AND ($2::varchar IS NULL OR s.shift_type = $2)
+GROUP BY 1
 """
 
 LIST_DASHBOARD_SHIFTS = f"""
@@ -128,6 +152,14 @@ WHERE s.business_profile_id = ANY($1::uuid[]) AND s.shift_type = $2
       OR (s.status = 'expired' AND s.updated_at > $3::timestamptz - interval '1 day')
   )
 ORDER BY s.starts_at
+"""
+
+LIST_DASHBOARD_NEXT_SCHEDULED = f"""
+{_BUSINESS_SHIFT_SELECT}
+WHERE s.business_profile_id = ANY($1::uuid[]) AND s.shift_type = 'scheduled'
+  AND s.status IN ('open', 'filled') AND s.starts_at > $2::timestamptz
+ORDER BY s.starts_at
+LIMIT $3
 """
 
 DASHBOARD_SUMMARY = """

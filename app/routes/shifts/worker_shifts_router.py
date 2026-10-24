@@ -1,4 +1,4 @@
-"""Worker: discover shifts, live requests, applications, my shifts, travel, cancel."""
+"""Worker: discover shifts, applications, my shifts, travel, cancel; live on ``live_router``."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query, status
 
 from app.constants.application.application_common import SWAGGER_ROLE_WORKER, swagger_summary
 from app.constants.shifts.shift_route_strings import (
+    OPENAPI_TAG_WORKER_LIVE,
     OPENAPI_TAG_WORKER_SHIFTS,
     PATH_APPLICATION_CONFIRM,
     PATH_APPLICATION_DECLINE,
@@ -47,6 +48,7 @@ from app.services.shifts import (
 from app.services.shifts.assignment_service import PARTY_WORKER
 
 router = APIRouter(prefix=WORKER_ROUTE_PREFIX, tags=[OPENAPI_TAG_WORKER_SHIFTS])
+live_router = APIRouter(prefix=WORKER_ROUTE_PREFIX, tags=[OPENAPI_TAG_WORKER_LIVE])
 
 
 @router.get(
@@ -94,7 +96,7 @@ async def my_shifts(
     return await shift_feed_service.my_shifts(user, tab, limit, offset)
 
 
-@router.get(
+@live_router.get(
     PATH_LIVE_REQUESTS,
     response_model=list[LiveRequestItem],
     summary=swagger_summary("Open live requests", SWAGGER_ROLE_WORKER),
@@ -112,7 +114,7 @@ async def shift_detail(shift_id: UUID, user: RequireWorkRead) -> WorkerShiftDeta
     return await shift_feed_service.get_shift(user, shift_id)
 
 
-@router.post(
+@live_router.post(
     PATH_LIVE_ACCEPT,
     response_model=AssignmentDetail,
     summary=swagger_summary("Accept live request", SWAGGER_ROLE_WORKER),
@@ -121,7 +123,7 @@ async def accept_live(shift_id: UUID, user: RequireWorkWrite) -> AssignmentDetai
     return await live_dispatch_service.accept(user, shift_id)
 
 
-@router.post(
+@live_router.post(
     PATH_LIVE_DECLINE,
     status_code=status.HTTP_204_NO_CONTENT,
     summary=swagger_summary("Decline live request", SWAGGER_ROLE_WORKER),

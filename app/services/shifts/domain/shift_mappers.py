@@ -13,7 +13,6 @@ from app.schemas.shifts.shift_schemas import (
     BusinessCard,
     LiveSearchState,
     ShiftCostEstimate,
-    ShiftListItem,
     ShiftResponse,
     WorkerShiftCard,
     WorkerShiftDetail,
@@ -41,10 +40,6 @@ def shift_response(
     data["estimate"] = estimate
     data["live_search"] = live_search_state(row, now) if row["shift_type"] == "live" else None
     return ShiftResponse.model_validate(data)
-
-
-def shift_list_item(row: asyncpg.Record) -> ShiftListItem:
-    return ShiftListItem.model_validate(dict(row))
 
 
 def business_card(row: asyncpg.Record) -> BusinessCard:

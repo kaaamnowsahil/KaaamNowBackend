@@ -14,6 +14,7 @@ from app.repositories.shifts.shift_queries import (
     CANCEL_SHIFT,
     CONVERT_TO_SCHEDULED,
     COUNT_ACTIVE_WORKERS_NEAR,
+    COUNT_BUSINESS_SHIFT_GROUPS,
     COUNT_SEATS,
     DASHBOARD_SUMMARY,
     EXPAND_SEARCH_RADIUS,
@@ -24,6 +25,7 @@ from app.repositories.shifts.shift_queries import (
     INSERT_SHIFT,
     INSERT_STATUS_HISTORY,
     LIST_BUSINESS_SHIFTS,
+    LIST_DASHBOARD_NEXT_SCHEDULED,
     LIST_DASHBOARD_SHIFTS,
     LIST_DUE_LIVE_EXPANSIONS,
     LIST_LIVE_SEARCHES_TO_REFRESH,
@@ -209,18 +211,46 @@ async def list_business_shifts(
     *,
     shift_type: str | None,
     statuses: list[str] | None,
+    group: str | None,
+    now: datetime,
     limit: int,
     offset: int,
 ) -> list[asyncpg.Record]:
     return await conn.fetch(
-        LIST_BUSINESS_SHIFTS, list(business_profile_ids), shift_type, statuses, limit, offset
+        LIST_BUSINESS_SHIFTS,
+        list(business_profile_ids),
+        shift_type,
+        statuses,
+        limit,
+        offset,
+        now,
+        group,
     )
+
+
+async def count_business_shift_groups(
+    conn: asyncpg.Connection,
+    business_profile_ids: Sequence[UUID],
+    *,
+    shift_type: str | None,
+    now: datetime,
+) -> dict[str, int]:
+    rows = await conn.fetch(
+        COUNT_BUSINESS_SHIFT_GROUPS, list(business_profile_ids), shift_type, now
+    )
+    return {row["shift_group"]: row["count"] for row in rows}
 
 
 async def list_dashboard_shifts(
     conn: asyncpg.Connection, business_profile_ids: Sequence[UUID], shift_type: str, now: datetime
 ) -> list[asyncpg.Record]:
     return await conn.fetch(LIST_DASHBOARD_SHIFTS, list(business_profile_ids), shift_type, now)
+
+
+async def list_next_scheduled_shifts(
+    conn: asyncpg.Connection, business_profile_ids: Sequence[UUID], now: datetime, limit: int
+) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_DASHBOARD_NEXT_SCHEDULED, list(business_profile_ids), now, limit)
 
 
 async def dashboard_summary(

@@ -50,6 +50,7 @@ async def create_pool(dsn: str | None = None) -> asyncpg.Pool:
         max_size=settings.db_pool_max,
         command_timeout=settings.db_command_timeout_seconds,
         timeout=settings.db_connect_timeout_seconds,
+        max_inactive_connection_lifetime=settings.db_max_idle_seconds,
         init=_init_connection,
     )
     log.info(LOG_DATABASE_CONNECTED, extra=log_extra(dsn=redact_database_url(target)))
