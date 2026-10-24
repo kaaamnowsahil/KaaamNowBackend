@@ -19,8 +19,14 @@ from app.constants.shifts.shift_route_strings import (
     ASG_BOOKED_STATUSES,
     ASG_CHECKED_IN,
     CHECK_IN_CODE_LENGTH,
+    DASHBOARD_GROUP_COMPLETED,
+    DASHBOARD_GROUP_EXPIRED,
+    DASHBOARD_GROUPS,
+    DASHBOARD_NEXT_SCHEDULED_LIMIT,
     MSG_CONVERT_NOT_ALLOWED,
     MSG_RETRY_NOT_ALLOWED,
+    MSG_SHIFT_CANCELLATION_CUTOFF,
+    MSG_SHIFT_LOCATION_REQUIRED,
     MSG_SHIFT_NOT_CANCELLABLE,
     MSG_SHIFT_NOT_DRAFT,
     MSG_SHIFT_NOT_FOUND,
@@ -29,13 +35,14 @@ from app.constants.shifts.shift_route_strings import (
     SHIFT_CANCELLED,
     SHIFT_DRAFT,
     SHIFT_EXPIRED,
+    SHIFT_GROUPS,
     SHIFT_LIVE,
     SHIFT_OPEN,
     SHIFT_SCHEDULED,
     SHIFT_SEARCHING,
 )
 from app.db.pool import get_pool
-from app.exceptions.api_errors import conflict, not_found
+from app.exceptions.api_errors import ApiError, bad_request, conflict, not_found
 from app.pagination import clamp_page_limit
 from app.repositories.profiles import profile_repository
 from app.repositories.shifts import (
@@ -45,14 +52,22 @@ from app.repositories.shifts import (
     shift_repository,
 )
 from app.schemas.shifts.shift_schemas import (
+    BusinessShiftItem,
     ConvertToScheduledRequest,
+    DashboardGroup,
     DashboardResponse,
+    DashboardShift,
     DashboardSummary,
     LiveSearchStatus,
+    ShiftBulkCreate,
+    ShiftBulkItem,
+    ShiftBulkPublish,
+    ShiftBulkResponse,
     ShiftCancelRequest,
     ShiftCostEstimate,
     ShiftCreate,
     ShiftEstimateRequest,
+    ShiftGroupCount,
     ShiftPage,
     ShiftPatch,
     ShiftResponse,
@@ -68,10 +83,10 @@ from app.services.profiles.profile_lookup import (
 from app.services.shifts import live_dispatch_service
 from app.services.shifts.domain.shift_mappers import (
     live_search_state,
-    shift_list_item,
     shift_response,
 )
 from app.services.shifts.domain.shift_rules import (
+    dashboard_group,
     estimate_cost,
     is_late_cancellation,
     paid_minutes,
@@ -85,9 +100,15 @@ from app.utils.references import new_numeric_code
 # --- helpers ---------------------------------------------------------------------------
 
 
-async def _estimate_for(conn: asyncpg.Connection, row: asyncpg.Record) -> ShiftCostEstimate:
+async def _estimate_for(
+    conn: asyncpg.Connection,
+    row: asyncpg.Record,
+    default_fee_percentage: Decimal | None = None,
+) -> ShiftCostEstimate:
     if row["fee_percentage"] is not None:
         pct = Decimal(row["fee_percentage"])
+    elif default_fee_percentage is not None:
+        pct = default_fee_percentage
     else:
         pct = Decimal((await catalog_service.require_active_fee_policy(conn))["percentage"])
     return estimate_cost(
@@ -125,7 +146,7 @@ async def build_shift_response(
 
 
 def _merged_values(
-    base: dict[str, Any], body: ShiftCreate | ShiftPatch, business: asyncpg.Record
+    base: dict[str, Any], body: ShiftCreate | ShiftPatch | ShiftBulkItem, business: asyncpg.Record
 ) -> dict[str, Any]:
     patch = body.model_dump(exclude_unset=True)
     values = dict(base)
@@ -253,55 +274,124 @@ async def estimate(body: ShiftEstimateRequest) -> ShiftCostEstimate:
     )
 
 
-async def create_shift(user: AuthenticatedUser, body: ShiftCreate) -> ShiftResponse:
+async def _insert_shift(
+    conn: asyncpg.Connection,
+    business: asyncpg.Record,
+    body: ShiftCreate | ShiftBulkItem,
+    shift_type: str,
+    now: datetime,
+) -> UUID:
     settings = load_settings()
-    now = utc_now()
     starts_at, ends_at = resolve_window(
-        shift_type=body.shift_type,
+        shift_type=shift_type,
         starts_at=body.starts_at,
         ends_at=body.ends_at,
         duration_minutes=body.duration_minutes,
         now=now,
     )
+    base = {
+        "category_id": await catalog_service.resolve_category_id(conn, body.category_slug),
+        "responsibilities": "",
+        "requirements": "",
+        "break_minutes": 0,
+        "workplace_name": "",
+        "address_text": "",
+        "latitude": None,
+        "longitude": None,
+        "arrival_instructions": "",
+        "site_contact_name": "",
+        "cancellation_cutoff_hours": settings.default_cancellation_cutoff_hours,
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+    }
+    values = _merged_values(base, body, business)
+    if values["latitude"] is None or values["longitude"] is None or not values["address_text"]:
+        raise bad_request("shift_location_required", MSG_SHIFT_LOCATION_REQUIRED)
+    validate_window(
+        shift_type=shift_type,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        break_minutes=values["break_minutes"],
+        now=now,
+    )
+    return await shift_repository.insert_shift(
+        conn,
+        business_profile_id=business["id"],
+        shift_type=shift_type,
+        currency=settings.default_currency,
+        check_in_code=new_numeric_code(CHECK_IN_CODE_LENGTH),
+        values=values,
+    )
+
+
+def _with_index(exc: ApiError, index: int, shift_id: UUID | None = None) -> ApiError:
+    details = {"index": index}
+    if shift_id is not None:
+        details["shift_id"] = str(shift_id)
+    if isinstance(exc.details, dict):
+        details = {**exc.details, **details}
+    return ApiError(exc.status_code, exc.code, exc.message, details)
+
+
+async def create_shift(user: AuthenticatedUser, body: ShiftCreate) -> ShiftResponse:
+    now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             business = await require_postable_business(conn, user.user_id, body.business_profile_id)
-            base = {
-                "category_id": await catalog_service.resolve_category_id(conn, body.category_slug),
-                "responsibilities": "",
-                "requirements": "",
-                "break_minutes": 0,
-                "workplace_name": "",
-                "address_text": "",
-                "latitude": None,
-                "longitude": None,
-                "arrival_instructions": "",
-                "site_contact_name": "",
-                "cancellation_cutoff_hours": settings.default_cancellation_cutoff_hours,
-                "starts_at": starts_at,
-                "ends_at": ends_at,
-            }
-            values = _merged_values(base, body, business)
-            validate_window(
-                shift_type=body.shift_type,
-                starts_at=starts_at,
-                ends_at=ends_at,
-                break_minutes=values["break_minutes"],
-                now=now,
-            )
-            shift_id = await shift_repository.insert_shift(
-                conn,
-                business_profile_id=business["id"],
-                shift_type=body.shift_type,
-                currency=settings.default_currency,
-                check_in_code=new_numeric_code(CHECK_IN_CODE_LENGTH),
-                values=values,
-            )
+            shift_id = await _insert_shift(conn, business, body, body.shift_type, now)
             if body.publish:
                 await _publish_locked(
                     conn, await shift_repository.lock_shift(conn, shift_id), user, now
                 )
             return await build_shift_response(conn, [business["id"]], shift_id)
+
+
+async def create_shifts_bulk(user: AuthenticatedUser, body: ShiftBulkCreate) -> ShiftBulkResponse:
+    """One transaction: a failing date rolls back every shift; error details carry its index."""
+    now = utc_now()
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            business = await require_postable_business(conn, user.user_id, body.business_profile_id)
+            shift_ids: list[UUID] = []
+            for index, item in enumerate(body.shifts):
+                try:
+                    shift_id = await _insert_shift(conn, business, item, SHIFT_SCHEDULED, now)
+                    if body.publish:
+                        await _publish_locked(
+                            conn, await shift_repository.lock_shift(conn, shift_id), user, now
+                        )
+                except ApiError as exc:
+                    raise _with_index(exc, index) from exc
+                shift_ids.append(shift_id)
+            scope = [business["id"]]
+            return ShiftBulkResponse(
+                items=[await build_shift_response(conn, scope, sid) for sid in shift_ids]
+            )
+
+
+async def publish_shifts_bulk(user: AuthenticatedUser, body: ShiftBulkPublish) -> ShiftBulkResponse:
+    """Post saved drafts by id in one transaction: all go live, or none do."""
+    now = utc_now()
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            scope = await business_scope(conn, user.user_id)
+            checked_businesses: set[UUID] = set()
+            for index, shift_id in enumerate(body.shift_ids):
+                try:
+                    shift = await _lock_owned(conn, scope, shift_id)
+                    if shift["business_profile_id"] not in checked_businesses:
+                        ensure_postable(
+                            await profile_repository.get_business_profile(
+                                conn, shift["business_profile_id"]
+                            )
+                        )
+                        checked_businesses.add(shift["business_profile_id"])
+                    await _publish_locked(conn, shift, user, now)
+                except ApiError as exc:
+                    raise _with_index(exc, index, shift_id) from exc
+            return ShiftBulkResponse(
+                items=[await build_shift_response(conn, scope, sid) for sid in body.shift_ids]
+            )
 
 
 async def update_draft(user: AuthenticatedUser, shift_id: UUID, body: ShiftPatch) -> ShiftResponse:
@@ -369,6 +459,13 @@ async def cancel(
             if await assignment_repository.count_in(conn, shift_id, [ASG_CHECKED_IN]):
                 raise conflict("shift_not_cancellable", MSG_SHIFT_NOT_CANCELLABLE)
             late = is_late_cancellation(shift["starts_at"], shift["cancellation_cutoff_hours"], now)
+            if late:
+                raise conflict(
+                    "shift_cancellation_cutoff",
+                    MSG_SHIFT_CANCELLATION_CUTOFF.format(
+                        hours=shift["cancellation_cutoff_hours"]
+                    ),
+                )
             worker_ids = await assignment_repository.cancel_shift_assignments(
                 conn,
                 shift_id,
@@ -485,8 +582,10 @@ async def list_shifts(
     limit: int | None,
     offset: int,
     business_profile_id: UUID | None = None,
+    group: str | None = None,
 ) -> ShiftPage:
     page_limit = clamp_page_limit(limit)
+    now = utc_now()
     async with get_pool().acquire() as conn:
         scope = await business_scope(conn, user.user_id, business_profile_id)
         rows = await shift_repository.list_business_shifts(
@@ -494,23 +593,80 @@ async def list_shifts(
             scope,
             shift_type=shift_type,
             statuses=statuses or None,
+            group=group,
+            now=now,
             limit=page_limit,
             offset=offset,
         )
-    return ShiftPage(items=[shift_list_item(r) for r in rows], limit=page_limit, offset=offset)
+        counts = await shift_repository.count_business_shift_groups(
+            conn, scope, shift_type=shift_type, now=now
+        )
+        default_fee_percentage = None
+        if any(row["fee_percentage"] is None for row in rows):
+            policy = await catalog_service.require_active_fee_policy(conn)
+            default_fee_percentage = Decimal(policy["percentage"])
+        items = []
+        for row in rows:
+            estimate = await _estimate_for(conn, row, default_fee_percentage)
+            items.append(
+                BusinessShiftItem.model_validate({
+                    **dict(row),
+                    "estimate": estimate,
+                    "group": row["shift_group"],
+                })
+            )
+    return ShiftPage(
+        items=items,
+        group_counts=[
+            ShiftGroupCount(key=key, title=title, count=counts.get(key, 0))  # type: ignore[arg-type]
+            for key, title in SHIFT_GROUPS
+        ],
+        limit=page_limit,
+        offset=offset,
+    )
 
 
 async def dashboard(
     user: AuthenticatedUser, tab: str, business_profile_id: UUID | None = None
 ) -> DashboardResponse:
+    now = utc_now()
     async with get_pool().acquire() as conn:
         scope = await business_scope(conn, user.user_id, business_profile_id)
         summary = await shift_repository.dashboard_summary(conn, scope)
-        rows = await shift_repository.list_dashboard_shifts(conn, scope, tab, utc_now())
+        if tab == SHIFT_SCHEDULED:
+            rows = await shift_repository.list_next_scheduled_shifts(
+                conn, scope, now, DASHBOARD_NEXT_SCHEDULED_LIMIT
+            )
+        else:
+            rows = await shift_repository.list_dashboard_shifts(conn, scope, tab, now)
+        default_fee_percentage = None
+        if any(row["fee_percentage"] is None for row in rows):
+            policy = await catalog_service.require_active_fee_policy(conn)
+            default_fee_percentage = Decimal(policy["percentage"])
+        rows_with_estimates = [
+            (row, await _estimate_for(conn, row, default_fee_percentage)) for row in rows
+        ]
+    buckets: dict[str, list[DashboardShift]] = {key: [] for key, _ in DASHBOARD_GROUPS}
+    for row, estimate in rows_with_estimates:  # ordered by starts_at ascending
+        group = dashboard_group(row["status"], row["ends_at"], now)
+        buckets[group].append(
+            DashboardShift.model_validate({
+                **dict(row),
+                "estimate": estimate,
+                "dashboard_group": group,
+            })
+        )
+    for key in (DASHBOARD_GROUP_COMPLETED, DASHBOARD_GROUP_EXPIRED):
+        buckets[key].reverse()
+    groups = [
+        DashboardGroup(key=key, title=title, shifts=buckets[key])  # type: ignore[arg-type]
+        for key, title in DASHBOARD_GROUPS
+    ]
     return DashboardResponse(
         tab=tab,  # type: ignore[arg-type]
         summary=DashboardSummary.model_validate(dict(summary)),
-        shifts=[shift_list_item(r) for r in rows],
+        groups=groups,
+        shifts=[shift for group in groups for shift in group.shifts],
     )
 
 

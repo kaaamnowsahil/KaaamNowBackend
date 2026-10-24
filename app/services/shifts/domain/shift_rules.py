@@ -6,6 +6,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from app.constants.shifts.shift_route_strings import (
+    DASHBOARD_GROUP_COMPLETED,
+    DASHBOARD_GROUP_EXPIRED,
+    DASHBOARD_GROUP_IN_PROGRESS,
+    DASHBOARD_GROUP_UPCOMING,
+    DASHBOARD_UPCOMING_STATUSES,
     LIVE_START_TOLERANCE_MINUTES,
     MAX_SCHEDULE_AHEAD_DAYS,
     MAX_SHIFT_HOURS,
@@ -17,6 +22,8 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_TOO_LONG,
     MSG_SHIFT_TOO_SHORT,
     MSG_SHIFT_WINDOW_INVALID,
+    SHIFT_COMPLETED,
+    SHIFT_IN_PROGRESS,
     SHIFT_LIVE,
 )
 from app.exceptions.api_errors import bad_request
@@ -98,6 +105,18 @@ def estimate_cost(
         platform_fee_minor=fee,
         total_minor=subtotal + fee,
     )
+
+
+def dashboard_group(status: str, ends_at: datetime, now: datetime) -> str:
+    """Home section for a shift; recruiting/filled shifts past their end count as expired
+    even before the sweep flips their status."""
+    if status == SHIFT_COMPLETED:
+        return DASHBOARD_GROUP_COMPLETED
+    if status == SHIFT_IN_PROGRESS:
+        return DASHBOARD_GROUP_IN_PROGRESS
+    if status in DASHBOARD_UPCOMING_STATUSES and ends_at > now:
+        return DASHBOARD_GROUP_UPCOMING
+    return DASHBOARD_GROUP_EXPIRED
 
 
 def is_late_cancellation(starts_at: datetime, cutoff_hours: int, now: datetime) -> bool:

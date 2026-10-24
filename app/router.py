@@ -22,7 +22,9 @@ from app.routes.notifications.notifications_router import router as notification
 from app.routes.profiles.admin_verification_router import router as admin_verification_router
 from app.routes.ratings.ratings_router import router as ratings_router
 from app.routes.shifts.assignments_router import router as assignments_router
+from app.routes.shifts.business_shifts_router import live_router as business_live_router
 from app.routes.shifts.business_shifts_router import router as business_shifts_router
+from app.routes.shifts.worker_shifts_router import live_router as worker_live_router
 from app.routes.shifts.worker_shifts_router import router as worker_shifts_router
 from app.routes.users.me_router import router as me_router
 
@@ -37,7 +39,9 @@ _ROUTERS = (
     admin_crud_router,
     notifications_router,
     business_shifts_router,
+    business_live_router,
     worker_shifts_router,
+    worker_live_router,
     assignments_router,
     attendance_worker_router,
     attendance_business_router,

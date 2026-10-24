@@ -23,7 +23,6 @@ from app.constants.shifts.shift_route_strings import (
 from app.db.pool import get_pool
 from app.exceptions.api_errors import bad_request, not_found
 from app.pagination import clamp_page_limit
-from app.repositories.profiles import profile_repository
 from app.repositories.shifts import shift_repository
 from app.schemas.shifts.shift_schemas import (
     FeedPage,
@@ -32,7 +31,7 @@ from app.schemas.shifts.shift_schemas import (
     WorkerShiftDetail,
 )
 from app.security.authenticated_user import AuthenticatedUser
-from app.services.profiles.profile_lookup import require_worker_profile
+from app.services.profiles.profile_lookup import require_worker_profile, worker_home_point
 from app.services.shifts.domain.shift_mappers import worker_shift_card, worker_shift_detail
 from app.utils.clock import utc_now
 from app.utils.geo import bounding_box_deltas
@@ -51,12 +50,10 @@ async def _worker_point(
     latitude: float | None,
     longitude: float | None,
 ) -> tuple[float | None, float | None]:
+    """A client-sent point is the device's current GPS for this request only (not saved)."""
     if latitude is not None and longitude is not None:
         return latitude, longitude
-    location = await profile_repository.get_worker_location(conn, worker["id"])
-    if location is not None:
-        return location["latitude"], location["longitude"]
-    return worker["latitude"], worker["longitude"]
+    return await worker_home_point(conn, worker)
 
 
 async def feed(
@@ -79,7 +76,7 @@ async def feed(
         lat, lng = await _worker_point(conn, worker, latitude, longitude)
         if lat is None or lng is None:
             raise bad_request("location_required", MSG_WORKER_LOCATION_REQUIRED)
-        radius = min(radius_km or settings.feed_radius_km, settings.feed_radius_km * 5)
+        radius = min(radius_km or settings.feed_radius_km, settings.worker_max_shift_distance_km)
         lat_delta, lng_delta = bounding_box_deltas(lat, radius)
         rows = await shift_repository.list_feed(
             conn,

@@ -6,6 +6,7 @@ caller's entity ids so one account can never reach another account's shifts, inv
 
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import UUID
 
 import asyncpg
@@ -21,6 +22,7 @@ from app.constants.profiles.profile_route_strings import (
 )
 from app.exceptions.api_errors import bad_request, forbidden, not_found
 from app.repositories.profiles import profile_repository
+from app.utils.clock import utc_now
 
 
 async def require_business_profile(conn: asyncpg.Connection, user_id: UUID) -> asyncpg.Record:
@@ -58,7 +60,8 @@ async def business_scope(
 
 
 def ensure_postable(business: asyncpg.Record) -> None:
-    if not business["business_name"] or business["latitude"] is None:
+    """Each shift carries its own site location, so the profile itself only needs a name."""
+    if not business["business_name"]:
         raise bad_request("business_profile_incomplete", MSG_BUSINESS_PROFILE_INCOMPLETE)
 
 
@@ -75,6 +78,22 @@ async def require_worker_profile(conn: asyncpg.Connection, user_id: UUID) -> asy
     if row is None:
         raise not_found("worker_profile_missing", MSG_WORKER_PROFILE_MISSING)
     return row
+
+
+async def worker_home_point(
+    conn: asyncpg.Connection, worker: asyncpg.Record
+) -> tuple[float | None, float | None]:
+    """Where shift distance is measured from: recent live location, else the saved address."""
+    settings = load_settings()
+    location = await profile_repository.get_worker_location(conn, worker["id"])
+    valid_since = utc_now() - timedelta(hours=settings.worker_location_valid_hours)
+    if location is not None and location["recorded_at"] >= valid_since:
+        return location["latitude"], location["longitude"]
+    if worker["latitude"] is not None and worker["longitude"] is not None:
+        return worker["latitude"], worker["longitude"]
+    if location is not None:
+        return location["latitude"], location["longitude"]
+    return None, None
 
 
 def ensure_worker_can_work(worker: asyncpg.Record) -> None:

@@ -38,9 +38,7 @@ async def list_deletion_requests(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> AccountDeletionRequestPage:
-    return await deletion_service.list_requests(
-        status_filter=status, limit=limit, offset=offset
-    )
+    return await deletion_service.list_requests(status_filter=status, limit=limit, offset=offset)
 
 
 @router.get(

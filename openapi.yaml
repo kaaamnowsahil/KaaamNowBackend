@@ -1669,7 +1669,8 @@ paths:
     get:
       tags:
       - business / work shifts
-      summary: Business / Work home (Live now / Scheduled) · Business / Work
+      summary: 'Business / Work home: Completed, Coming up, In progress, Expired ·
+        Business / Work'
       operationId: dashboard_api_v1_business_dashboard_get
       security:
       - HTTPBearer: []
@@ -1682,8 +1683,12 @@ paths:
           - live
           - scheduled
           type: string
+          description: 'scheduled: only the next two open/filled scheduled shifts
+            starting after now. Use GET /business/shifts for the full list.'
           default: live
           title: Tab
+        description: 'scheduled: only the next two open/filled scheduled shifts starting
+          after now. Use GET /business/shifts for the full list.'
       - name: business_profile_id
         in: query
         required: false
@@ -1767,7 +1772,7 @@ paths:
     get:
       tags:
       - business / work shifts
-      summary: List my shifts · Business / Work
+      summary: List my shifts (grouped) · Business / Work
       operationId: list_shifts_api_v1_business_shifts_get
       security:
       - HTTPBearer: []
@@ -1802,6 +1807,24 @@ paths:
               type: string
           - type: 'null'
           title: Status
+      - name: group
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - upcoming
+            - in_progress
+            - draft
+            - completed
+            - expired
+            - cancelled
+            type: string
+          - type: 'null'
+          description: Only this section. upcoming/in_progress/draft sort soonest
+            first.
+          title: Group
+        description: Only this section. upcoming/in_progress/draft sort soonest first.
       - name: limit
         in: query
         required: false
@@ -1845,6 +1868,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/shifts/bulk:
+    post:
+      tags:
+      - business / work shifts
+      summary: Create scheduled shifts for several dates (all or none) · Business
+        / Work
+      operationId: create_shifts_bulk_api_v1_business_shifts_bulk_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftBulkCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftBulkResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/business/shifts/bulk-publish:
+    post:
+      tags:
+      - business / work shifts
+      summary: Publish saved drafts by id (all or none) · Business / Work
+      operationId: publish_shifts_bulk_api_v1_business_shifts_bulk_publish_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftBulkPublish'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftBulkResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/business/shifts/{shift_id}:
     get:
       tags:
@@ -1966,99 +2044,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ShiftResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/business/shifts/{shift_id}/convert-to-scheduled:
-    post:
-      tags:
-      - business / work shifts
-      summary: Convert live search to scheduled · Business / Work
-      operationId: convert_api_v1_business_shifts__shift_id__convert_to_scheduled_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: shift_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Shift Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ConvertToScheduledRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/business/shifts/{shift_id}/retry-live:
-    post:
-      tags:
-      - business / work shifts
-      summary: Retry expired live search · Business / Work
-      operationId: retry_live_api_v1_business_shifts__shift_id__retry_live_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: shift_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Shift Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/business/shifts/{shift_id}/live-search:
-    get:
-      tags:
-      - business / work shifts
-      summary: Live search progress · Business / Work
-      operationId: live_search_api_v1_business_shifts__shift_id__live_search_get
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: shift_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Shift Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LiveSearchStatus'
         '422':
           description: Validation Error
           content:
@@ -2234,6 +2219,99 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/shifts/{shift_id}/convert-to-scheduled:
+    post:
+      tags:
+      - business / work live
+      summary: Convert live search to scheduled · Business / Work
+      operationId: convert_api_v1_business_shifts__shift_id__convert_to_scheduled_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: shift_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Shift Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertToScheduledRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/shifts/{shift_id}/retry-live:
+    post:
+      tags:
+      - business / work live
+      summary: Retry expired live search · Business / Work
+      operationId: retry_live_api_v1_business_shifts__shift_id__retry_live_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: shift_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Shift Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/shifts/{shift_id}/live-search:
+    get:
+      tags:
+      - business / work live
+      summary: Live search progress · Business / Work
+      operationId: live_search_api_v1_business_shifts__shift_id__live_search_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: shift_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Shift Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveSearchStatus'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/worker/feed:
     get:
       tags:
@@ -2394,24 +2472,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/worker/live-requests:
-    get:
-      tags:
-      - worker shifts
-      summary: Open live requests · Worker
-      operationId: live_requests_api_v1_worker_live_requests_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/LiveRequestItem'
-                type: array
-                title: Response Live Requests Api V1 Worker Live Requests Get
-      security:
-      - HTTPBearer: []
   /api/v1/worker/shifts/{shift_id}:
     get:
       tags:
@@ -2435,60 +2495,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WorkerShiftDetail'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/worker/live-shifts/{shift_id}/accept:
-    post:
-      tags:
-      - worker shifts
-      summary: Accept live request · Worker
-      operationId: accept_live_api_v1_worker_live_shifts__shift_id__accept_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: shift_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Shift Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AssignmentDetail'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/worker/live-shifts/{shift_id}/decline:
-    post:
-      tags:
-      - worker shifts
-      summary: Decline live request · Worker
-      operationId: decline_live_api_v1_worker_live_shifts__shift_id__decline_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: shift_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Shift Id
-      responses:
-        '204':
-          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -2675,6 +2681,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssignmentCancelResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-requests:
+    get:
+      tags:
+      - worker live
+      summary: Open live requests · Worker
+      operationId: live_requests_api_v1_worker_live_requests_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/LiveRequestItem'
+                type: array
+                title: Response Live Requests Api V1 Worker Live Requests Get
+      security:
+      - HTTPBearer: []
+  /api/v1/worker/live-shifts/{shift_id}/accept:
+    post:
+      tags:
+      - worker live
+      summary: Accept live request · Worker
+      operationId: accept_live_api_v1_worker_live_shifts__shift_id__accept_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: shift_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Shift Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-shifts/{shift_id}/decline:
+    post:
+      tags:
+      - worker live
+      summary: Decline live request · Worker
+      operationId: decline_live_api_v1_worker_live_shifts__shift_id__decline_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: shift_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Shift Id
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -4388,6 +4466,21 @@ components:
           maxLength: 500
           title: Cover Note
           default: ''
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+          description: Device's current location; not saved.
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
       additionalProperties: false
       type: object
       title: ApplicationCreate
@@ -5163,6 +5256,117 @@ components:
       - business_name
       - verification_status
       title: BusinessProfileSummary
+    BusinessShiftItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        business_profile_id:
+          type: string
+          format: uuid
+          title: Business Profile Id
+        shift_type:
+          type: string
+          enum:
+          - live
+          - scheduled
+          title: Shift Type
+        status:
+          type: string
+          enum:
+          - draft
+          - searching
+          - open
+          - filled
+          - in_progress
+          - completed
+          - expired
+          - cancelled
+          title: Status
+        job_title:
+          type: string
+          title: Job Title
+        category_name:
+          type: string
+          title: Category Name
+        workers_required:
+          type: integer
+          title: Workers Required
+        booked_count:
+          type: integer
+          title: Booked Count
+        checked_in_count:
+          type: integer
+          title: Checked In Count
+        pending_applications:
+          type: integer
+          title: Pending Applications
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+        currency:
+          type: string
+          title: Currency
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        cancellation_cutoff_hours:
+          type: integer
+          title: Cancellation Cutoff Hours
+        estimate:
+          $ref: '#/components/schemas/ShiftCostEstimate'
+        workplace_name:
+          type: string
+          title: Workplace Name
+        address_text:
+          type: string
+          title: Address Text
+        invoice_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Invoice Status
+        group:
+          type: string
+          enum:
+          - upcoming
+          - in_progress
+          - draft
+          - completed
+          - expired
+          - cancelled
+          title: Group
+          description: 'Server-computed section. upcoming: searching/open/filled and
+            not yet ended. expired: expired, or still searching/open/filled after
+            its end time. Other groups match status.'
+      type: object
+      required:
+      - id
+      - business_profile_id
+      - shift_type
+      - status
+      - job_title
+      - category_name
+      - workers_required
+      - booked_count
+      - checked_in_count
+      - pending_applications
+      - hourly_rate_minor
+      - currency
+      - starts_at
+      - ends_at
+      - cancellation_cutoff_hours
+      - estimate
+      - workplace_name
+      - address_text
+      - group
+      title: BusinessShiftItem
     CheckInRequest:
       properties:
         latitude:
@@ -5308,6 +5512,32 @@ components:
       - starts_at
       title: ConvertToScheduledRequest
       description: Figma "No workers nearby → Post as scheduled shift".
+    DashboardGroup:
+      properties:
+        key:
+          type: string
+          enum:
+          - completed
+          - upcoming
+          - in_progress
+          - expired
+          title: Key
+        title:
+          type: string
+          title: Title
+          examples:
+          - Coming up
+        shifts:
+          items:
+            $ref: '#/components/schemas/DashboardShift'
+          type: array
+          title: Shifts
+      type: object
+      required:
+      - key
+      - title
+      - shifts
+      title: DashboardGroup
     DashboardResponse:
       properties:
         tab:
@@ -5318,18 +5548,136 @@ components:
           title: Tab
         summary:
           $ref: '#/components/schemas/DashboardSummary'
+        groups:
+          items:
+            $ref: '#/components/schemas/DashboardGroup'
+          type: array
+          title: Groups
+          description: 'Always all four, in order: completed, upcoming, in_progress,
+            expired.'
         shifts:
           items:
-            $ref: '#/components/schemas/ShiftListItem'
+            $ref: '#/components/schemas/DashboardShift'
           type: array
           title: Shifts
+          description: Flat list in the same order as groups.
       type: object
       required:
       - tab
       - summary
+      - groups
       - shifts
       title: DashboardResponse
       description: 'Business / Work Home: "Live now" / "Scheduled" tabs.'
+    DashboardShift:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        business_profile_id:
+          type: string
+          format: uuid
+          title: Business Profile Id
+        shift_type:
+          type: string
+          enum:
+          - live
+          - scheduled
+          title: Shift Type
+        status:
+          type: string
+          enum:
+          - draft
+          - searching
+          - open
+          - filled
+          - in_progress
+          - completed
+          - expired
+          - cancelled
+          title: Status
+        job_title:
+          type: string
+          title: Job Title
+        category_name:
+          type: string
+          title: Category Name
+        workers_required:
+          type: integer
+          title: Workers Required
+        booked_count:
+          type: integer
+          title: Booked Count
+        checked_in_count:
+          type: integer
+          title: Checked In Count
+        pending_applications:
+          type: integer
+          title: Pending Applications
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+        currency:
+          type: string
+          title: Currency
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        cancellation_cutoff_hours:
+          type: integer
+          title: Cancellation Cutoff Hours
+        estimate:
+          $ref: '#/components/schemas/ShiftCostEstimate'
+        workplace_name:
+          type: string
+          title: Workplace Name
+        address_text:
+          type: string
+          title: Address Text
+        invoice_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Invoice Status
+        dashboard_group:
+          type: string
+          enum:
+          - completed
+          - upcoming
+          - in_progress
+          - expired
+          title: Dashboard Group
+          description: 'Server-computed section. upcoming: searching/open/filled and
+            not yet ended. in_progress: a worker has checked in. completed: shift
+            finished. expired: expired, or still recruiting/filled after its end time.'
+      type: object
+      required:
+      - id
+      - business_profile_id
+      - shift_type
+      - status
+      - job_title
+      - category_name
+      - workers_required
+      - booked_count
+      - checked_in_count
+      - pending_applications
+      - hourly_rate_minor
+      - currency
+      - starts_at
+      - ends_at
+      - cancellation_cutoff_hours
+      - estimate
+      - workplace_name
+      - address_text
+      - dashboard_group
+      title: DashboardShift
     DashboardSummary:
       properties:
         active_shifts:
@@ -7049,6 +7397,180 @@ components:
       - late_cancellation
       - worker
       title: RosterEntry
+    ShiftBulkCreate:
+      properties:
+        business_profile_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Business Profile Id
+          description: Business / Work entity for every shift. Defaults to the primary
+            one.
+        publish:
+          type: boolean
+          title: Publish
+          description: Post all shifts; false saves drafts.
+          default: false
+        shifts:
+          items:
+            $ref: '#/components/schemas/ShiftBulkItem'
+          type: array
+          maxItems: 31
+          minItems: 1
+          title: Shifts
+      additionalProperties: false
+      type: object
+      required:
+      - shifts
+      title: ShiftBulkCreate
+      description: Create several scheduled shifts at once. All are saved, or none
+        are.
+    ShiftBulkItem:
+      properties:
+        category_slug:
+          type: string
+          maxLength: 64
+          title: Category Slug
+        job_title:
+          type: string
+          maxLength: 120
+          minLength: 2
+          title: Job Title
+          description: Role shown to workers.
+        responsibilities:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Responsibilities
+        requirements:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Requirements
+        workers_required:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Workers Required
+        hourly_rate_minor:
+          type: integer
+          maximum: 10000000.0
+          exclusiveMinimum: 0.0
+          title: Hourly Rate Minor
+          examples:
+          - 15000
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        ends_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Ends At
+        duration_minutes:
+          anyOf:
+          - type: integer
+            maximum: 960.0
+            minimum: 60.0
+          - type: 'null'
+          title: Duration Minutes
+          description: Alternative to ends_at.
+        break_minutes:
+          type: integer
+          maximum: 240.0
+          minimum: 0.0
+          title: Break Minutes
+          default: 0
+        workplace_name:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Workplace Name
+        address_text:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Address Text
+          description: Defaults to the Business / Work address.
+        latitude:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Longitude
+        arrival_instructions:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Arrival Instructions
+        site_contact_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Site Contact Name
+        cancellation_cutoff_hours:
+          anyOf:
+          - type: integer
+            maximum: 72.0
+            minimum: 0.0
+          - type: 'null'
+          title: Cancellation Cutoff Hours
+      additionalProperties: false
+      type: object
+      required:
+      - category_slug
+      - job_title
+      - workers_required
+      - hourly_rate_minor
+      - starts_at
+      title: ShiftBulkItem
+      description: One date in a multi-date posting; each date carries its own schedule
+        and details.
+    ShiftBulkPublish:
+      properties:
+        shift_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 31
+          minItems: 1
+          title: Shift Ids
+      additionalProperties: false
+      type: object
+      required:
+      - shift_ids
+      title: ShiftBulkPublish
+      description: Post saved drafts by id. All are published, or none are.
+    ShiftBulkResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ShiftResponse'
+          type: array
+          title: Items
+          description: Same order as the request.
+      type: object
+      required:
+      - items
+      title: ShiftBulkResponse
     ShiftCancelRequest:
       properties:
         reason:
@@ -7277,103 +7799,47 @@ components:
       - hourly_rate_minor
       - workers_required
       title: ShiftEstimateRequest
-    ShiftListItem:
+    ShiftGroupCount:
       properties:
-        id:
-          type: string
-          format: uuid
-          title: Id
-        business_profile_id:
-          type: string
-          format: uuid
-          title: Business Profile Id
-        shift_type:
+        key:
           type: string
           enum:
-          - live
-          - scheduled
-          title: Shift Type
-        status:
-          type: string
-          enum:
-          - draft
-          - searching
-          - open
-          - filled
+          - upcoming
           - in_progress
+          - draft
           - completed
           - expired
           - cancelled
-          title: Status
-        job_title:
+          title: Key
+        title:
           type: string
-          title: Job Title
-        category_name:
-          type: string
-          title: Category Name
-        workers_required:
+          title: Title
+          examples:
+          - Coming up
+        count:
           type: integer
-          title: Workers Required
-        booked_count:
-          type: integer
-          title: Booked Count
-        checked_in_count:
-          type: integer
-          title: Checked In Count
-        pending_applications:
-          type: integer
-          title: Pending Applications
-        hourly_rate_minor:
-          type: integer
-          title: Hourly Rate Minor
-        currency:
-          type: string
-          title: Currency
-        starts_at:
-          type: string
-          format: date-time
-          title: Starts At
-        ends_at:
-          type: string
-          format: date-time
-          title: Ends At
-        workplace_name:
-          type: string
-          title: Workplace Name
-        address_text:
-          type: string
-          title: Address Text
-        invoice_status:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Invoice Status
+          title: Count
       type: object
       required:
-      - id
-      - business_profile_id
-      - shift_type
-      - status
-      - job_title
-      - category_name
-      - workers_required
-      - booked_count
-      - checked_in_count
-      - pending_applications
-      - hourly_rate_minor
-      - currency
-      - starts_at
-      - ends_at
-      - workplace_name
-      - address_text
-      title: ShiftListItem
+      - key
+      - title
+      - count
+      title: ShiftGroupCount
     ShiftPage:
       properties:
         items:
           items:
-            $ref: '#/components/schemas/ShiftListItem'
+            $ref: '#/components/schemas/BusinessShiftItem'
           type: array
           title: Items
+        group_counts:
+          items:
+            $ref: '#/components/schemas/ShiftGroupCount'
+          type: array
+          title: Group Counts
+          description: 'Always all six, in order: upcoming, in_progress, draft, completed,
+            expired, cancelled. Counts honour shift_type and business_profile_id,
+            not status/group.'
         limit:
           type: integer
           title: Limit
@@ -7383,6 +7849,7 @@ components:
       type: object
       required:
       - items
+      - group_counts
       - limit
       - offset
       title: ShiftPage
@@ -7597,6 +8064,8 @@ components:
         cancellation_cutoff_hours:
           type: integer
           title: Cancellation Cutoff Hours
+        estimate:
+          $ref: '#/components/schemas/ShiftCostEstimate'
         booked_count:
           type: integer
           title: Booked Count
@@ -7679,6 +8148,7 @@ components:
       - site_contact_name
       - check_in_code
       - cancellation_cutoff_hours
+      - estimate
       - booked_count
       - pending_applications
       - estimate

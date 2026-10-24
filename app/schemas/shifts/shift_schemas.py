@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.profiles.profile_route_strings import MSG_COORDINATES_PAIR
+from app.constants.shifts.shift_route_strings import MAX_BULK_SHIFTS
 
 ShiftType = Literal["live", "scheduled"]
 ShiftStatus = Literal[
@@ -67,6 +68,44 @@ class ShiftCreate(_ShiftFields):
 
 class ShiftPatch(_ShiftFields):
     """Draft-only edit. Omitted fields keep their value."""
+
+
+class ShiftBulkItem(_ShiftFields):
+    """One date in a multi-date posting; each date carries its own schedule and details."""
+
+    category_slug: str = Field(max_length=64)
+    job_title: str = Field(min_length=2, max_length=120, description="Role shown to workers.")
+    workers_required: int = Field(ge=1, le=100)
+    hourly_rate_minor: int = Field(gt=0, le=10_000_000, examples=[15000])
+    starts_at: datetime
+    break_minutes: int = Field(default=0, ge=0, le=240)
+
+
+class ShiftBulkCreate(BaseModel):
+    """Create several scheduled shifts at once. All are saved, or none are."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    business_profile_id: UUID | None = Field(
+        default=None,
+        description="Business / Work entity for every shift. Defaults to the primary one.",
+    )
+    publish: bool = Field(default=False, description="Post all shifts; false saves drafts.")
+    shifts: list[ShiftBulkItem] = Field(min_length=1, max_length=MAX_BULK_SHIFTS)
+
+
+class ShiftBulkPublish(BaseModel):
+    """Post saved drafts by id. All are published, or none are."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shift_ids: list[UUID] = Field(min_length=1, max_length=MAX_BULK_SHIFTS)
+
+    @model_validator(mode="after")
+    def _unique(self):  # type: ignore[no-untyped-def]
+        if len(set(self.shift_ids)) != len(self.shift_ids):
+            raise ValueError("shift_ids must not contain duplicates.")
+        return self
 
 
 class ShiftEstimateRequest(BaseModel):
@@ -157,6 +196,10 @@ class ShiftResponse(BaseModel):
     created_at: datetime
 
 
+class ShiftBulkResponse(BaseModel):
+    items: list[ShiftResponse] = Field(description="Same order as the request.")
+
+
 class ShiftListItem(BaseModel):
     id: UUID
     business_profile_id: UUID
@@ -172,13 +215,40 @@ class ShiftListItem(BaseModel):
     currency: str
     starts_at: datetime
     ends_at: datetime
+    cancellation_cutoff_hours: int
+    estimate: ShiftCostEstimate
     workplace_name: str
     address_text: str
     invoice_status: str | None = None
 
 
+ShiftGroupKey = Literal["upcoming", "in_progress", "draft", "completed", "expired", "cancelled"]
+
+
+class BusinessShiftItem(ShiftListItem):
+    group: ShiftGroupKey = Field(
+        description=(
+            "Server-computed section. upcoming: searching/open/filled and not yet ended. "
+            "expired: expired, or still searching/open/filled after its end time. "
+            "Other groups match status."
+        )
+    )
+
+
+class ShiftGroupCount(BaseModel):
+    key: ShiftGroupKey
+    title: str = Field(examples=["Coming up"])
+    count: int
+
+
 class ShiftPage(BaseModel):
-    items: list[ShiftListItem]
+    items: list[BusinessShiftItem]
+    group_counts: list[ShiftGroupCount] = Field(
+        description=(
+            "Always all six, in order: upcoming, in_progress, draft, completed, expired, "
+            "cancelled. Counts honour shift_type and business_profile_id, not status/group."
+        )
+    )
     limit: int
     offset: int
 
@@ -191,12 +261,34 @@ class DashboardSummary(BaseModel):
     unpaid_invoices: int
 
 
+DashboardGroupKey = Literal["completed", "upcoming", "in_progress", "expired"]
+
+
+class DashboardShift(ShiftListItem):
+    dashboard_group: DashboardGroupKey = Field(
+        description=(
+            "Server-computed section. upcoming: searching/open/filled and not yet ended. "
+            "in_progress: a worker has checked in. completed: shift finished. "
+            "expired: expired, or still recruiting/filled after its end time."
+        )
+    )
+
+
+class DashboardGroup(BaseModel):
+    key: DashboardGroupKey
+    title: str = Field(examples=["Coming up"])
+    shifts: list[DashboardShift]
+
+
 class DashboardResponse(BaseModel):
     """Business / Work Home: "Live now" / "Scheduled" tabs."""
 
     tab: Literal["live", "scheduled"]
     summary: DashboardSummary
-    shifts: list[ShiftListItem]
+    groups: list[DashboardGroup] = Field(
+        description="Always all four, in order: completed, upcoming, in_progress, expired."
+    )
+    shifts: list[DashboardShift] = Field(description="Flat list in the same order as groups.")
 
 
 class LiveSearchStatus(BaseModel):

@@ -20,7 +20,11 @@ from app.services.auth.validation.auth_validation_pipeline import (
     otp_code_matches,
 )
 from app.services.billing.validation.webhook_signature import sign_payload, signature_matches
-from app.services.shifts.domain.shift_rules import is_late_cancellation, paid_minutes
+from app.services.shifts.domain.shift_rules import (
+    dashboard_group,
+    is_late_cancellation,
+    paid_minutes,
+)
 from app.utils.geo import haversine_km
 from app.utils.money import pay_for_minutes, platform_fee
 
@@ -72,6 +76,7 @@ def test_shift_rules() -> None:
     start = datetime(2026, 1, 1, 9, tzinfo=UTC)
     assert paid_minutes(start, start + timedelta(hours=4), 30) == 210
     assert is_late_cancellation(start, 12, start - timedelta(hours=11))
+    assert is_late_cancellation(start, 12, start - timedelta(hours=12))
     assert not is_late_cancellation(start, 12, start - timedelta(hours=13))
 
 
@@ -83,3 +88,21 @@ def test_webhook_signature() -> None:
     assert not signature_matches("whsec", body + b" ", signature)
     assert not signature_matches("", body, signature)
     assert not signature_matches("whsec", body, None)
+
+
+@pytest.mark.parametrize(
+    ("status", "ends_in_hours", "expected"),
+    [
+        ("open", 5, "upcoming"),
+        ("searching", 1, "upcoming"),
+        ("filled", 1, "upcoming"),
+        ("open", -1, "expired"),
+        ("filled", -1, "expired"),
+        ("expired", 5, "expired"),
+        ("in_progress", -1, "in_progress"),
+        ("completed", -5, "completed"),
+    ],
+)
+def test_dashboard_group(status: str, ends_in_hours: int, expected: str) -> None:
+    now = datetime(2026, 10, 24, 12, tzinfo=UTC)
+    assert dashboard_group(status, now + timedelta(hours=ends_in_hours), now) == expected

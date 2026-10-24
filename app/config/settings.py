@@ -62,6 +62,8 @@ class KaaamNowSettings(BaseSettings):
     db_pool_max: int = 10
     db_command_timeout_seconds: int = 60
     db_connect_timeout_seconds: int = 30
+    # Recycle idle connections before the network/Neon silently drops them (dead sockets hang).
+    db_max_idle_seconds: float = 60.0
     db_auto_create: bool = True
 
     # --- Auth (self-issued JWT after phone OTP) ---
@@ -95,7 +97,11 @@ class KaaamNowSettings(BaseSettings):
     live_offer_timeout_seconds: int = 300
     live_dispatch_batch_size: int = 50
     scheduled_notify_radius_km: float = 5.0
-    feed_radius_km: float = 10.0
+    feed_radius_km: float = 15.0
+    # Hard cap: workers never see or apply to shifts farther than this from their own location.
+    worker_max_shift_distance_km: float = 30.0
+    # A live location this recent beats the saved profile address (worker moved city).
+    worker_location_valid_hours: int = Field(default=24, ge=1)
     selection_confirm_hours: int = 12
     default_cancellation_cutoff_hours: int = 12
     check_in_radius_m: int = 200

@@ -16,7 +16,9 @@ WORKER_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_WORKER}"
 ASSIGNMENTS_ROUTE_PREFIX: Final[str] = f"{API_V1}{SEGMENT_ASSIGNMENTS}"
 
 OPENAPI_TAG_BUSINESS_SHIFTS: Final[str] = "business / work shifts"
+OPENAPI_TAG_BUSINESS_LIVE: Final[str] = "business / work live"
 OPENAPI_TAG_WORKER_SHIFTS: Final[str] = "worker shifts"
+OPENAPI_TAG_WORKER_LIVE: Final[str] = "worker live"
 OPENAPI_TAG_ASSIGNMENTS: Final[str] = "assignments"
 
 # --- Business paths ---
@@ -24,6 +26,9 @@ PATH_DASHBOARD: Final[str] = "/dashboard"
 PATH_SHIFTS: Final[str] = "/shifts"
 PATH_SHIFT: Final[str] = "/shifts/{shift_id}"
 PATH_SHIFT_ESTIMATE: Final[str] = "/shifts/estimate"
+PATH_SHIFTS_BULK: Final[str] = "/shifts/bulk"
+PATH_SHIFTS_BULK_PUBLISH: Final[str] = "/shifts/bulk-publish"
+MAX_BULK_SHIFTS: Final[int] = 31
 PATH_SHIFT_PUBLISH: Final[str] = "/shifts/{shift_id}/publish"
 PATH_SHIFT_CANCEL: Final[str] = "/shifts/{shift_id}/cancel"
 PATH_SHIFT_CONVERT: Final[str] = "/shifts/{shift_id}/convert-to-scheduled"
@@ -69,6 +74,29 @@ SHIFT_EXPIRED: Final[str] = "expired"
 SHIFT_CANCELLED: Final[str] = "cancelled"
 
 SHIFT_RECRUITING_STATUSES: Final[tuple[str, ...]] = (SHIFT_SEARCHING, SHIFT_OPEN)
+
+DASHBOARD_GROUP_COMPLETED: Final[str] = "completed"
+DASHBOARD_GROUP_UPCOMING: Final[str] = "upcoming"
+DASHBOARD_GROUP_IN_PROGRESS: Final[str] = "in_progress"
+DASHBOARD_GROUP_EXPIRED: Final[str] = "expired"
+# Business Shifts page sections, in display order.
+SHIFT_GROUPS: Final[tuple[tuple[str, str], ...]] = (
+    ("upcoming", "Coming up"),
+    ("in_progress", "In progress"),
+    ("draft", "Drafts"),
+    ("completed", "Completed"),
+    ("expired", "Expired"),
+    ("cancelled", "Cancelled"),
+)
+DASHBOARD_NEXT_SCHEDULED_LIMIT: Final[int] = 2
+DASHBOARD_UPCOMING_STATUSES: Final[tuple[str, ...]] = (SHIFT_SEARCHING, SHIFT_OPEN, SHIFT_FILLED)
+# Section order and titles on Business / Work Home.
+DASHBOARD_GROUPS: Final[tuple[tuple[str, str], ...]] = (
+    (DASHBOARD_GROUP_COMPLETED, "Completed"),
+    (DASHBOARD_GROUP_UPCOMING, "Coming up"),
+    (DASHBOARD_GROUP_IN_PROGRESS, "In progress"),
+    (DASHBOARD_GROUP_EXPIRED, "Expired"),
+)
 SHIFT_CANCELLABLE_STATUSES: Final[tuple[str, ...]] = (
     SHIFT_DRAFT,
     SHIFT_SEARCHING,
@@ -125,6 +153,9 @@ SCHEDULED_NOTIFY_BATCH_SIZE: Final[int] = 500
 MSG_SHIFT_NOT_FOUND: Final[str] = "Shift not found."
 MSG_SHIFT_NOT_DRAFT: Final[str] = "Only draft shifts can be edited or published."
 MSG_SHIFT_NOT_CANCELLABLE: Final[str] = "This shift can no longer be cancelled."
+MSG_SHIFT_CANCELLATION_CUTOFF: Final[str] = (
+    "This shift can only be cancelled at least {hours} hours before it starts."
+)
 MSG_SHIFT_NOT_RECRUITING: Final[str] = "This shift is no longer accepting workers."
 MSG_SHIFT_FULL: Final[str] = "All spots for this shift are filled."
 MSG_SHIFT_STARTED: Final[str] = "This shift has already started."
@@ -145,6 +176,10 @@ MSG_NO_LIVE_OFFER: Final[str] = "This request is no longer available to you."
 MSG_ALREADY_BOOKED: Final[str] = "You are already booked on this shift."
 MSG_OVERLAPPING_SHIFT: Final[str] = "You already have a shift at this time."
 MSG_TOO_FAR_FROM_SHIFT: Final[str] = "You are outside this shift's search radius."
+MSG_SHIFT_BEYOND_MAX_DISTANCE: Final[str] = (
+    "You're too far from this shift (more than {km:g} km). Try finding shifts nearby."
+)
+MSG_SHIFT_LOCATION_REQUIRED: Final[str] = "Pick the shift address on the map before saving."
 MSG_LOCATION_STALE: Final[str] = "Your location is out of date. Go online again."
 MSG_APPLICATION_NOT_FOUND: Final[str] = "Application not found."
 MSG_APPLICATION_EXISTS: Final[str] = "You have already applied to this shift."

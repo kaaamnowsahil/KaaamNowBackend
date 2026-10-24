@@ -1,4 +1,4 @@
-"""Business / Work: post and manage shifts, live search, applicants, roster."""
+"""Business / Work: post and manage shifts, applicants, roster; live search on ``live_router``."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from app.constants.application.application_common import (
 )
 from app.constants.shifts.shift_route_strings import (
     BUSINESS_ROUTE_PREFIX,
+    OPENAPI_TAG_BUSINESS_LIVE,
     OPENAPI_TAG_BUSINESS_SHIFTS,
     PATH_APPLICATION_REJECT,
     PATH_APPLICATION_SELECT,
@@ -29,6 +30,8 @@ from app.constants.shifts.shift_route_strings import (
     PATH_SHIFT_RETRY_LIVE,
     PATH_SHIFT_ROSTER,
     PATH_SHIFTS,
+    PATH_SHIFTS_BULK,
+    PATH_SHIFTS_BULK_PUBLISH,
 )
 from app.dependencies import RequireShiftsRead, RequireShiftsWrite
 from app.schemas.shifts.application_schemas import ApplicantList, ApplicationResponse
@@ -41,10 +44,14 @@ from app.schemas.shifts.shift_schemas import (
     ConvertToScheduledRequest,
     DashboardResponse,
     LiveSearchStatus,
+    ShiftBulkCreate,
+    ShiftBulkPublish,
+    ShiftBulkResponse,
     ShiftCancelRequest,
     ShiftCostEstimate,
     ShiftCreate,
     ShiftEstimateRequest,
+    ShiftGroupKey,
     ShiftPage,
     ShiftPatch,
     ShiftResponse,
@@ -55,16 +62,25 @@ from app.services.shifts import application_service, assignment_service, shift_s
 from app.services.shifts.assignment_service import PARTY_BUSINESS
 
 router = APIRouter(prefix=BUSINESS_ROUTE_PREFIX, tags=[OPENAPI_TAG_BUSINESS_SHIFTS])
+live_router = APIRouter(prefix=BUSINESS_ROUTE_PREFIX, tags=[OPENAPI_TAG_BUSINESS_LIVE])
 
 
 @router.get(
     PATH_DASHBOARD,
     response_model=DashboardResponse,
-    summary=swagger_summary("Business / Work home (Live now / Scheduled)", SWAGGER_ROLE_BUSINESS),
+    summary=swagger_summary(
+        "Business / Work home: Completed, Coming up, In progress, Expired", SWAGGER_ROLE_BUSINESS
+    ),
 )
 async def dashboard(
     user: RequireShiftsRead,
-    tab: Literal["live", "scheduled"] = "live",
+    tab: Literal["live", "scheduled"] = Query(
+        default="live",
+        description=(
+            "scheduled: only the next two open/filled scheduled shifts starting after now. "
+            "Use GET /business/shifts for the full list."
+        ),
+    ),
     business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
 ) -> DashboardResponse:
     return await shift_service.dashboard(user, tab, business_profile_id)
@@ -89,15 +105,42 @@ async def create_shift(body: ShiftCreate, user: RequireShiftsWrite) -> ShiftResp
     return await shift_service.create_shift(user, body)
 
 
+@router.post(
+    PATH_SHIFTS_BULK,
+    response_model=ShiftBulkResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=swagger_summary(
+        "Create scheduled shifts for several dates (all or none)", SWAGGER_ROLE_BUSINESS
+    ),
+)
+async def create_shifts_bulk(body: ShiftBulkCreate, user: RequireShiftsWrite) -> ShiftBulkResponse:
+    return await shift_service.create_shifts_bulk(user, body)
+
+
+@router.post(
+    PATH_SHIFTS_BULK_PUBLISH,
+    response_model=ShiftBulkResponse,
+    summary=swagger_summary("Publish saved drafts by id (all or none)", SWAGGER_ROLE_BUSINESS),
+)
+async def publish_shifts_bulk(
+    body: ShiftBulkPublish, user: RequireShiftsWrite
+) -> ShiftBulkResponse:
+    return await shift_service.publish_shifts_bulk(user, body)
+
+
 @router.get(
     PATH_SHIFTS,
     response_model=ShiftPage,
-    summary=swagger_summary("List my shifts", SWAGGER_ROLE_BUSINESS),
+    summary=swagger_summary("List my shifts (grouped)", SWAGGER_ROLE_BUSINESS),
 )
 async def list_shifts(
     user: RequireShiftsRead,
     shift_type: ShiftType | None = None,
     status_in: list[ShiftStatus] | None = Query(default=None, alias="status"),
+    group: ShiftGroupKey | None = Query(
+        default=None,
+        description="Only this section. upcoming/in_progress/draft sort soonest first.",
+    ),
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
     business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
@@ -109,6 +152,7 @@ async def list_shifts(
         limit=limit,
         offset=offset,
         business_profile_id=business_profile_id,
+        group=group,
     )
 
 
@@ -150,7 +194,7 @@ async def cancel(
     return await shift_service.cancel(user, shift_id, body)
 
 
-@router.post(
+@live_router.post(
     PATH_SHIFT_CONVERT,
     response_model=ShiftResponse,
     summary=swagger_summary("Convert live search to scheduled", SWAGGER_ROLE_BUSINESS),
@@ -161,7 +205,7 @@ async def convert(
     return await shift_service.convert_to_scheduled(user, shift_id, body)
 
 
-@router.post(
+@live_router.post(
     PATH_SHIFT_RETRY_LIVE,
     response_model=ShiftResponse,
     summary=swagger_summary("Retry expired live search", SWAGGER_ROLE_BUSINESS),
@@ -170,7 +214,7 @@ async def retry_live(shift_id: UUID, user: RequireShiftsWrite) -> ShiftResponse:
     return await shift_service.retry_live(user, shift_id)
 
 
-@router.get(
+@live_router.get(
     PATH_SHIFT_LIVE_SEARCH,
     response_model=LiveSearchStatus,
     summary=swagger_summary("Live search progress", SWAGGER_ROLE_BUSINESS),
