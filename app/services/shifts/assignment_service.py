@@ -18,6 +18,7 @@ from app.constants.notifications.notification_route_strings import (
     KIND_WORKER_EN_ROUTE,
 )
 from app.constants.shifts.shift_route_strings import (
+    APP_WITHDRAWN,
     ASG_BOOKED_STATUSES,
     ASG_CANCELLED,
     ASG_CHECKED_IN,
@@ -28,9 +29,11 @@ from app.constants.shifts.shift_route_strings import (
     MESSAGES_PAGE_LIMIT,
     MSG_ASSIGNMENT_NOT_FOUND,
     MSG_ASSIGNMENT_STATE,
+    MSG_CANCEL_REASON_REQUIRED,
     MSG_SHIFT_NOT_FOUND,
     MSG_SHIFT_STARTED,
     MSG_TRAVEL_TOO_EARLY,
+    MSG_WORKER_CANCELLATION_CUTOFF,
     SHIFT_FILLED,
     SHIFT_LIVE,
     SHIFT_OPEN,
@@ -38,10 +41,14 @@ from app.constants.shifts.shift_route_strings import (
     TRAVEL_OPENS_HOURS_BEFORE,
 )
 from app.db.pool import get_pool
-from app.exceptions.api_errors import conflict, not_found
+from app.exceptions.api_errors import bad_request, conflict, not_found
 from app.repositories.profiles import profile_repository
 from app.repositories.ratings import rating_repository
-from app.repositories.shifts import assignment_repository, shift_repository
+from app.repositories.shifts import (
+    application_repository,
+    assignment_repository,
+    shift_repository,
+)
 from app.schemas.shifts.assignment_schemas import (
     AssignmentCancelRequest,
     AssignmentCancelResponse,
@@ -94,6 +101,12 @@ async def load_context(
     return ctx, caller_party(ctx, user)
 
 
+def _cancelled_by(ctx: asyncpg.Record) -> str | None:
+    if ctx["cancelled_at"] is None:
+        return None
+    return PARTY_WORKER if ctx["cancelled_by_user_id"] == ctx["worker_user_id"] else PARTY_BUSINESS
+
+
 def check_in_opens_at(ctx: asyncpg.Record) -> datetime:
     return ctx["starts_at"] - timedelta(minutes=load_settings().check_in_opens_minutes_before)
 
@@ -123,8 +136,11 @@ async def build_assignment_detail(
         confirmed_at=ctx["confirmed_at"],
         travel_started_at=ctx["travel_started_at"],
         cancelled_at=ctx["cancelled_at"],
+        cancelled_by=_cancelled_by(ctx),
         cancel_reason=ctx["cancel_reason"],
         late_cancellation=ctx["late_cancellation"],
+        applied_at=ctx["application_applied_at"],
+        selected_at=ctx["application_decided_at"],
         shift=worker_shift_card(shift_row),
         worker=worker_summary(worker_row),
         business=business_card(shift_row),
@@ -318,6 +334,16 @@ async def cancel(
                 )
                 raise conflict("assignment_state", code_msg)
             late = is_late_cancellation(ctx["starts_at"], ctx["cancellation_cutoff_hours"], now)
+            if party == PARTY_WORKER and ctx["shift_type"] != SHIFT_LIVE:
+                if late:
+                    raise conflict(
+                        "cancellation_cutoff",
+                        MSG_WORKER_CANCELLATION_CUTOFF.format(
+                            hours=ctx["cancellation_cutoff_hours"]
+                        ),
+                    )
+                if not body.reason.strip():
+                    raise bad_request("reason_required", MSG_CANCEL_REASON_REQUIRED)
             await assignment_repository.cancel_assignment(
                 conn,
                 assignment_id,
@@ -326,6 +352,10 @@ async def cancel(
                 reason=body.reason,
                 late=late,
             )
+            if party == PARTY_WORKER and ctx["application_id"] is not None:
+                await application_repository.set_response(
+                    conn, ctx["application_id"], status=APP_WITHDRAWN, now=now
+                )
             shift_status = await _reopen_after_cancel(conn, ctx, now, user.user_id)
             if party == PARTY_WORKER:
                 recipient, title = ctx["business_user_id"], "A worker cancelled"

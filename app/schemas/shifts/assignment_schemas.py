@@ -58,8 +58,11 @@ class AssignmentDetail(BaseModel):
     confirmed_at: datetime
     travel_started_at: datetime | None = None
     cancelled_at: datetime | None = None
+    cancelled_by: str | None = Field(default=None, description="worker or business")
     cancel_reason: str | None = None
     late_cancellation: bool
+    applied_at: datetime | None = None
+    selected_at: datetime | None = None
     shift: WorkerShiftCard
     worker: WorkerSummary
     business: BusinessCard

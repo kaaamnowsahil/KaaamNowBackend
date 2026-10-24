@@ -209,6 +209,7 @@ SELECT s.id, s.shift_type, s.status, s.job_title, wc.slug AS category_slug,
        {_BOOKED_COUNT} AS booked_count,
        ap.id AS my_application_id, ap.status AS my_application_status,
        ap.confirm_by AS my_confirm_by, ap.applied_at AS my_applied_at,
+       ap.decided_at AS my_decided_at, ap.responded_at AS my_responded_at,
        a.id AS my_assignment_id, a.status AS my_assignment_status,
        CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL THEN NULL
             ELSE kn_haversine_km($2, $3, s.latitude, s.longitude) END AS distance_km

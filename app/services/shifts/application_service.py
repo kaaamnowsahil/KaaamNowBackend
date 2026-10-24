@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import asyncpg
@@ -21,6 +21,7 @@ from app.constants.shifts.shift_route_strings import (
     APP_APPLIED,
     APP_CONFIRMED,
     APP_DECLINED,
+    APP_EXPIRED,
     APP_REJECTED,
     APP_SELECTED,
     APP_WITHDRAWN,
@@ -35,18 +36,21 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_FULL,
     MSG_SHIFT_NOT_FOUND,
     MSG_SHIFT_NOT_RECRUITING,
+    MSG_WORKER_UNAVAILABLE,
     SHIFT_FILLED,
     SHIFT_OPEN,
     SHIFT_SCHEDULED,
 )
 from app.db.pool import get_pool
 from app.exceptions.api_errors import bad_request, conflict, not_found
+from app.pagination import clamp_page_limit
 from app.repositories.profiles import profile_repository
 from app.repositories.shifts import application_repository, assignment_repository, shift_repository
 from app.schemas.shifts.application_schemas import (
     ApplicantList,
     ApplicationCreate,
     ApplicationResponse,
+    BusinessApplicantPage,
 )
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.notifications.notification_service import notify, notify_many
@@ -56,9 +60,11 @@ from app.services.profiles.profile_lookup import (
     require_worker_profile,
     worker_home_point,
 )
-from app.services.shifts.domain.shift_mappers import applicant_item
+from app.services.shifts.domain.shift_mappers import applicant_item, business_applicant_item
 from app.utils.clock import utc_now
 from app.utils.geo import haversine_km
+
+_CLOSED_STATUSES = [APP_REJECTED, APP_DECLINED, APP_WITHDRAWN, APP_EXPIRED]
 
 
 async def _application_response(
@@ -173,6 +179,32 @@ async def list_applicants(
     )
 
 
+async def list_business_applicants(
+    user: AuthenticatedUser,
+    status: str,
+    business_profile_id: UUID | None,
+    limit: int | None,
+    offset: int,
+) -> BusinessApplicantPage:
+    """Applicants across every shift the caller owns, for one application status."""
+    page_limit = clamp_page_limit(limit)
+    async with get_pool().acquire() as conn:
+        scope = await business_scope(conn, user.user_id, business_profile_id)
+        rows = await application_repository.list_business_applicants(
+            conn,
+            scope,
+            _CLOSED_STATUSES if status == APP_REJECTED else [status],
+            limit=page_limit,
+            offset=offset,
+        )
+    return BusinessApplicantPage(
+        status=status,
+        items=[business_applicant_item(r) for r in rows],
+        limit=page_limit,
+        offset=offset,
+    )
+
+
 async def select(user: AuthenticatedUser, application_id: UUID) -> ApplicationResponse:
     """Offer a seat. Selected + booked may not exceed workers_required."""
     settings = load_settings()
@@ -187,6 +219,14 @@ async def select(user: AuthenticatedUser, application_id: UUID) -> ApplicationRe
             )
             if app_row["status"] != APP_APPLIED:
                 raise conflict("application_state", MSG_APPLICATION_STATE)
+            if await shift_repository.worker_has_overlap(
+                conn,
+                app_row["worker_profile_id"],
+                starts_at=shift["starts_at"],
+                ends_at=shift["ends_at"],
+                exclude_shift_id=shift["id"],
+            ):
+                raise conflict("worker_unavailable", MSG_WORKER_UNAVAILABLE)
             seats = await shift_repository.count_seats(conn, shift["id"])
             pending = await application_repository.count_selected(conn, shift["id"])
             if seats + pending >= shift["workers_required"]:
@@ -236,6 +276,67 @@ async def reject(user: AuthenticatedUser, application_id: UUID) -> ApplicationRe
             return await _application_response(conn, application_id)
 
 
+async def _book_selected(
+    conn: asyncpg.Connection,
+    worker: asyncpg.Record,
+    application_id: UUID,
+    shift: asyncpg.Record,
+    seats: int,
+    now: datetime,
+) -> None:
+    try:
+        async with conn.transaction():
+            assignment_id = await assignment_repository.insert_assignment(
+                conn,
+                shift_id=shift["id"],
+                worker_profile_id=worker["id"],
+                source=SHIFT_SCHEDULED,
+                dispatch_id=None,
+                application_id=application_id,
+                hourly_rate_minor=shift["hourly_rate_minor"],
+                now=now,
+            )
+    except asyncpg.UniqueViolationError:
+        raise conflict("already_booked", MSG_ALREADY_BOOKED) from None
+    await application_repository.set_response(conn, application_id, status=APP_CONFIRMED, now=now)
+    business = await profile_repository.get_business_profile(conn, shift["business_profile_id"])
+    await notify(
+        conn,
+        business["user_id"],
+        KIND_APPLICATION_CONFIRMED,
+        f"{worker['full_name'] or 'A worker'} confirmed",
+        f"{shift['job_title']} · {seats + 1} of {shift['workers_required']} booked",
+        {"shift_id": shift["id"], "assignment_id": assignment_id},
+    )
+    if seats + 1 < shift["workers_required"]:
+        return
+    await shift_repository.set_status(
+        conn,
+        shift["id"],
+        from_status=SHIFT_OPEN,
+        to_status=SHIFT_FILLED,
+        now=now,
+        reason="all_seats_confirmed",
+    )
+    rejected = await application_repository.reject_remaining_applied(conn, shift["id"], now)
+    await notify_many(
+        conn,
+        await assignment_repository.user_ids_for_worker_profiles(conn, rejected),
+        KIND_APPLICATION_REJECTED,
+        "Shift filled",
+        f"{shift['job_title']} has been filled.",
+        {"shift_id": shift["id"]},
+    )
+    await notify(
+        conn,
+        business["user_id"],
+        KIND_LIVE_FILLED,
+        "Shift fully booked",
+        f"All workers confirmed for {shift['job_title']}.",
+        {"shift_id": shift["id"]},
+    )
+
+
 async def confirm(user: AuthenticatedUser, application_id: UUID) -> ApplicationResponse:
     now = utc_now()
     async with get_pool().acquire() as conn:
@@ -259,62 +360,7 @@ async def confirm(user: AuthenticatedUser, application_id: UUID) -> ApplicationR
                 exclude_shift_id=shift["id"],
             ):
                 raise conflict("overlapping_shift", MSG_OVERLAPPING_SHIFT)
-            try:
-                async with conn.transaction():
-                    assignment_id = await assignment_repository.insert_assignment(
-                        conn,
-                        shift_id=shift["id"],
-                        worker_profile_id=worker["id"],
-                        source=SHIFT_SCHEDULED,
-                        dispatch_id=None,
-                        application_id=application_id,
-                        hourly_rate_minor=shift["hourly_rate_minor"],
-                        now=now,
-                    )
-            except asyncpg.UniqueViolationError:
-                raise conflict("already_booked", MSG_ALREADY_BOOKED) from None
-            await application_repository.set_response(
-                conn, application_id, status=APP_CONFIRMED, now=now
-            )
-            business = await profile_repository.get_business_profile(
-                conn, shift["business_profile_id"]
-            )
-            await notify(
-                conn,
-                business["user_id"],
-                KIND_APPLICATION_CONFIRMED,
-                f"{worker['full_name'] or 'A worker'} confirmed",
-                f"{shift['job_title']} · {seats + 1} of {shift['workers_required']} booked",
-                {"shift_id": shift["id"], "assignment_id": assignment_id},
-            )
-            if seats + 1 >= shift["workers_required"]:
-                await shift_repository.set_status(
-                    conn,
-                    shift["id"],
-                    from_status=SHIFT_OPEN,
-                    to_status=SHIFT_FILLED,
-                    now=now,
-                    reason="all_seats_confirmed",
-                )
-                rejected = await application_repository.reject_remaining_applied(
-                    conn, shift["id"], now
-                )
-                await notify_many(
-                    conn,
-                    await assignment_repository.user_ids_for_worker_profiles(conn, rejected),
-                    KIND_APPLICATION_REJECTED,
-                    "Shift filled",
-                    f"{shift['job_title']} has been filled.",
-                    {"shift_id": shift["id"]},
-                )
-                await notify(
-                    conn,
-                    business["user_id"],
-                    KIND_LIVE_FILLED,
-                    "Shift fully booked",
-                    f"All workers confirmed for {shift['job_title']}.",
-                    {"shift_id": shift["id"]},
-                )
+            await _book_selected(conn, worker, application_id, shift, seats, now)
             return await _application_response(conn, application_id)
 
 

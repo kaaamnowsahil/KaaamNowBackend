@@ -7,7 +7,12 @@ from decimal import Decimal
 
 import asyncpg
 
-from app.schemas.shifts.application_schemas import ApplicantItem, WorkerSummary
+from app.schemas.shifts.application_schemas import (
+    ApplicantItem,
+    ApplicantShiftSummary,
+    BusinessApplicantItem,
+    WorkerSummary,
+)
 from app.schemas.shifts.assignment_schemas import AttendanceSummary, RosterEntry
 from app.schemas.shifts.shift_schemas import (
     BusinessCard,
@@ -145,8 +150,28 @@ def applicant_item(row: asyncpg.Record) -> ApplicantItem:
         application_id=row["application_id"],
         status=row["status"],
         applied_at=row["applied_at"],
+        decided_at=row["decided_at"],
+        responded_at=row["responded_at"],
         confirm_by=row["confirm_by"],
         distance_km=round(row["distance_km"], 2) if row["distance_km"] is not None else None,
         cover_note=row["cover_note"],
         worker=worker_summary(row),
+    )
+
+
+def business_applicant_item(row: asyncpg.Record) -> BusinessApplicantItem:
+    return BusinessApplicantItem(
+        **applicant_item(row).model_dump(),
+        shift=ApplicantShiftSummary(
+            id=row["shift_id"],
+            shift_type=row["shift_type"],
+            status=row["shift_status"],
+            job_title=row["job_title"],
+            workplace_name=row["workplace_name"],
+            starts_at=row["starts_at"],
+            ends_at=row["ends_at"],
+            workers_required=row["workers_required"],
+            hourly_rate_minor=row["hourly_rate_minor"],
+            currency=row["currency"],
+        ),
     )

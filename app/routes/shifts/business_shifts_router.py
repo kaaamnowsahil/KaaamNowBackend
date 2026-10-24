@@ -18,6 +18,7 @@ from app.constants.shifts.shift_route_strings import (
     OPENAPI_TAG_BUSINESS_SHIFTS,
     PATH_APPLICATION_REJECT,
     PATH_APPLICATION_SELECT,
+    PATH_BUSINESS_APPLICATIONS,
     PATH_BUSINESS_ASSIGNMENT_CANCEL,
     PATH_DASHBOARD,
     PATH_SHIFT,
@@ -34,7 +35,11 @@ from app.constants.shifts.shift_route_strings import (
     PATH_SHIFTS_BULK_PUBLISH,
 )
 from app.dependencies import RequireShiftsRead, RequireShiftsWrite
-from app.schemas.shifts.application_schemas import ApplicantList, ApplicationResponse
+from app.schemas.shifts.application_schemas import (
+    ApplicantList,
+    ApplicationResponse,
+    BusinessApplicantPage,
+)
 from app.schemas.shifts.assignment_schemas import (
     AssignmentCancelRequest,
     AssignmentCancelResponse,
@@ -246,6 +251,26 @@ async def applicants(
     | None = Query(default=None, alias="status"),
 ) -> ApplicantList:
     return await application_service.list_applicants(user, shift_id, status_in)
+
+
+@router.get(
+    PATH_BUSINESS_APPLICATIONS,
+    response_model=BusinessApplicantPage,
+    summary=swagger_summary("Applicants across all my shifts", SWAGGER_ROLE_BUSINESS),
+)
+async def all_applicants(
+    user: RequireShiftsRead,
+    status: Literal["applied", "selected", "confirmed", "rejected"] = Query(
+        default="applied",
+        description="`rejected` also covers declined, withdrawn and expired applications.",
+    ),
+    business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
+    limit: int | None = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
+) -> BusinessApplicantPage:
+    return await application_service.list_business_applicants(
+        user, status, business_profile_id, limit, offset
+    )
 
 
 @router.post(

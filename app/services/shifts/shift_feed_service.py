@@ -10,9 +10,11 @@ from app.config.settings import load_settings
 from app.constants.profiles.profile_route_strings import MSG_WORKER_LOCATION_REQUIRED
 from app.constants.shifts.shift_route_strings import (
     APP_APPLIED,
+    APP_DECLINED,
     APP_EXPIRED,
     APP_REJECTED,
     APP_SELECTED,
+    APP_WITHDRAWN,
     ASG_APPROVED,
     ASG_CHECKED_IN,
     ASG_CHECKED_OUT,
@@ -41,7 +43,14 @@ _ASSIGNMENT_TABS: dict[str, tuple[list[str], bool]] = {
     "active": ([ASG_CHECKED_IN], False),
     "completed": ([ASG_CHECKED_OUT, ASG_APPROVED], True),
 }
-_APPLICATION_TAB_STATUSES = [APP_APPLIED, APP_SELECTED, APP_REJECTED, APP_EXPIRED]
+_APPLICATION_TAB_STATUSES = [
+    APP_APPLIED,
+    APP_SELECTED,
+    APP_REJECTED,
+    APP_DECLINED,
+    APP_WITHDRAWN,
+    APP_EXPIRED,
+]
 
 
 async def _worker_point(
@@ -149,6 +158,9 @@ async def my_shifts(
             application_id=r["my_application_id"],
             application_status=r["my_application_status"],
             confirm_by=r["my_confirm_by"],
+            applied_at=r["my_applied_at"],
+            decided_at=r["my_decided_at"],
+            responded_at=r["my_responded_at"],
             earned_minor=r["earned_minor"],
             shift=worker_shift_card(r),
         )

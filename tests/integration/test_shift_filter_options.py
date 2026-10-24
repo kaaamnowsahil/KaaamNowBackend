@@ -45,9 +45,7 @@ async def test_shift_filter_options_require_admin_for_management(
 
     assert (await app_client.get(API, params={"include_inactive": "true"})).status_code == 401
     assert (
-        await app_client.get(
-            API, headers=worker.headers, params={"include_inactive": "true"}
-        )
+        await app_client.get(API, headers=worker.headers, params={"include_inactive": "true"})
     ).status_code == 403
     assert (await app_client.post(API, json=body)).status_code == 401
     assert (await app_client.post(API, headers=worker.headers, json=body)).status_code == 403

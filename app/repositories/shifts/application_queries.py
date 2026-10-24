@@ -43,8 +43,8 @@ UPDATE shift_applications SET status = $2, responded_at = $3, updated_at = now()
 """
 
 LIST_APPLICANTS = """
-SELECT ap.id AS application_id, ap.status, ap.applied_at, ap.confirm_by, ap.distance_km,
-       ap.cover_note,
+SELECT ap.id AS application_id, ap.status, ap.applied_at, ap.decided_at, ap.responded_at,
+       ap.confirm_by, ap.distance_km, ap.cover_note,
        wp.id AS worker_id, wp.user_id AS worker_user_id, u.full_name, u.photo_url,
        wp.rating_avg, wp.rating_count, wp.completed_shift_count, wp.verification_status
 FROM shift_applications ap
@@ -53,6 +53,23 @@ JOIN users u ON u.id = wp.user_id
 WHERE ap.shift_id = $1 AND ($2::varchar[] IS NULL OR ap.status = ANY($2))
 ORDER BY CASE ap.status WHEN 'selected' THEN 0 WHEN 'applied' THEN 1 ELSE 2 END,
          wp.rating_avg DESC, ap.applied_at
+"""
+
+LIST_BUSINESS_APPLICANTS = """
+SELECT ap.id AS application_id, ap.status, ap.applied_at, ap.decided_at, ap.responded_at,
+       ap.confirm_by, ap.distance_km, ap.cover_note,
+       wp.id AS worker_id, wp.user_id AS worker_user_id, u.full_name, u.photo_url,
+       wp.rating_avg, wp.rating_count, wp.completed_shift_count, wp.verification_status,
+       s.id AS shift_id, s.shift_type, s.status AS shift_status, s.job_title,
+       s.workplace_name, s.starts_at, s.ends_at, s.workers_required, s.hourly_rate_minor,
+       s.currency
+FROM shift_applications ap
+JOIN shifts s ON s.id = ap.shift_id
+JOIN worker_profiles wp ON wp.id = ap.worker_profile_id
+JOIN users u ON u.id = wp.user_id
+WHERE s.business_profile_id = ANY($1::uuid[]) AND ap.status = ANY($2::varchar[])
+ORDER BY s.starts_at, s.id, wp.rating_avg DESC, ap.applied_at
+LIMIT $3 OFFSET $4
 """
 
 CLOSE_OPEN_APPLICATIONS = """

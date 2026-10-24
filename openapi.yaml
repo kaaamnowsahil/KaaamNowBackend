@@ -2271,6 +2271,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/applications:
+    get:
+      tags:
+      - business / work shifts
+      summary: Applicants across all my shifts · Business / Work
+      operationId: all_applicants_api_v1_business_applications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          enum:
+          - applied
+          - selected
+          - confirmed
+          - rejected
+          type: string
+          description: '`rejected` also covers declined, withdrawn and expired applications.'
+          default: applied
+          title: Status
+        description: '`rejected` also covers declined, withdrawn and expired applications.'
+      - name: business_profile_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Only this Business / Work entity (must be yours). Omit for
+            all of your entities.
+          title: Business Profile Id
+        description: Only this Business / Work entity (must be yours). Omit for all
+          of your entities.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessApplicantPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/business/applications/{application_id}/select:
     post:
       tags:
@@ -4565,6 +4631,20 @@ components:
           type: string
           format: date-time
           title: Applied At
+        decided_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Decided At
+          description: When the business selected or rejected, or it expired.
+        responded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Responded At
+          description: When the worker confirmed, declined or withdrew.
         confirm_by:
           anyOf:
           - type: string
@@ -4613,6 +4693,54 @@ components:
       - booked_count
       - items
       title: ApplicantList
+    ApplicantShiftSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        shift_type:
+          type: string
+          title: Shift Type
+        status:
+          type: string
+          title: Status
+        job_title:
+          type: string
+          title: Job Title
+        workplace_name:
+          type: string
+          title: Workplace Name
+        starts_at:
+          type: string
+          format: date-time
+          title: Starts At
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        workers_required:
+          type: integer
+          title: Workers Required
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+        currency:
+          type: string
+          title: Currency
+      type: object
+      required:
+      - id
+      - shift_type
+      - status
+      - job_title
+      - workplace_name
+      - starts_at
+      - ends_at
+      - workers_required
+      - hourly_rate_minor
+      - currency
+      title: ApplicantShiftSummary
     ApplicationCreate:
       properties:
         cover_note:
@@ -4758,6 +4886,12 @@ components:
             format: date-time
           - type: 'null'
           title: Cancelled At
+        cancelled_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cancelled By
+          description: worker or business
         cancel_reason:
           anyOf:
           - type: string
@@ -4766,6 +4900,18 @@ components:
         late_cancellation:
           type: boolean
           title: Late Cancellation
+        applied_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Applied At
+        selected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Selected At
         shift:
           $ref: '#/components/schemas/WorkerShiftCard'
         worker:
@@ -4955,6 +5101,83 @@ components:
       required:
       - file
       title: Body_upload_profile_image_api_v1_me_profile_image_post
+    BusinessApplicantItem:
+      properties:
+        application_id:
+          type: string
+          format: uuid
+          title: Application Id
+        status:
+          type: string
+          title: Status
+        applied_at:
+          type: string
+          format: date-time
+          title: Applied At
+        decided_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Decided At
+          description: When the business selected or rejected, or it expired.
+        responded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Responded At
+          description: When the worker confirmed, declined or withdrew.
+        confirm_by:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirm By
+        distance_km:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Distance Km
+        cover_note:
+          type: string
+          title: Cover Note
+        worker:
+          $ref: '#/components/schemas/WorkerSummary'
+        shift:
+          $ref: '#/components/schemas/ApplicantShiftSummary'
+      type: object
+      required:
+      - application_id
+      - status
+      - applied_at
+      - cover_note
+      - worker
+      - shift
+      title: BusinessApplicantItem
+    BusinessApplicantPage:
+      properties:
+        status:
+          type: string
+          title: Status
+        items:
+          items:
+            $ref: '#/components/schemas/BusinessApplicantItem'
+          type: array
+          title: Items
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - status
+      - items
+      - limit
+      - offset
+      title: BusinessApplicantPage
     BusinessCard:
       properties:
         id:
@@ -6698,6 +6921,26 @@ components:
             format: date-time
           - type: 'null'
           title: Confirm By
+        applied_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Applied At
+        decided_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Decided At
+          description: When the business selected, rejected or it expired.
+        responded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Responded At
+          description: When the worker confirmed, declined or withdrew.
         earned_minor:
           anyOf:
           - type: integer

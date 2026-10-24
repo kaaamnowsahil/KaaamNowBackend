@@ -13,6 +13,7 @@ from app.repositories.shifts.application_queries import (
     EXPIRE_DUE_SELECTIONS,
     GET_APPLICATION,
     LIST_APPLICANTS,
+    LIST_BUSINESS_APPLICANTS,
     LOCK_APPLICATION,
     REJECT_REMAINING_APPLIED,
     SET_APPLICATION_DECISION,
@@ -64,6 +65,17 @@ async def list_applicants(
     conn: asyncpg.Connection, shift_id: UUID, statuses: list[str] | None
 ) -> list[asyncpg.Record]:
     return await conn.fetch(LIST_APPLICANTS, shift_id, statuses)
+
+
+async def list_business_applicants(
+    conn: asyncpg.Connection,
+    business_profile_ids: list[UUID],
+    statuses: list[str],
+    *,
+    limit: int,
+    offset: int,
+) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_BUSINESS_APPLICANTS, business_profile_ids, statuses, limit, offset)
 
 
 async def close_open_applications(

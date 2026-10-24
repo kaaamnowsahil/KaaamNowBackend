@@ -35,9 +35,7 @@ def _slug_taken() -> ApiError:
 
 async def list_options(*, include_inactive: bool) -> list[ShiftFilterOption]:
     async with get_pool().acquire() as conn:
-        rows = await shift_filter_repository.list_options(
-            conn, include_inactive=include_inactive
-        )
+        rows = await shift_filter_repository.list_options(conn, include_inactive=include_inactive)
     return [_model(row) for row in rows]
 
 
@@ -62,9 +60,7 @@ async def create_option(body: ShiftFilterOptionCreate) -> ShiftFilterOption:
     return _model(row)
 
 
-async def update_option(
-    option_id: UUID, body: ShiftFilterOptionUpdate
-) -> ShiftFilterOption:
+async def update_option(option_id: UUID, body: ShiftFilterOptionUpdate) -> ShiftFilterOption:
     changes = body.model_dump(exclude_unset=True)
     if not changes:
         raise bad_request(_EMPTY_UPDATE, "Send at least one field to update.")

@@ -48,6 +48,12 @@ class ApplicantItem(BaseModel):
     application_id: UUID
     status: str
     applied_at: datetime
+    decided_at: datetime | None = Field(
+        default=None, description="When the business selected or rejected, or it expired."
+    )
+    responded_at: datetime | None = Field(
+        default=None, description="When the worker confirmed, declined or withdrew."
+    )
     confirm_by: datetime | None = None
     distance_km: float | None = None
     cover_note: str
@@ -59,3 +65,27 @@ class ApplicantList(BaseModel):
     workers_required: int
     booked_count: int
     items: list[ApplicantItem]
+
+
+class ApplicantShiftSummary(BaseModel):
+    id: UUID
+    shift_type: str
+    status: str
+    job_title: str
+    workplace_name: str
+    starts_at: datetime
+    ends_at: datetime
+    workers_required: int
+    hourly_rate_minor: int
+    currency: str
+
+
+class BusinessApplicantItem(ApplicantItem):
+    shift: ApplicantShiftSummary
+
+
+class BusinessApplicantPage(BaseModel):
+    status: str
+    items: list[BusinessApplicantItem]
+    limit: int
+    offset: int
