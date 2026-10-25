@@ -85,6 +85,12 @@ class KaaamNowSettings(BaseSettings):
     otp_resend_cooldown_seconds: int = 30
     otp_max_sends_per_hour: int = 5
     firebase_project_id: str = ""
+    apitxt_auth_key: str = ""
+    apitxt_send_otp_url: str = "https://apitxt.com/api/sendOTP"
+    # sms | whatsapp | voice
+    apitxt_channel: str = "sms"
+    # DLT-approved SMS template id; empty uses the apitxt account default.
+    apitxt_template_id: str = ""
 
     # --- Marketplace policy (OWNER DECISIONS) ---
     default_currency: str = "INR"

@@ -13,6 +13,7 @@ from app.routes.billing.billing_router import router as billing_router
 from app.routes.billing.billing_router import webhook_router as payment_webhook_router
 from app.routes.brand_assets_router import router as brand_assets_router
 from app.routes.catalog.catalog_router import router as catalog_router
+from app.routes.content.content_admin_router import router as content_admin_router
 from app.routes.content.content_router import router as content_router
 from app.routes.content.content_router import support_router
 from app.routes.earnings.earnings_router import router as earnings_router
@@ -38,6 +39,8 @@ _ROUTERS = (
     shift_filter_router,
     admin_verification_router,
     admin_account_deletion_router,
+    # Before admin_crud_router: its /admin/{resource} would swallow /admin/faqs and /admin/terms.
+    content_admin_router,
     admin_crud_router,
     notifications_router,
     business_shifts_router,

@@ -43,6 +43,61 @@ class FaqList(BaseModel):
     support_emails: list[str]
 
 
+ContentAudience = Literal["worker", "business", "all"]
+
+
+class AdminFaq(BaseModel):
+    id: UUID
+    audience: str
+    slug: str | None
+    question: str
+    answer: str
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminFaqCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    audience: ContentAudience = "all"
+    slug: str | None = Field(default=None, max_length=64, pattern=r"^[a-z0-9-]+$")
+    question: str = Field(min_length=3, max_length=300)
+    answer: str = Field(min_length=1, max_length=8000)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class AdminFaqUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    audience: ContentAudience | None = None
+    slug: str | None = Field(default=None, max_length=64, pattern=r"^[a-z0-9-]+$")
+    question: str | None = Field(default=None, min_length=3, max_length=300)
+    answer: str | None = Field(default=None, min_length=1, max_length=8000)
+    sort_order: int | None = None
+    is_active: bool | None = None
+
+
+class AdminTerms(BaseModel):
+    id: UUID
+    audience: str
+    title: str
+    body_markdown: str
+    effective_date: date
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminTermsUpsert(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=160)
+    body_markdown: str = Field(min_length=1, max_length=100_000)
+    effective_date: date
+
+
 class SupportTicketCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

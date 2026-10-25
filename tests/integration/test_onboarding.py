@@ -152,11 +152,12 @@ async def test_password_login_and_otp_password_reset(app_client: httpx.AsyncClie
         )
     ).status_code == 200
 
-    anonymous_reset = await app_client.post(
+    unregistered_reset = await app_client.post(
         f"{API}/auth/otp/send",
         json={"phone": next_phone(), "intent": "password_reset"},
     )
-    assert anonymous_reset.status_code == 200
+    assert unregistered_reset.status_code == 404
+    assert unregistered_reset.json()["code"] == "account_not_found"
 
 
 async def test_business_signup_logo_and_catalog(app_client: httpx.AsyncClient) -> None:

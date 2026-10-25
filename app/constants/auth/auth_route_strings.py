@@ -35,6 +35,9 @@ TOKEN_TYPE_BEARER: Final[str] = "bearer"
 PHONE_E164_PATTERN: Final[str] = r"^\+[1-9]\d{7,14}$"
 
 OTP_PROVIDER_FIREBASE: Final[str] = "firebase"
+OTP_PROVIDER_CONSOLE: Final[str] = "console"
+OTP_PROVIDER_APITXT: Final[str] = "apitxt"
+APITXT_TIMEOUT_SECONDS: Final[float] = 10.0
 FIREBASE_JWKS_URL: Final[str] = (
     "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
 )
@@ -59,6 +62,9 @@ MSG_OTP_SENT_BY_FIREBASE: Final[str] = (
     "Firebase sends the SMS. Complete phone verification in the client."
 )
 MSG_OTP_ATTEMPTS_EXCEEDED: Final[str] = "Too many attempts. Request a new OTP."
+MSG_OTP_SEND_FAILED: Final[str] = "Could not send the OTP right now. Try again in a minute."
+MSG_OTP_PROVIDER_NOT_CONFIGURED: Final[str] = "OTP SMS is not configured on this server."
+MSG_RESET_IDENTITY: Final[str] = "Send either phone + code (SMS OTP) or id_token (Firebase)."
 MSG_ACCOUNT_DISABLED: Final[str] = "This account is disabled."
 MSG_REFRESH_INVALID: Final[str] = "Invalid or expired refresh token."
 MSG_REFRESH_REUSED: Final[str] = "Refresh token reuse detected; please sign in again."

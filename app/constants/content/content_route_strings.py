@@ -19,5 +19,12 @@ SLUG_TERMS: Final[str] = "terms"
 AUDIENCE_ALL: Final[str] = "all"
 FAQ_SEARCH_MAX_LENGTH: Final[int] = 100
 
+ADMIN_CONTENT_ROUTE_PREFIX: Final[str] = f"{API_V1}/admin"
+OPENAPI_TAG_ADMIN_CONTENT: Final[str] = "admin - content"
+PATH_FAQ_ID: Final[str] = "/faqs/{faq_id}"
+PATH_TERMS_AUDIENCE: Final[str] = "/terms/{audience}"
+
 MSG_CONTENT_NOT_FOUND: Final[str] = "Content not found."
+MSG_FAQ_NOT_FOUND: Final[str] = "FAQ not found."
+MSG_FAQ_EXISTS: Final[str] = "This audience already has an FAQ with that question or slug."
 MSG_SUPPORT_SHIFT_NOT_FOUND: Final[str] = "Shift not found."

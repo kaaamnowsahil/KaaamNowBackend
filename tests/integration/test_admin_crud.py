@@ -18,6 +18,7 @@ ADMIN = "/api/v1/admin"
 async def _admin(client: httpx.AsyncClient, db: asyncpg.Connection) -> Actor:
     """Sign in, grant the admin role in SQL, then refresh so the JWT carries it."""
     phone = next_phone()
+    await db.execute("INSERT INTO users (phone) VALUES ($1) ON CONFLICT (phone) DO NOTHING", phone)
     await client.post("/api/v1/auth/otp/send", json={"phone": phone})
     verified = await client.post("/api/v1/auth/otp/verify", json={"phone": phone, "code": TEST_OTP})
     assert verified.status_code == 200, verified.text

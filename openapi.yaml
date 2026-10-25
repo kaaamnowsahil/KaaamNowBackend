@@ -1419,6 +1419,218 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/faqs:
+    get:
+      tags:
+      - admin - content
+      summary: List FAQs · Admin
+      operationId: list_faqs_api_v1_admin_faqs_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: audience
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - worker
+            - business
+            - all
+            type: string
+          - type: 'null'
+          title: Audience
+      - name: include_inactive
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Include Inactive
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminFaq'
+                title: Response List Faqs Api V1 Admin Faqs Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - admin - content
+      summary: Create FAQ · Admin
+      operationId: create_faq_api_v1_admin_faqs_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminFaqCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminFaq'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/faqs/{faq_id}:
+    patch:
+      tags:
+      - admin - content
+      summary: Update FAQ · Admin
+      operationId: update_faq_api_v1_admin_faqs__faq_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: faq_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Faq Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminFaqUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminFaq'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - admin - content
+      summary: Delete FAQ · Admin
+      operationId: delete_faq_api_v1_admin_faqs__faq_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: faq_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Faq Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/terms:
+    get:
+      tags:
+      - admin - content
+      summary: List Terms & Conditions per audience · Admin
+      operationId: list_terms_api_v1_admin_terms_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AdminTerms'
+                type: array
+                title: Response List Terms Api V1 Admin Terms Get
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/terms/{audience}:
+    put:
+      tags:
+      - admin - content
+      summary: Create or replace Terms & Conditions · Admin
+      operationId: upsert_terms_api_v1_admin_terms__audience__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: audience
+        in: path
+        required: true
+        schema:
+          enum:
+          - worker
+          - business
+          - all
+          type: string
+          title: Audience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminTermsUpsert'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTerms'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - admin - content
+      summary: Delete Terms & Conditions · Admin
+      operationId: delete_terms_api_v1_admin_terms__audience__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: audience
+        in: path
+        required: true
+        schema:
+          enum:
+          - worker
+          - business
+          - all
+          type: string
+          title: Audience
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/admin/resources:
     get:
       tags:
@@ -4440,6 +4652,138 @@ components:
       - key
       - count
       title: AdminCount
+    AdminFaq:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        audience:
+          type: string
+          title: Audience
+        slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Slug
+        question:
+          type: string
+          title: Question
+        answer:
+          type: string
+          title: Answer
+        sort_order:
+          type: integer
+          title: Sort Order
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - audience
+      - slug
+      - question
+      - answer
+      - sort_order
+      - is_active
+      - created_at
+      - updated_at
+      title: AdminFaq
+    AdminFaqCreate:
+      properties:
+        audience:
+          type: string
+          enum:
+          - worker
+          - business
+          - all
+          title: Audience
+          default: all
+        slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+            pattern: ^[a-z0-9-]+$
+          - type: 'null'
+          title: Slug
+        question:
+          type: string
+          maxLength: 300
+          minLength: 3
+          title: Question
+        answer:
+          type: string
+          maxLength: 8000
+          minLength: 1
+          title: Answer
+        sort_order:
+          type: integer
+          title: Sort Order
+          default: 0
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - question
+      - answer
+      title: AdminFaqCreate
+    AdminFaqUpdate:
+      properties:
+        audience:
+          anyOf:
+          - type: string
+            enum:
+            - worker
+            - business
+            - all
+          - type: 'null'
+          title: Audience
+        slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+            pattern: ^[a-z0-9-]+$
+          - type: 'null'
+          title: Slug
+        question:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 3
+          - type: 'null'
+          title: Question
+        answer:
+          anyOf:
+          - type: string
+            maxLength: 8000
+            minLength: 1
+          - type: 'null'
+          title: Answer
+        sort_order:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sort Order
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      additionalProperties: false
+      type: object
+      title: AdminFaqUpdate
     AdminLoginRequest:
       properties:
         email:
@@ -4618,6 +4962,66 @@ components:
       required:
       - items
       title: AdminResourceList
+    AdminTerms:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        audience:
+          type: string
+          title: Audience
+        title:
+          type: string
+          title: Title
+        body_markdown:
+          type: string
+          title: Body Markdown
+        effective_date:
+          type: string
+          format: date
+          title: Effective Date
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - audience
+      - title
+      - body_markdown
+      - effective_date
+      - created_at
+      - updated_at
+      title: AdminTerms
+    AdminTermsUpsert:
+      properties:
+        title:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Title
+        body_markdown:
+          type: string
+          maxLength: 100000
+          minLength: 1
+          title: Body Markdown
+        effective_date:
+          type: string
+          format: date
+          title: Effective Date
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      - body_markdown
+      - effective_date
+      title: AdminTermsUpsert
     ApplicantItem:
       properties:
         application_id:
@@ -7182,10 +7586,27 @@ components:
       title: PasswordLoginRequest
     PasswordResetConfirmRequest:
       properties:
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 20
+            minLength: 8
+          - type: 'null'
+          title: Phone
+        code:
+          anyOf:
+          - type: string
+            maxLength: 8
+            minLength: 4
+            pattern: ^\d+$
+          - type: 'null'
+          title: Code
         id_token:
-          type: string
-          maxLength: 4096
-          minLength: 20
+          anyOf:
+          - type: string
+            maxLength: 4096
+            minLength: 20
+          - type: 'null'
           title: Id Token
         new_password:
           type: string
@@ -7195,7 +7616,6 @@ components:
       additionalProperties: false
       type: object
       required:
-      - id_token
       - new_password
       title: PasswordResetConfirmRequest
     PaymentCreate:

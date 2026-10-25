@@ -127,11 +127,7 @@ async def send_otp(
         async with get_pool().acquire() as conn:
             account_exists = await user_repository.get_auth_credentials(conn, phone) is not None
         if not account_exists:
-            return OtpSendResponse(
-                phone=phone,
-                expires_in_seconds=settings.otp_ttl_seconds,
-                resend_after_seconds=settings.otp_resend_cooldown_seconds,
-            )
+            raise not_found("account_not_found", MSG_ACCOUNT_NOT_FOUND)
     else:
         await _enforce_intent(phone, intent, role)
     otp_sender = get_otp_sender()
@@ -406,7 +402,11 @@ async def admin_login(body: AdminLoginRequest) -> OtpVerifyResponse:
 
 
 async def confirm_password_reset(body: PasswordResetConfirmRequest) -> None:
-    phone = normalize_phone(await verify_firebase_phone_token(body.id_token))
+    if body.id_token is not None:
+        phone = normalize_phone(await verify_firebase_phone_token(body.id_token))
+    else:
+        phone = normalize_phone(body.phone or "")
+        await _consume_otp(phone, body.code or "", INTENT_PASSWORD_RESET)
     async with get_pool().acquire() as conn:
         updated = await user_repository.set_password_by_phone(
             conn, phone, hash_password(body.new_password)
