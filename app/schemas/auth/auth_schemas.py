@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.auth.auth_route_strings import (
+    MSG_RESET_IDENTITY,
     MSG_SIGNUP_DETAILS,
     MSG_SIGNUP_IDENTITY,
     TOKEN_TYPE_BEARER,
@@ -58,13 +59,22 @@ class AdminLoginRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id_token: str = Field(min_length=20, max_length=4096)
+    phone: str | None = Field(default=None, min_length=8, max_length=20)
+    code: str | None = Field(default=None, min_length=4, max_length=8, pattern=r"^\d+$")
+    id_token: str | None = Field(default=None, min_length=20, max_length=4096)
     new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, value: str) -> str:
         return _validate_password_strength(value)
+
+    @model_validator(mode="after")
+    def _identity(self) -> PasswordResetConfirmRequest:
+        uses_otp = self.phone is not None and self.code is not None
+        if uses_otp == (self.id_token is not None):
+            raise ValueError(MSG_RESET_IDENTITY)
+        return self
 
 
 class OtpSendRequest(BaseModel):
