@@ -96,6 +96,12 @@ class OtpSendResponse(BaseModel):
     phone: str
     expires_in_seconds: int
     resend_after_seconds: int
+    delivery_channel: str = Field(
+        description="How the code was sent: sms, whatsapp, voice or console (development)."
+    )
+    sender_name: str | None = Field(
+        default=None, description="Sender shown on the message, e.g. the SMS header."
+    )
 
 
 class OtpVerifyRequest(BaseModel):
