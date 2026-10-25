@@ -91,6 +91,8 @@ class KaaamNowSettings(BaseSettings):
     apitxt_channel: str = "sms"
     # DLT-approved SMS template id; empty uses the apitxt account default.
     apitxt_template_id: str = ""
+    # Sender name users see on the OTP message (SMS header / WhatsApp name); empty hides it.
+    otp_sender_name: str = ""
 
     # --- Marketplace policy (OWNER DECISIONS) ---
     default_currency: str = "INR"

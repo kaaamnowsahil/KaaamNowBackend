@@ -32,6 +32,7 @@ from app.constants.auth.auth_route_strings import (
     MSG_REFRESH_REUSED,
     MSG_ROLE_NOT_REGISTERED,
     MSG_ROLE_REGISTERED,
+    OTP_PROVIDER_APITXT,
     OTP_PROVIDER_FIREBASE,
 )
 from app.constants.users.user_route_strings import MSG_LANGUAGE_UNKNOWN
@@ -162,6 +163,12 @@ async def send_otp(
         phone=phone,
         expires_in_seconds=settings.otp_ttl_seconds,
         resend_after_seconds=settings.otp_resend_cooldown_seconds,
+        delivery_channel=(
+            settings.apitxt_channel
+            if settings.otp_provider == OTP_PROVIDER_APITXT
+            else settings.otp_provider
+        ),
+        sender_name=settings.otp_sender_name or None,
     )
 
 
