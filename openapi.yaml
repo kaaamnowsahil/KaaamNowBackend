@@ -2696,11 +2696,14 @@ paths:
           - selected
           - confirmed
           - rejected
+          - withdrawn
           type: string
-          description: '`rejected` also covers declined, withdrawn and expired applications.'
+          description: '`rejected` also covers declined, withdrawn and expired applications;
+            `withdrawn` is only workers who withdrew or declined.'
           default: applied
           title: Status
-        description: '`rejected` also covers declined, withdrawn and expired applications.'
+        description: '`rejected` also covers declined, withdrawn and expired applications;
+          `withdrawn` is only workers who withdrew or declined.'
       - name: business_profile_id
         in: query
         required: false
@@ -3115,6 +3118,26 @@ paths:
           minimum: 0
           default: 0
           title: Offset
+      - name: lat
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 90
+            minimum: -90
+          - type: 'null'
+          title: Lat
+      - name: lng
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 180
+            minimum: -180
+          - type: 'null'
+          title: Lng
       responses:
         '200':
           description: Successful Response
@@ -3144,6 +3167,26 @@ paths:
           type: string
           format: uuid
           title: Shift Id
+      - name: lat
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 90
+            minimum: -90
+          - type: 'null'
+          title: Lat
+      - name: lng
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 180
+            minimum: -180
+          - type: 'null'
+          title: Lng
       responses:
         '200':
           description: Successful Response
@@ -6943,6 +6986,10 @@ components:
         pending_applications:
           type: integer
           title: Pending Applications
+        withdrawn_count:
+          type: integer
+          title: Withdrawn Count
+          default: 0
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
@@ -7428,6 +7475,10 @@ components:
         pending_applications:
           type: integer
           title: Pending Applications
+        withdrawn_count:
+          type: integer
+          title: Withdrawn Count
+          default: 0
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
@@ -10627,6 +10678,11 @@ components:
         pending_applications:
           type: integer
           title: Pending Applications
+        withdrawn_count:
+          type: integer
+          title: Withdrawn Count
+          description: Workers who withdrew their application or booking, or declined.
+          default: 0
         estimate:
           $ref: '#/components/schemas/ShiftCostEstimate'
         live_search:

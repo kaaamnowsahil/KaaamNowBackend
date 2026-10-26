@@ -50,6 +50,7 @@ from app.constants.shifts.shift_route_strings import (
     EXTENSION_REQUESTED,
     MSG_ASSIGNMENT_NOT_FOUND,
     MSG_ASSIGNMENT_STATE,
+    SHIFT_COMPLETED,
     SHIFT_FILLED,
     SHIFT_IN_PROGRESS,
     SHIFT_LIVE,
@@ -201,6 +202,27 @@ async def check_in(
             return await build_assignment_detail(conn, assignment_id, user)
 
 
+async def _complete_shift_if_done(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> None:
+    """An in-progress shift is completed once nobody is still booked, travelling or working.
+    Hours approval and the final invoice still happen on the completed shift."""
+    shift = await shift_repository.lock_shift(conn, shift_id)
+    if shift is None or shift["status"] != SHIFT_IN_PROGRESS:
+        return
+    active = await assignment_repository.count_in(
+        conn, shift_id, [*ASG_BOOKED_STATUSES, ASG_CHECKED_IN]
+    )
+    if active:
+        return
+    await shift_repository.set_status(
+        conn,
+        shift_id,
+        from_status=SHIFT_IN_PROGRESS,
+        to_status=SHIFT_COMPLETED,
+        now=now,
+        reason="all_workers_finished",
+    )
+
+
 async def _finish(
     conn: asyncpg.Connection,
     ctx: asyncpg.Record,
@@ -227,6 +249,7 @@ async def _finish(
     )
     await assignment_repository.set_ended(conn, ctx["id"], reason)
     await assignment_repository.expire_open_extensions(conn, ctx["id"], now)
+    await _complete_shift_if_done(conn, ctx["shift_id"], now)
     data = {"shift_id": ctx["shift_id"], "assignment_id": ctx["id"]}
     worked = f"{ctx['job_title']} · {minutes // 60}h {minutes % 60}m recorded"
     if party == PARTY_WORKER:
@@ -563,6 +586,7 @@ async def mark_no_show(user: AuthenticatedUser, assignment_id: UUID) -> Assignme
                     actor_user_id=user.user_id,
                     now=now,
                 )
+            await _complete_shift_if_done(conn, ctx["shift_id"], now)
             await notify(
                 conn,
                 ctx["worker_user_id"],

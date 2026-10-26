@@ -29,10 +29,18 @@ async def upsert_application(
     worker_profile_id: UUID,
     distance_km: float | None,
     cover_note: str,
+    latitude: float | None = None,
+    longitude: float | None = None,
 ) -> asyncpg.Record | None:
     """None when an active application already exists."""
     return await conn.fetchrow(
-        UPSERT_APPLICATION, shift_id, worker_profile_id, distance_km, cover_note
+        UPSERT_APPLICATION,
+        shift_id,
+        worker_profile_id,
+        distance_km,
+        cover_note,
+        latitude,
+        longitude,
     )
 
 

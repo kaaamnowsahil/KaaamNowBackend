@@ -70,6 +70,7 @@ from app.utils.clock import utc_now
 from app.utils.geo import haversine_km
 
 _CLOSED_STATUSES = [APP_REJECTED, APP_DECLINED, APP_WITHDRAWN, APP_EXPIRED]
+_WORKER_LEFT_STATUSES = [APP_WITHDRAWN, APP_DECLINED]
 
 
 async def _application_response(
@@ -163,6 +164,8 @@ async def apply(
                 worker_profile_id=worker["id"],
                 distance_km=distance,
                 cover_note=body.cover_note,
+                latitude=lat,
+                longitude=lng,
             )
             if row is None:
                 raise conflict("application_exists", MSG_APPLICATION_EXISTS)
@@ -215,7 +218,11 @@ async def list_business_applicants(
         rows = await application_repository.list_business_applicants(
             conn,
             scope,
-            _CLOSED_STATUSES if status == APP_REJECTED else [status],
+            _CLOSED_STATUSES
+            if status == APP_REJECTED
+            else _WORKER_LEFT_STATUSES
+            if status == APP_WITHDRAWN
+            else [status],
             limit=page_limit,
             offset=offset,
         )
