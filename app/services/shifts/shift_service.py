@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 
 from app.config.settings import load_settings
+from app.constants.application.application_constants import ROLE_BUSINESS
 from app.constants.notifications.notification_route_strings import (
     KIND_SHIFT_CANCELLED,
     KIND_SHIFT_NEARBY,
@@ -31,6 +31,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_NOT_DRAFT,
     MSG_SHIFT_NOT_FOUND,
     SCHEDULED_NOTIFY_BATCH_SIZE,
+    SHIFT_AWAITING_PAYMENT,
     SHIFT_CANCELLABLE_STATUSES,
     SHIFT_CANCELLED,
     SHIFT_DRAFT,
@@ -63,6 +64,7 @@ from app.schemas.shifts.shift_schemas import (
     ShiftBulkItem,
     ShiftBulkPublish,
     ShiftBulkResponse,
+    ShiftCancelPreview,
     ShiftCancelRequest,
     ShiftCostEstimate,
     ShiftCreate,
@@ -73,6 +75,13 @@ from app.schemas.shifts.shift_schemas import (
     ShiftResponse,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.billing import invoice_service
+from app.services.cancellations import cancellation_service
+from app.services.cancellations.cancellation_rules import (
+    EVENT_CANCEL,
+    PARTY_BUSINESS,
+    SeatQuote,
+)
 from app.services.catalog import catalog_service
 from app.services.notifications.notification_service import notify_many
 from app.services.profiles.profile_lookup import (
@@ -80,6 +89,8 @@ from app.services.profiles.profile_lookup import (
     ensure_postable,
     require_postable_business,
 )
+from app.services.promos import promo_service
+from app.services.promos.promo_rules import Promo
 from app.services.shifts import live_dispatch_service
 from app.services.shifts.domain.shift_mappers import (
     live_search_state,
@@ -93,8 +104,10 @@ from app.services.shifts.domain.shift_rules import (
     resolve_window,
     validate_window,
 )
+from app.services.users import terms_service
 from app.utils.clock import minutes_between, utc_now
 from app.utils.geo import bounding_box_deltas
+from app.utils.money import FeeRates
 from app.utils.references import new_numeric_code
 
 # --- helpers ---------------------------------------------------------------------------
@@ -103,20 +116,18 @@ from app.utils.references import new_numeric_code
 async def _estimate_for(
     conn: asyncpg.Connection,
     row: asyncpg.Record,
-    default_fee_percentage: Decimal | None = None,
+    default_rates: FeeRates | None = None,
 ) -> ShiftCostEstimate:
-    if row["fee_percentage"] is not None:
-        pct = Decimal(row["fee_percentage"])
-    elif default_fee_percentage is not None:
-        pct = default_fee_percentage
-    else:
-        pct = Decimal((await catalog_service.require_active_fee_policy(conn))["percentage"])
+    rates = catalog_service.shift_rates(row, default_rates)
+    if rates is None:
+        rates = await catalog_service.active_rates(conn)
     return estimate_cost(
         hourly_rate_minor=row["hourly_rate_minor"],
         workers_required=row["workers_required"],
         minutes_per_worker=paid_minutes(row["starts_at"], row["ends_at"], row["break_minutes"]),
-        fee_percentage=pct,
+        rates=rates,
         currency=row["currency"],
+        promo=await promo_service.preview_promo(conn, row),
     )
 
 
@@ -207,6 +218,8 @@ async def _publish_locked(
     settings = load_settings()
     if shift["status"] != SHIFT_DRAFT:
         raise conflict("shift_not_draft", MSG_SHIFT_NOT_DRAFT)
+    await terms_service.require_accepted(conn, actor.user_id, ROLE_BUSINESS)
+    await promo_service.reserve_for_shift(conn, shift, actor.user_id, now)
     starts_at, ends_at = shift["starts_at"], shift["ends_at"]
     if shift["shift_type"] == SHIFT_LIVE:
         duration = ends_at - starts_at
@@ -218,6 +231,7 @@ async def _publish_locked(
         ends_at=ends_at,
         break_minutes=shift["break_minutes"],
         now=now,
+        min_lead_hours=settings.scheduled_min_lead_hours,
     )
     policy = await catalog_service.require_active_fee_policy(conn)
     if shift["shift_type"] == SHIFT_LIVE:
@@ -226,7 +240,7 @@ async def _publish_locked(
             shift["id"],
             now=now,
             fee_policy_version=policy["version"],
-            fee_percentage=policy["percentage"],
+            rates=catalog_service.policy_rates(policy),
             radius_km=settings.live_initial_radius_km,
             max_radius_km=settings.live_max_radius_km,
             expires_at=now + timedelta(seconds=settings.live_search_timeout_seconds),
@@ -238,23 +252,42 @@ async def _publish_locked(
             conn, await shift_repository.lock_shift(conn, shift["id"]), now
         )
     else:
+        rates = catalog_service.policy_rates(policy)
         await shift_repository.publish_scheduled(
             conn,
             shift["id"],
             now=now,
             fee_policy_version=policy["version"],
-            fee_percentage=policy["percentage"],
+            rates=rates,
         )
         await shift_repository.record_history(
-            conn, shift["id"], SHIFT_DRAFT, SHIFT_OPEN, actor.user_id, "published"
+            conn, shift["id"], SHIFT_DRAFT, SHIFT_AWAITING_PAYMENT, actor.user_id, "published"
         )
-        await _notify_nearby_scheduled(conn, await shift_repository.lock_shift(conn, shift["id"]))
+        await invoice_service.create_deposit_invoice(
+            conn, await shift_repository.lock_shift(conn, shift["id"]), rates, now
+        )
+
+
+async def activate_paid_shift(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> None:
+    """Deposit paid: the shift opens for booking and nearby workers are notified."""
+    shift = await shift_repository.lock_shift(conn, shift_id)
+    if shift is None or shift["status"] != SHIFT_AWAITING_PAYMENT:
+        return
+    await shift_repository.set_status(
+        conn,
+        shift_id,
+        from_status=SHIFT_AWAITING_PAYMENT,
+        to_status=SHIFT_OPEN,
+        now=now,
+        reason="deposit_paid",
+    )
+    await _notify_nearby_scheduled(conn, await shift_repository.lock_shift(conn, shift_id))
 
 
 # --- public API ------------------------------------------------------------------------
 
 
-async def estimate(body: ShiftEstimateRequest) -> ShiftCostEstimate:
+async def estimate(user: AuthenticatedUser, body: ShiftEstimateRequest) -> ShiftCostEstimate:
     now = utc_now()
     starts_at, ends_at = resolve_window(
         shift_type=SHIFT_LIVE,
@@ -265,12 +298,20 @@ async def estimate(body: ShiftEstimateRequest) -> ShiftCostEstimate:
     )
     async with get_pool().acquire() as conn:
         policy = await catalog_service.require_active_fee_policy(conn)
+        promo = None
+        if body.promo_code:
+            promo = Promo.from_row(
+                await promo_service.usable(
+                    conn, body.promo_code, role=ROLE_BUSINESS, user_id=user.user_id, now=now
+                )
+            )
     return estimate_cost(
         hourly_rate_minor=body.hourly_rate_minor,
         workers_required=body.workers_required,
         minutes_per_worker=paid_minutes(starts_at, ends_at, body.break_minutes),
-        fee_percentage=Decimal(policy["percentage"]),
+        rates=catalog_service.policy_rates(policy),
         currency=load_settings().default_currency,
+        promo=promo,
     )
 
 
@@ -313,6 +354,7 @@ async def _insert_shift(
         ends_at=ends_at,
         break_minutes=values["break_minutes"],
         now=now,
+        min_lead_hours=settings.scheduled_min_lead_hours,
     )
     return await shift_repository.insert_shift(
         conn,
@@ -339,6 +381,10 @@ async def create_shift(user: AuthenticatedUser, body: ShiftCreate) -> ShiftRespo
         async with conn.transaction():
             business = await require_postable_business(conn, user.user_id, body.business_profile_id)
             shift_id = await _insert_shift(conn, business, body, body.shift_type, now)
+            if body.promo_code:
+                await promo_service.attach_business_code(
+                    conn, shift_id, body.promo_code, user.user_id
+                )
             if body.publish:
                 await _publish_locked(
                     conn, await shift_repository.lock_shift(conn, shift_id), user, now
@@ -356,6 +402,10 @@ async def create_shifts_bulk(user: AuthenticatedUser, body: ShiftBulkCreate) -> 
             for index, item in enumerate(body.shifts):
                 try:
                     shift_id = await _insert_shift(conn, business, item, SHIFT_SCHEDULED, now)
+                    if body.promo_code:
+                        await promo_service.attach_business_code(
+                            conn, shift_id, body.promo_code, user.user_id
+                        )
                     if body.publish:
                         await _publish_locked(
                             conn, await shift_repository.lock_shift(conn, shift_id), user, now
@@ -428,6 +478,7 @@ async def update_draft(user: AuthenticatedUser, shift_id: UUID, body: ShiftPatch
                     ends_at=values["ends_at"],
                     break_minutes=values["break_minutes"],
                     now=now,
+                    min_lead_hours=load_settings().scheduled_min_lead_hours,
                 )
             await shift_repository.update_draft_shift(conn, shift_id, values)
             return await build_shift_response(conn, scope, shift_id)
@@ -446,6 +497,54 @@ async def publish(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
             return await build_shift_response(conn, scope, shift_id)
 
 
+async def _booked_seat_quotes(
+    conn: asyncpg.Connection, shift: asyncpg.Record, now: datetime
+) -> list[tuple[asyncpg.Record, SeatQuote]]:
+    return [
+        (
+            seat,
+            await cancellation_service.quote_assignment(
+                conn,
+                shift,
+                seat["hourly_rate_minor"],
+                party=PARTY_BUSINESS,
+                event=EVENT_CANCEL,
+                now=now,
+            ),
+        )
+        for seat in await assignment_repository.list_shift_assignments(conn, shift["id"])
+        if seat["status"] in ASG_BOOKED_STATUSES
+    ]
+
+
+async def cancel_preview(user: AuthenticatedUser, shift_id: UUID) -> ShiftCancelPreview:
+    now = utc_now()
+    async with get_pool().acquire() as conn:
+        scope = await business_scope(conn, user.user_id)
+        shift = await shift_repository.get_business_shift(conn, shift_id, scope)
+        if shift is None:
+            raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
+        if shift["status"] not in SHIFT_CANCELLABLE_STATUSES:
+            raise conflict("shift_not_cancellable", MSG_SHIFT_NOT_CANCELLABLE)
+        seats = (
+            []
+            if shift["shift_type"] == SHIFT_LIVE
+            else [quote for _, quote in await _booked_seat_quotes(conn, shift, now)]
+        )
+        refundable = await cancellation_service.deposit_refundable(conn, shift_id)
+    return ShiftCancelPreview(
+        shift_id=shift_id,
+        booked_workers=len(seats),
+        fee_minor=sum(q.fee_minor for q in seats),
+        worker_compensation_minor=sum(q.worker_compensation_minor for q in seats),
+        business_refund_minor=max(refundable - sum(q.business_retained_minor for q in seats), 0),
+        currency=shift["currency"],
+        seats=[
+            cancellation_service.quote_view(q, shift["currency"], seat_reopens=False) for q in seats
+        ],
+    )
+
+
 async def cancel(
     user: AuthenticatedUser, shift_id: UUID, body: ShiftCancelRequest
 ) -> ShiftResponse:
@@ -458,12 +557,21 @@ async def cancel(
                 raise conflict("shift_not_cancellable", MSG_SHIFT_NOT_CANCELLABLE)
             if await assignment_repository.count_in(conn, shift_id, [ASG_CHECKED_IN]):
                 raise conflict("shift_not_cancellable", MSG_SHIFT_NOT_CANCELLABLE)
-            late = is_late_cancellation(shift["starts_at"], shift["cancellation_cutoff_hours"], now)
-            if late:
-                raise conflict(
-                    "shift_cancellation_cutoff",
-                    MSG_SHIFT_CANCELLATION_CUTOFF.format(hours=shift["cancellation_cutoff_hours"]),
+            if shift["shift_type"] == SHIFT_LIVE:
+                late = is_late_cancellation(
+                    shift["starts_at"], shift["cancellation_cutoff_hours"], now
                 )
+                if late:
+                    raise conflict(
+                        "shift_cancellation_cutoff",
+                        MSG_SHIFT_CANCELLATION_CUTOFF.format(
+                            hours=shift["cancellation_cutoff_hours"]
+                        ),
+                    )
+                seats = []
+            else:
+                seats = await _booked_seat_quotes(conn, shift, now)
+                late = any(quote.fee_minor for _, quote in seats)
             worker_ids = await assignment_repository.cancel_shift_assignments(
                 conn,
                 shift_id,
@@ -476,7 +584,19 @@ async def cancel(
             worker_ids += await application_repository.close_open_applications(
                 conn, shift_id, status=APP_REJECTED, now=now
             )
+            for seat, quote in seats:
+                await cancellation_service.apply_seat(
+                    conn,
+                    shift=shift,
+                    assignment_id=seat["id"],
+                    worker_profile_id=seat["worker_profile_id"],
+                    worker_user_id=seat["worker_user_id"],
+                    quote=quote,
+                    actor_user_id=user.user_id,
+                    now=now,
+                )
             await shift_repository.cancel_shift(conn, shift_id, now=now, reason=body.reason)
+            await invoice_service.settle_cancelled_deposit(conn, shift_id)
             await shift_repository.record_history(
                 conn, shift_id, shift["status"], SHIFT_CANCELLED, user.user_id, body.reason
             )
@@ -523,6 +643,7 @@ async def convert_to_scheduled(
                 ends_at=ends_at,
                 break_minutes=shift["break_minutes"],
                 now=now,
+                min_lead_hours=load_settings().scheduled_min_lead_hours,
             )
             await dispatch_repository.withdraw_open_offers(conn, shift_id)
             await shift_repository.convert_to_scheduled(
@@ -552,7 +673,8 @@ async def retry_live(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
                 shift_id,
                 now=now,
                 fee_policy_version=shift["fee_policy_version"],
-                fee_percentage=shift["fee_percentage"],
+                rates=catalog_service.shift_rates(shift)
+                or await catalog_service.active_rates(conn),
                 radius_km=settings.live_initial_radius_km,
                 max_radius_km=settings.live_max_radius_km,
                 expires_at=now + timedelta(seconds=settings.live_search_timeout_seconds),
@@ -599,13 +721,12 @@ async def list_shifts(
         counts = await shift_repository.count_business_shift_groups(
             conn, scope, shift_type=shift_type, now=now
         )
-        default_fee_percentage = None
+        default_rates = None
         if any(row["fee_percentage"] is None for row in rows):
-            policy = await catalog_service.require_active_fee_policy(conn)
-            default_fee_percentage = Decimal(policy["percentage"])
+            default_rates = await catalog_service.active_rates(conn)
         items = []
         for row in rows:
-            estimate = await _estimate_for(conn, row, default_fee_percentage)
+            estimate = await _estimate_for(conn, row, default_rates)
             items.append(
                 BusinessShiftItem.model_validate(
                     {
@@ -639,13 +760,10 @@ async def dashboard(
             )
         else:
             rows = await shift_repository.list_dashboard_shifts(conn, scope, tab, now)
-        default_fee_percentage = None
+        default_rates = None
         if any(row["fee_percentage"] is None for row in rows):
-            policy = await catalog_service.require_active_fee_policy(conn)
-            default_fee_percentage = Decimal(policy["percentage"])
-        rows_with_estimates = [
-            (row, await _estimate_for(conn, row, default_fee_percentage)) for row in rows
-        ]
+            default_rates = await catalog_service.active_rates(conn)
+        rows_with_estimates = [(row, await _estimate_for(conn, row, default_rates)) for row in rows]
     buckets: dict[str, list[DashboardShift]] = {key: [] for key, _ in DASHBOARD_GROUPS}
     for row, estimate in rows_with_estimates:  # ordered by starts_at ascending
         group = dashboard_group(row["status"], row["ends_at"], now)

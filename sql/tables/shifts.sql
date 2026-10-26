@@ -53,8 +53,23 @@ ALTER TABLE shifts
     ALTER COLUMN latitude DROP NOT NULL,
     ALTER COLUMN longitude DROP NOT NULL;
 
+-- ``awaiting_payment``: a published scheduled shift whose deposit is not paid yet.
+ALTER TABLE shifts DROP CONSTRAINT IF EXISTS shifts_status_chk;
+ALTER TABLE shifts ADD CONSTRAINT shifts_status_chk CHECK (status IN (
+    'draft', 'awaiting_payment', 'searching', 'open', 'filled', 'in_progress',
+    'completed', 'expired', 'cancelled'
+));
+
+-- Snapshotted from platform_fee_policies at publish, next to fee_percentage (business commission).
+ALTER TABLE shifts
+    ADD COLUMN IF NOT EXISTS worker_fee_percentage NUMERIC(5, 2),
+    ADD COLUMN IF NOT EXISTS gateway_fee_percentage NUMERIC(5, 2);
+
 CREATE INDEX IF NOT EXISTS shifts_business_profile_idx
     ON shifts (business_profile_id, starts_at DESC);
 CREATE INDEX IF NOT EXISTS shifts_discovery_idx ON shifts (shift_type, status, starts_at);
 CREATE INDEX IF NOT EXISTS shifts_geo_idx ON shifts (latitude, longitude)
     WHERE status IN ('searching', 'open');
+
+-- Promo code entered at posting; its discount applies to the deposit and final invoices.
+ALTER TABLE shifts ADD COLUMN IF NOT EXISTS promo_code_id UUID;

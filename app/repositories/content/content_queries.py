@@ -76,7 +76,12 @@ SELECT EXISTS (
 """
 
 INSERT_SUPPORT_TICKET = """
-INSERT INTO support_tickets (user_id, topic, subject, message, shift_id)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, topic, subject, status, created_at
+INSERT INTO support_tickets (user_id, topic, subject, message, shift_id, priority, assignment_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, topic, subject, status, priority, assignment_id, created_at
+"""
+
+LIST_ACTIVE_ADMIN_USER_IDS = """
+SELECT r.user_id FROM user_roles r JOIN users u ON u.id = r.user_id
+WHERE r.role = 'admin' AND r.status = 'active' AND u.is_active
 """

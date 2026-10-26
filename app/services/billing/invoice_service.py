@@ -1,15 +1,21 @@
-"""Final cost: approved minutes × rate per worker + platform fee (snapshotted at publish)."""
+"""Deposit at posting (booked minutes for every seat) and final cost after the shift
+(approved minutes). Business pays pay + commission + gateway; rates snapshotted at publish."""
 
 from __future__ import annotations
 
-from decimal import Decimal
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
 
+from app.config.settings import load_settings
 from app.constants.billing.billing_route_strings import (
+    INVOICE_KIND_DEPOSIT,
+    INVOICE_KIND_FINAL,
     INVOICE_PAID,
     INVOICE_PENDING,
+    INVOICE_VOID,
+    LINE_GATEWAY_FEE,
     LINE_PLATFORM_FEE,
     LINE_WORKER_PAY,
     MSG_INVOICE_NOT_FOUND,
@@ -29,12 +35,24 @@ from app.db.pool import get_pool
 from app.exceptions.api_errors import conflict, not_found
 from app.repositories.attendance import attendance_repository
 from app.repositories.billing import billing_repository
+from app.repositories.cancellations import cancellation_repository
 from app.repositories.shifts import assignment_repository, shift_repository
 from app.schemas.billing.billing_schemas import InvoiceLine, InvoiceResponse
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.billing.settlement import release_invoice_earnings
+from app.services.catalog import catalog_service
 from app.services.profiles.profile_lookup import business_scope
+from app.services.promos import promo_service
+from app.services.promos.promo_rules import Promo, discount_charge
+from app.services.shifts.domain.shift_rules import paid_minutes
 from app.utils.clock import utc_now
-from app.utils.money import pay_for_minutes, platform_fee
+from app.utils.money import (
+    BusinessCharge,
+    FeeRates,
+    business_charge,
+    overtime_pay,
+    pay_for_minutes,
+)
 from app.utils.references import INVOICE_REFERENCE_PREFIX, new_reference
 
 _INVOICEABLE_SHIFT_STATUSES = (SHIFT_FILLED, SHIFT_IN_PROGRESS, SHIFT_COMPLETED)
@@ -44,7 +62,9 @@ async def build_invoice_response(conn: asyncpg.Connection, invoice_id: UUID) -> 
     row = await billing_repository.get_invoice(conn, invoice_id)
     lines = await billing_repository.list_invoice_lines(conn, invoice_id)
     data = dict(row)
-    data["fee_percentage"] = float(data["fee_percentage"])
+    for key in ("fee_percentage", "gateway_fee_percentage", "worker_fee_percentage"):
+        data[key] = float(data[key])
+    data["amount_due_minor"] = max(data["total_minor"] - data["deposit_applied_minor"], 0)
     data["lines"] = [InvoiceLine.model_validate(dict(line)) for line in lines]
     return InvoiceResponse.model_validate(data)
 
@@ -56,6 +76,145 @@ async def load_owned_invoice(
     if row is None or row["business_profile_id"] not in scope:
         raise not_found("invoice_not_found", MSG_INVOICE_NOT_FOUND)
     return row
+
+
+async def _insert_invoice_with_lines(
+    conn: asyncpg.Connection,
+    shift: asyncpg.Record,
+    *,
+    kind: str,
+    charge: BusinessCharge,
+    rates: FeeRates,
+    status: str,
+    now: datetime,
+    worker_lines: list[tuple[UUID | None, str, int, int, int]],
+    deposit_applied: int = 0,
+    refund_due: int = 0,
+    promo: Promo | None = None,
+    promo_discount: int = 0,
+) -> UUID:
+    """``worker_lines``: (assignment_id, description, minutes, rate, amount). ``charge`` is
+    already net of ``promo_discount``."""
+    invoice_id = await billing_repository.insert_invoice(
+        conn,
+        shift_id=shift["id"],
+        business_profile_id=shift["business_profile_id"],
+        reference=new_reference(INVOICE_REFERENCE_PREFIX),
+        status=status,
+        currency=shift["currency"],
+        invoice_kind=kind,
+        charge=charge,
+        fee_percentage=rates.business_pct,
+        gateway_fee_percentage=rates.gateway_pct,
+        worker_fee_percentage=rates.worker_pct,
+        fee_policy_version=shift["fee_policy_version"],
+        now=now,
+        deposit_applied_minor=deposit_applied,
+        refund_due_minor=refund_due,
+        promo_discount_minor=promo_discount,
+        promo_code=promo.code if promo else None,
+    )
+    for index, (assignment_id, description, minutes, rate, amount) in enumerate(worker_lines):
+        await billing_repository.insert_invoice_line(
+            conn,
+            invoice_id,
+            assignment_id=assignment_id,
+            line_kind=LINE_WORKER_PAY,
+            description=description,
+            minutes=minutes,
+            rate_minor=rate,
+            amount_minor=amount,
+            sort_order=index,
+        )
+    for offset, (kind_, label, pct, amount) in enumerate(
+        (
+            (LINE_PLATFORM_FEE, "Service fee", rates.business_pct, charge.commission_minor),
+            (
+                LINE_GATEWAY_FEE,
+                "Payment gateway charge",
+                rates.gateway_pct,
+                charge.gateway_fee_minor,
+            ),
+        )
+    ):
+        await billing_repository.insert_invoice_line(
+            conn,
+            invoice_id,
+            assignment_id=None,
+            line_kind=kind_,
+            description=f"{label} ({pct.normalize()}%)",
+            minutes=None,
+            rate_minor=None,
+            amount_minor=amount,
+            sort_order=len(worker_lines) + offset,
+        )
+    return invoice_id
+
+
+def worker_pay(assignment: asyncpg.Record, booked_minutes: int) -> int:
+    """Booked-window minutes at the rate; minutes past the booking (accepted extensions)
+    at ``overtime_rate_pct``."""
+    minutes = assignment["approved_minutes"] or 0
+    regular = min(minutes, booked_minutes)
+    rate = assignment["hourly_rate_minor"]
+    return pay_for_minutes(rate, regular) + overtime_pay(
+        rate, minutes - regular, load_settings().overtime_rate_pct
+    )
+
+
+def _pay_line_label(assignment: asyncpg.Record, minutes: int, booked_minutes: int) -> str:
+    label = f"{assignment['full_name'] or 'Worker'} · {minutes // 60}h {minutes % 60}m"
+    overtime = max(minutes - booked_minutes, 0)
+    if overtime:
+        label += f" (incl. {overtime}m overtime @ {load_settings().overtime_rate_pct}%)"
+    return label
+
+
+async def create_deposit_invoice(
+    conn: asyncpg.Connection, shift: asyncpg.Record, rates: FeeRates, now: datetime
+) -> UUID:
+    """Booked minutes × rate for every seat, paid before the shift goes live."""
+    minutes = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
+    pay = pay_for_minutes(shift["hourly_rate_minor"], minutes)
+    seats = shift["workers_required"]
+    promo = await promo_service.shift_promo(conn, shift)
+    charge, discount = discount_charge(business_charge(pay * seats, rates), promo)
+    return await _insert_invoice_with_lines(
+        conn,
+        shift,
+        kind=INVOICE_KIND_DEPOSIT,
+        charge=charge,
+        promo=promo,
+        promo_discount=discount,
+        rates=rates,
+        status=INVOICE_PENDING,
+        now=now,
+        worker_lines=[
+            (
+                None,
+                f"{seats} × {minutes // 60}h {minutes % 60}m booked",
+                minutes * seats,
+                shift["hourly_rate_minor"],
+                pay * seats,
+            )
+        ],
+    )
+
+
+async def settle_cancelled_deposit(conn: asyncpg.Connection, shift_id: UUID) -> None:
+    """Shift cancelled or expired before it ran: void an unpaid deposit, refund a paid one."""
+    deposit = await billing_repository.get_invoice_by_shift(conn, shift_id, INVOICE_KIND_DEPOSIT)
+    if deposit is None:
+        return
+    await promo_service.release_for_shift(conn, shift_id, utc_now())
+    if deposit["status"] == INVOICE_PENDING:
+        await billing_repository.cancel_pending_payments(conn, deposit["id"])
+        await billing_repository.set_invoice_status(conn, deposit["id"], INVOICE_VOID)
+    elif deposit["status"] == INVOICE_PAID:
+        retained = await cancellation_repository.sum_retained(conn, shift_id)
+        await billing_repository.set_refund_due(
+            conn, deposit["id"], max(deposit["total_minor"] - retained, 0)
+        )
 
 
 async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceResponse:
@@ -87,53 +246,55 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
                 for a in await assignment_repository.list_shift_assignments(conn, shift_id)
                 if a["status"] == ASG_APPROVED
             ]
-            pct = Decimal(shift["fee_percentage"])
+            rates = catalog_service.shift_rates(shift) or await catalog_service.active_rates(conn)
+            booked = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
             pay_lines = [
-                (
-                    a,
-                    a["approved_minutes"] or 0,
-                    pay_for_minutes(a["hourly_rate_minor"], a["approved_minutes"] or 0),
-                )
-                for a in assignments
+                (a, a["approved_minutes"] or 0, worker_pay(a, booked)) for a in assignments
             ]
-            subtotal = sum(amount for _, _, amount in pay_lines)
-            fee = platform_fee(subtotal, pct)
-            invoice_id = await billing_repository.insert_invoice(
-                conn,
-                shift_id=shift_id,
-                business_profile_id=shift["business_profile_id"],
-                reference=new_reference(INVOICE_REFERENCE_PREFIX),
-                status=INVOICE_PENDING if subtotal + fee > 0 else INVOICE_PAID,
-                currency=shift["currency"],
-                worker_subtotal_minor=subtotal,
-                platform_fee_minor=fee,
-                fee_percentage=pct,
-                fee_policy_version=shift["fee_policy_version"],
-                now=now,
+            promo = await promo_service.shift_promo(conn, shift)
+            charge, discount = discount_charge(
+                business_charge(sum(amount for _, _, amount in pay_lines), rates), promo
             )
-            for index, (a, minutes, amount) in enumerate(pay_lines):
-                await billing_repository.insert_invoice_line(
-                    conn,
-                    invoice_id,
-                    assignment_id=a["id"],
-                    line_kind=LINE_WORKER_PAY,
-                    description=f"{a['full_name'] or 'Worker'} · {minutes // 60}h {minutes % 60}m",
-                    minutes=minutes,
-                    rate_minor=a["hourly_rate_minor"],
-                    amount_minor=amount,
-                    sort_order=index,
+            await promo_service.mark_shift_applied(conn, shift_id, discount, now)
+            deposit = await billing_repository.get_invoice_by_shift(
+                conn, shift_id, INVOICE_KIND_DEPOSIT
+            )
+            deposit_paid = (
+                max(
+                    deposit["total_minor"]
+                    - await cancellation_repository.sum_retained(conn, shift_id),
+                    0,
                 )
-            await billing_repository.insert_invoice_line(
-                conn,
-                invoice_id,
-                assignment_id=None,
-                line_kind=LINE_PLATFORM_FEE,
-                description=f"Platform fee ({pct.normalize()}%)",
-                minutes=None,
-                rate_minor=None,
-                amount_minor=fee,
-                sort_order=len(pay_lines),
+                if deposit and deposit["status"] == INVOICE_PAID
+                else 0
             )
+            refund_due = max(deposit_paid - charge.total_minor, 0)
+            settled = charge.total_minor - deposit_paid <= 0
+            invoice_id = await _insert_invoice_with_lines(
+                conn,
+                shift,
+                kind=INVOICE_KIND_FINAL,
+                charge=charge,
+                promo=promo,
+                promo_discount=discount,
+                rates=rates,
+                status=INVOICE_PAID if settled else INVOICE_PENDING,
+                now=now,
+                worker_lines=[
+                    (
+                        a["id"],
+                        _pay_line_label(a, minutes, booked),
+                        minutes,
+                        a["hourly_rate_minor"],
+                        amount,
+                    )
+                    for a, minutes, amount in pay_lines
+                ],
+                deposit_applied=deposit_paid,
+                refund_due=refund_due,
+            )
+            if settled:
+                await release_invoice_earnings(conn, invoice_id)
             if shift["status"] != SHIFT_COMPLETED:
                 await shift_repository.set_status(
                     conn,

@@ -205,6 +205,24 @@ class SignupRequest(BaseModel):
         return self
 
 
+class RoleAddRequest(BaseModel):
+    """A signed-in user adds their other role (the phone is already verified)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: SelfServiceRole
+    worker: SignupWorkerDetails | None = None
+    business: SignupBusinessDetails | None = None
+
+    @model_validator(mode="after")
+    def _details(self) -> RoleAddRequest:
+        details = self.worker if self.role == "worker" else self.business
+        other = self.business if self.role == "worker" else self.worker
+        if details is None or other is not None:
+            raise ValueError(MSG_SIGNUP_DETAILS)
+        return self
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

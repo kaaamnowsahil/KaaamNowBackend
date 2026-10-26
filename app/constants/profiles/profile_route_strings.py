@@ -36,5 +36,8 @@ MSG_BUSINESS_LIMIT_REACHED: Final[str] = (
     "You have reached the maximum number of Business / Work profiles."
 )
 MSG_WORKER_NOT_VERIFIED: Final[str] = "Your worker profile is awaiting verification."
+MSG_WORKER_BANNED: Final[str] = (
+    "Your worker account is on hold after repeated strikes. Contact support."
+)
 MSG_WORKER_LOCATION_REQUIRED: Final[str] = "Share your location to go online."
 MSG_COORDINATES_PAIR: Final[str] = "Latitude and longitude must be sent together."

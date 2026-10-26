@@ -88,8 +88,33 @@ async def login(client: httpx.AsyncClient, phone: str | None = None) -> Actor:
     )
 
 
+async def pay_deposit(client: httpx.AsyncClient, business: Actor, shift_id: str) -> dict:
+    """Pay a published scheduled shift's deposit with the fake provider; returns the shift."""
+    shift = await client.get(f"/api/v1/business/shifts/{shift_id}", headers=business.headers)
+    assert shift.status_code == 200, shift.text
+    assert shift.json()["status"] == "awaiting_payment"
+    payment = await client.post(
+        f"/api/v1/business/invoices/{shift.json()['deposit_invoice_id']}/payments",
+        json={"method": "upi_qr"},
+        headers=business.headers,
+    )
+    assert payment.status_code == 201, payment.text
+    confirmed = await client.post(
+        f"/api/v1/business/payments/{payment.json()['id']}/confirm", headers=business.headers
+    )
+    assert confirmed.json()["status"] == "succeeded", confirmed.text
+    shift = await client.get(f"/api/v1/business/shifts/{shift_id}", headers=business.headers)
+    assert shift.json()["status"] == "open", shift.text
+    return shift.json()
+
+
 async def signup(
-    client: httpx.AsyncClient, role: str, details: dict, phone: str | None = None
+    client: httpx.AsyncClient,
+    role: str,
+    details: dict,
+    phone: str | None = None,
+    *,
+    accept_terms: bool = True,
 ) -> Actor:
     """Register a role the only supported way: OTP ``sign_up`` + ``POST /auth/signup``."""
     phone = phone or next_phone()
@@ -108,12 +133,19 @@ async def signup(
     assert resp.status_code == 201, resp.text
     body = resp.json()
     profile = body["me"][f"{role}_profile"]
-    return Actor(
+    actor = Actor(
         phone=phone,
         user_id=UUID(body["me"]["id"]),
         headers={"Authorization": f"Bearer {body['tokens']['access_token']}"},
         profile_id=UUID(profile["id"]),
     )
+    terms = (await client.get("/api/v1/me/terms", headers=actor.headers)).json()
+    if accept_terms and any(t["audience"] == role and t["version"] for t in terms):
+        accepted = await client.post(
+            "/api/v1/me/terms/accept", json={"audience": role}, headers=actor.headers
+        )
+        assert accepted.status_code == 200, accepted.text
+    return actor
 
 
 @pytest.fixture

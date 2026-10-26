@@ -8,17 +8,27 @@ import asyncpg
 
 from app.config.settings import load_settings
 from app.constants.notifications.notification_route_strings import (
+    KIND_EXTENSION_PROMPT,
     KIND_LIVE_EXPIRED,
+    KIND_SEATS_RELEASED,
     KIND_SELECTION_EXPIRED,
 )
 from app.constants.shifts.shift_route_strings import (
     APP_EXPIRED,
+    SHIFT_AWAITING_PAYMENT,
     SHIFT_EXPIRED,
     SHIFT_FILLED,
     SHIFT_OPEN,
 )
 from app.repositories.profiles import profile_repository
-from app.repositories.shifts import application_repository, dispatch_repository, shift_repository
+from app.repositories.shifts import (
+    application_repository,
+    assignment_repository,
+    dispatch_repository,
+    shift_repository,
+)
+from app.services.billing import invoice_service
+from app.services.cancellations import cancellation_service
 from app.services.notifications.notification_service import notify, notify_many
 from app.services.shifts import live_dispatch_service
 from app.utils.clock import utc_now
@@ -89,6 +99,65 @@ async def expire_selection_confirmations(pool: asyncpg.Pool) -> int:
     return len(rows)
 
 
+async def release_unfilled_seats(pool: asyncpg.Pool) -> int:
+    """When applying closes (T−2h) empty seats are released: refunded through the deposit
+    and the business gets a free-fees voucher. No bookings at all expires the shift."""
+    now = utc_now()
+    closes_before = now + timedelta(hours=load_settings().apply_closes_hours_before)
+    changed = 0
+    async with pool.acquire() as conn:
+        for shift_id in await shift_repository.list_open_scheduled_apply_closed(
+            conn, closes_before, now
+        ):
+            async with conn.transaction():
+                shift = await shift_repository.lock_shift(conn, shift_id)
+                if shift["status"] != SHIFT_OPEN or not now < shift["starts_at"] <= closes_before:
+                    continue
+                seats = await shift_repository.count_seats(conn, shift_id)
+                unfilled = shift["workers_required"] - seats
+                if unfilled <= 0:
+                    continue
+                await shift_repository.set_status(
+                    conn,
+                    shift_id,
+                    from_status=SHIFT_OPEN,
+                    to_status=SHIFT_FILLED if seats else SHIFT_EXPIRED,
+                    now=now,
+                    reason="unfilled_seats_released",
+                )
+                closed = await application_repository.close_open_applications(
+                    conn, shift_id, status=APP_EXPIRED, now=now
+                )
+                await notify_many(
+                    conn,
+                    await assignment_repository.user_ids_for_worker_profiles(conn, closed),
+                    KIND_SELECTION_EXPIRED,
+                    "Shift closed",
+                    f"{shift['job_title']} is no longer recruiting.",
+                    {"shift_id": shift_id},
+                )
+                released = await cancellation_service.release_unfilled(conn, shift, unfilled, now)
+                if not seats:
+                    await invoice_service.settle_cancelled_deposit(conn, shift_id)
+                business = await profile_repository.get_business_profile(
+                    conn, shift["business_profile_id"]
+                )
+                await notify(
+                    conn,
+                    business["user_id"],
+                    KIND_SEATS_RELEASED,
+                    f"{unfilled} unfilled seat(s) refunded",
+                    f"{shift['job_title']}: {seats} of {shift['workers_required']} booked. "
+                    "Unfilled seats are refunded in full.",
+                    {
+                        "shift_id": shift_id,
+                        "refund_minor": released.business_refund_minor,
+                    },
+                )
+                changed += 1
+    return changed
+
+
 async def close_scheduled_recruiting(pool: asyncpg.Pool) -> int:
     """At start time an open scheduled shift stops recruiting: filled if anyone booked."""
     now = utc_now()
@@ -97,7 +166,21 @@ async def close_scheduled_recruiting(pool: asyncpg.Pool) -> int:
         for shift_id in await shift_repository.list_open_scheduled_past_start(conn, now):
             async with conn.transaction():
                 shift = await shift_repository.lock_shift(conn, shift_id)
-                if shift["status"] != SHIFT_OPEN or shift["starts_at"] > now:
+                if shift["starts_at"] > now:
+                    continue
+                if shift["status"] == SHIFT_AWAITING_PAYMENT:
+                    await shift_repository.set_status(
+                        conn,
+                        shift_id,
+                        from_status=SHIFT_AWAITING_PAYMENT,
+                        to_status=SHIFT_EXPIRED,
+                        now=now,
+                        reason="deposit_not_paid",
+                    )
+                    await invoice_service.settle_cancelled_deposit(conn, shift_id)
+                    changed += 1
+                    continue
+                if shift["status"] != SHIFT_OPEN:
                     continue
                 seats = await shift_repository.count_seats(conn, shift_id)
                 target = SHIFT_FILLED if seats else SHIFT_EXPIRED
@@ -137,3 +220,26 @@ async def close_scheduled_recruiting(pool: asyncpg.Pool) -> int:
                     )
                 changed += 1
     return changed
+
+
+async def prompt_extensions(pool: asyncpg.Pool) -> int:
+    """Shortly before a worker's end time, ask the business if they need more time."""
+    now = utc_now()
+    until = now + timedelta(minutes=load_settings().extension_prompt_minutes_before)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            rows = await assignment_repository.list_extension_prompts_due(conn, now, until)
+            for row in rows:
+                await notify(
+                    conn,
+                    row["business_user_id"],
+                    KIND_EXTENSION_PROMPT,
+                    f"{row['full_name'] or 'Your worker'}'s shift ends soon",
+                    f"{row['job_title']} — need more time? Request an extension.",
+                    {"shift_id": row["shift_id"], "assignment_id": row["id"]},
+                )
+            if rows:
+                await assignment_repository.mark_extension_prompted(
+                    conn, [r["id"] for r in rows], now
+                )
+            return len(rows)

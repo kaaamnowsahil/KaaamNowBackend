@@ -15,7 +15,7 @@ GROUP_ORDER = ["completed", "upcoming", "in_progress", "expired"]
 
 
 def _item(days: int) -> dict:
-    starts = (datetime.now(UTC) + timedelta(days=days)).replace(microsecond=0)
+    starts = (datetime.now(UTC) + timedelta(days=days, hours=1)).replace(microsecond=0)
     return {
         "category_slug": "hospitality",
         "job_title": f"Waiter day {days}",
@@ -82,7 +82,7 @@ async def test_scheduled_tab_shows_next_two_upcoming_only(
     body = await _dashboard(app_client, business.headers)
     assert [(s["id"], s["status"]) for s in body["shifts"]] == [
         (filled, "filled"),
-        (nxt, "open"),
+        (nxt, "awaiting_payment"),
     ]
     by_group = {g["key"]: [s["id"] for s in g["shifts"]] for g in body["groups"]}
     assert by_group == {
@@ -106,7 +106,7 @@ async def test_scheduled_tab_shows_next_two_upcoming_only(
     statuses = {s["id"]: s["status"] for s in full.json()["items"]}
     assert statuses[done] == "completed"
     assert statuses[expired] == "expired"
-    assert statuses[later] == "open"
+    assert statuses[later] == "awaiting_payment"
     assert len(statuses) == 7
     groups = {s["id"]: s["group"] for s in full.json()["items"]}
     assert groups[done] == "completed"

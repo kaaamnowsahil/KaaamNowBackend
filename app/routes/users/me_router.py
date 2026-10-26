@@ -1,14 +1,15 @@
 """Current user: profile + image, Business / Work entities, worker availability / live
 location, worker lookup for hirers, deletion, push devices.
 
-Roles are chosen once, at ``POST /api/v1/auth/signup``.
+Roles are created at ``POST /api/v1/auth/signup``; ``POST /roles`` adds the other one
+and ``PUT /active-role`` switches between them.
 """
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, File, Request, UploadFile, status
 
 from app.config.settings import load_settings
 from app.constants.application.application_common import (
@@ -20,6 +21,7 @@ from app.constants.application.application_common import (
 from app.constants.users.user_route_strings import (
     ME_ROUTE_PREFIX,
     OPENAPI_TAG_ME,
+    PATH_ACTIVE_ROLE,
     PATH_AVAILABILITY,
     PATH_BUSINESS,
     PATH_BUSINESS_LOGO,
@@ -31,6 +33,9 @@ from app.constants.users.user_route_strings import (
     PATH_LOCATION,
     PATH_PROFILE,
     PATH_PROFILE_IMAGE,
+    PATH_ROLES,
+    PATH_TERMS,
+    PATH_TERMS_ACCEPT,
     PATH_WORKER_BY_ID,
 )
 from app.dependencies import (
@@ -41,6 +46,7 @@ from app.dependencies import (
     RequireShiftsRead,
     RequireWorkWrite,
 )
+from app.schemas.auth.auth_schemas import OtpVerifyResponse, RoleAddRequest
 from app.schemas.profiles.profile_schemas import (
     AvailabilityRequest,
     AvailabilityResponse,
@@ -54,11 +60,16 @@ from app.schemas.profiles.profile_schemas import (
 )
 from app.schemas.users.deletion_schemas import AccountDeletionRequestResponse
 from app.schemas.users.user_schemas import (
+    ActiveRoleRequest,
     DeviceRegisterRequest,
     DeviceResponse,
+    MeResponse,
+    TermsAcceptRequest,
+    TermsStatus,
 )
+from app.services.auth import auth_service
 from app.services.profiles import profile_service
-from app.services.users import deletion_service, user_service
+from app.services.users import deletion_service, terms_service, user_service
 
 router = APIRouter(prefix=ME_ROUTE_PREFIX, tags=[OPENAPI_TAG_ME])
 
@@ -208,6 +219,30 @@ async def get_deletion_request(
 
 
 @router.post(
+    PATH_ROLES,
+    response_model=OtpVerifyResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=swagger_summary(
+        "Add my other role (Business / Work or Worker); returns new tokens",
+        SWAGGER_ROLE_ANY_USER,
+    ),
+)
+async def add_role(body: RoleAddRequest, user: CurrentUser) -> OtpVerifyResponse:
+    return await auth_service.add_role(user, body)
+
+
+@router.put(
+    PATH_ACTIVE_ROLE,
+    response_model=MeResponse,
+    summary=swagger_summary(
+        "Switch between my Business / Work and Worker roles", SWAGGER_ROLE_ANY_USER
+    ),
+)
+async def switch_active_role(body: ActiveRoleRequest, user: CurrentUser) -> MeResponse:
+    return await user_service.switch_active_role(user, body)
+
+
+@router.post(
     PATH_DEVICES,
     response_model=DeviceResponse,
     status_code=status.HTTP_201_CREATED,
@@ -224,3 +259,28 @@ async def register_device(body: DeviceRegisterRequest, user: CurrentUser) -> Dev
 )
 async def unregister_device(device_id: UUID, user: CurrentUser) -> None:
     await user_service.unregister_device(user, device_id)
+
+
+@router.get(
+    PATH_TERMS,
+    response_model=list[TermsStatus],
+    summary=swagger_summary("Terms & Conditions acceptance status", SWAGGER_ROLE_ANY_USER),
+)
+async def get_terms_status(user: CurrentUser) -> list[TermsStatus]:
+    return await terms_service.list_status(user)
+
+
+@router.post(
+    PATH_TERMS_ACCEPT,
+    response_model=TermsStatus,
+    summary=swagger_summary("Accept the current Terms & Conditions", SWAGGER_ROLE_ANY_USER),
+)
+async def accept_terms(
+    body: TermsAcceptRequest, request: Request, user: CurrentUser
+) -> TermsStatus:
+    return await terms_service.accept(
+        user,
+        body.audience,
+        request.client.host if request.client else None,
+        request.headers.get("user-agent"),
+    )

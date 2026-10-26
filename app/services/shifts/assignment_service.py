@@ -26,6 +26,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_CONFIRMED,
     ASG_EN_ROUTE,
     ASG_WORKED_STATUSES,
+    EXTENSION_REQUESTED,
     MESSAGES_PAGE_LIMIT,
     MSG_ASSIGNMENT_NOT_FOUND,
     MSG_ASSIGNMENT_STATE,
@@ -33,7 +34,6 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_NOT_FOUND,
     MSG_SHIFT_STARTED,
     MSG_TRAVEL_TOO_EARLY,
-    MSG_WORKER_CANCELLATION_CUTOFF,
     SHIFT_FILLED,
     SHIFT_LIVE,
     SHIFT_OPEN,
@@ -49,6 +49,7 @@ from app.repositories.shifts import (
     assignment_repository,
     shift_repository,
 )
+from app.schemas.attendance.attendance_schemas import ExtensionView
 from app.schemas.shifts.assignment_schemas import (
     AssignmentCancelRequest,
     AssignmentCancelResponse,
@@ -61,7 +62,10 @@ from app.schemas.shifts.assignment_schemas import (
     TrackingPoint,
     TrackingResponse,
 )
+from app.schemas.shifts.shift_schemas import CancellationQuote
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.cancellations import cancellation_service
+from app.services.cancellations.cancellation_rules import EVENT_CANCEL, SeatQuote
 from app.services.notifications.notification_service import notify
 from app.services.profiles.profile_lookup import business_scope
 from app.services.shifts.domain.shift_mappers import (
@@ -111,6 +115,22 @@ def check_in_opens_at(ctx: asyncpg.Record) -> datetime:
     return ctx["starts_at"] - timedelta(minutes=load_settings().check_in_opens_minutes_before)
 
 
+def effective_ends_at(ctx: asyncpg.Record) -> datetime:
+    """Booked end plus accepted extensions."""
+    return ctx["ends_at"] + timedelta(minutes=ctx["extended_minutes"])
+
+
+def can_end_without_pin(ctx: asyncpg.Record, now: datetime) -> bool:
+    if ctx["shift_type"] == SHIFT_LIVE:
+        return True
+    grace = timedelta(minutes=load_settings().end_shift_grace_minutes)
+    return now >= effective_ends_at(ctx) - grace
+
+
+def extension_view(row: asyncpg.Record) -> ExtensionView:
+    return ExtensionView.model_validate(dict(row))
+
+
 async def build_assignment_detail(
     conn: asyncpg.Connection, assignment_id: UUID, user: AuthenticatedUser
 ) -> AssignmentDetail:
@@ -128,6 +148,21 @@ async def build_assignment_detail(
         DIRECTION_WORKER_TO_BUSINESS if party == PARTY_WORKER else DIRECTION_BUSINESS_TO_WORKER
     )
     already_rated = any(r["direction"] == my_direction for r in ratings)
+    now = utc_now()
+    pin_visible = (
+        ctx["early_end_pin"] is not None
+        and ctx["early_end_requested_by"] != party
+        and ctx["early_end_pin_expires_at"] is not None
+        and ctx["early_end_pin_expires_at"] > now
+    )
+    pending = next(
+        (
+            e
+            for e in await assignment_repository.list_extensions(conn, assignment_id)
+            if e["status"] == EXTENSION_REQUESTED
+        ),
+        None,
+    )
     return AssignmentDetail(
         id=ctx["id"],
         status=ctx["status"],
@@ -157,6 +192,14 @@ async def build_assignment_detail(
         ],
         can_rate=ctx["status"] in ASG_WORKED_STATUSES and not already_rated,
         check_in_opens_at=check_in_opens_at(ctx),
+        check_in_code=ctx["check_in_code"] if party == PARTY_BUSINESS else None,
+        ends_at=effective_ends_at(ctx),
+        extended_minutes=ctx["extended_minutes"],
+        can_end=ctx["status"] == ASG_CHECKED_IN and can_end_without_pin(ctx, now),
+        ended_reason=ctx["ended_reason"],
+        early_end_requested_by=ctx["early_end_requested_by"],
+        early_end_pin=ctx["early_end_pin"] if pin_visible else None,
+        pending_extension=extension_view(pending) if pending else None,
     )
 
 
@@ -294,11 +337,11 @@ async def send_message(
 
 
 async def _reopen_after_cancel(
-    conn: asyncpg.Connection, ctx: asyncpg.Record, now: datetime, actor: UUID
+    conn: asyncpg.Connection, ctx: asyncpg.Record, now: datetime, actor: UUID, *, reopen: bool
 ) -> str:
-    """A freed seat on a filled shift reopens recruiting if the shift hasn't started."""
+    """A freed seat on a filled shift reopens recruiting while applying is still open."""
     shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
-    if shift["status"] != SHIFT_FILLED or shift["starts_at"] <= now:
+    if not reopen or shift["status"] != SHIFT_FILLED or shift["starts_at"] <= now:
         return shift["status"]
     if shift["shift_type"] == SHIFT_LIVE:
         if shift["search_expires_at"] and shift["search_expires_at"] > now:
@@ -319,6 +362,52 @@ async def _reopen_after_cancel(
     return target
 
 
+def _ensure_cancellable(ctx: asyncpg.Record) -> None:
+    if ctx["status"] not in ASG_BOOKED_STATUSES:
+        code_msg = MSG_SHIFT_STARTED if ctx["status"] == ASG_CHECKED_IN else MSG_ASSIGNMENT_STATE
+        raise conflict("assignment_state", code_msg)
+
+
+def _seat_reopens(ctx: asyncpg.Record, now: datetime) -> bool:
+    if ctx["shift_type"] == SHIFT_LIVE:
+        return True
+    closes = ctx["starts_at"] - timedelta(hours=load_settings().apply_closes_hours_before)
+    return now < closes
+
+
+async def _quote(
+    conn: asyncpg.Connection, ctx: asyncpg.Record, party: str, now: datetime
+) -> tuple[asyncpg.Record, SeatQuote] | None:
+    """Scheduled shifts only; live shifts keep the old free cancellation."""
+    if ctx["shift_type"] == SHIFT_LIVE:
+        return None
+    shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
+    quote = await cancellation_service.quote_assignment(
+        conn, shift, ctx["hourly_rate_minor"], party=party, event=EVENT_CANCEL, now=now
+    )
+    return shift, quote
+
+
+async def cancel_preview(
+    user: AuthenticatedUser, assignment_id: UUID, *, as_party: str
+) -> CancellationQuote:
+    now = utc_now()
+    async with get_pool().acquire() as conn:
+        ctx, party = await load_context(conn, assignment_id, user)
+        if party != as_party:
+            raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
+        _ensure_cancellable(ctx)
+        quoted = await _quote(conn, ctx, party, now)
+        if quoted is None:
+            raise conflict("assignment_state", MSG_ASSIGNMENT_STATE)
+        shift, quote = quoted
+        return cancellation_service.quote_view(
+            quote,
+            shift["currency"],
+            seat_reopens=party == PARTY_WORKER and _seat_reopens(ctx, now),
+        )
+
+
 async def cancel(
     user: AuthenticatedUser, assignment_id: UUID, body: AssignmentCancelRequest, *, as_party: str
 ) -> AssignmentCancelResponse:
@@ -328,22 +417,20 @@ async def cancel(
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
             if party != as_party:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
-            if ctx["status"] not in ASG_BOOKED_STATUSES:
-                code_msg = (
-                    MSG_SHIFT_STARTED if ctx["status"] == ASG_CHECKED_IN else MSG_ASSIGNMENT_STATE
-                )
-                raise conflict("assignment_state", code_msg)
-            late = is_late_cancellation(ctx["starts_at"], ctx["cancellation_cutoff_hours"], now)
-            if party == PARTY_WORKER and ctx["shift_type"] != SHIFT_LIVE:
-                if late:
-                    raise conflict(
-                        "cancellation_cutoff",
-                        MSG_WORKER_CANCELLATION_CUTOFF.format(
-                            hours=ctx["cancellation_cutoff_hours"]
-                        ),
-                    )
-                if not body.reason.strip():
-                    raise bad_request("reason_required", MSG_CANCEL_REASON_REQUIRED)
+            _ensure_cancellable(ctx)
+            if (
+                party == PARTY_WORKER
+                and ctx["shift_type"] != SHIFT_LIVE
+                and not body.reason.strip()
+            ):
+                raise bad_request("reason_required", MSG_CANCEL_REASON_REQUIRED)
+            quoted = await _quote(conn, ctx, party, now)
+            reopens = _seat_reopens(ctx, now)
+            late = (
+                quoted[1].fee_minor > 0
+                if quoted is not None
+                else is_late_cancellation(ctx["starts_at"], ctx["cancellation_cutoff_hours"], now)
+            )
             await assignment_repository.cancel_assignment(
                 conn,
                 assignment_id,
@@ -356,7 +443,20 @@ async def cancel(
                 await application_repository.set_response(
                     conn, ctx["application_id"], status=APP_WITHDRAWN, now=now
                 )
-            shift_status = await _reopen_after_cancel(conn, ctx, now, user.user_id)
+            charge = None
+            if quoted is not None:
+                charge = await cancellation_service.apply_seat(
+                    conn,
+                    shift=quoted[0],
+                    assignment_id=assignment_id,
+                    worker_profile_id=ctx["worker_profile_id"],
+                    worker_user_id=ctx["worker_user_id"],
+                    quote=quoted[1],
+                    actor_user_id=user.user_id,
+                    now=now,
+                    seat_reopens=party == PARTY_WORKER and reopens,
+                )
+            shift_status = await _reopen_after_cancel(conn, ctx, now, user.user_id, reopen=reopens)
             if party == PARTY_WORKER:
                 recipient, title = ctx["business_user_id"], "A worker cancelled"
             else:
@@ -374,4 +474,5 @@ async def cancel(
         status=ASG_CANCELLED,
         late_cancellation=late,
         shift_status=shift_status,
+        charge=charge,
     )

@@ -27,6 +27,7 @@ from app.constants.earnings.earnings_route_strings import (
 from app.db.pool import get_pool
 from app.exceptions.api_errors import bad_request, conflict, not_found
 from app.pagination import clamp_page_limit
+from app.repositories.cancellations import cancellation_repository
 from app.repositories.earnings import earnings_repository
 from app.schemas.earnings.earnings_schemas import (
     EarningsSummary,
@@ -35,6 +36,7 @@ from app.schemas.earnings.earnings_schemas import (
     PayoutAccountCreate,
     PayoutAccountPatch,
     PayoutAccountResponse,
+    Reliability,
     WithdrawalCreate,
     WithdrawalPage,
     WithdrawalResponse,
@@ -106,9 +108,11 @@ async def get_summary(user: AuthenticatedUser) -> EarningsSummary:
         pending = await earnings_repository.pending_pay(conn, worker["id"])
         in_flight = await earnings_repository.in_flight_withdrawals(conn, worker["id"])
         recent = await earnings_repository.list_ledger(conn, worker["id"], RECENT_ENTRIES_LIMIT, 0)
+        reliability = await _reliability(conn, worker)
     return EarningsSummary(
         currency=settings.default_currency,
         available_minor=totals["available_minor"],
+        dues_minor=max(-totals["available_minor"], 0),
         pending_minor=pending,
         in_flight_withdrawals_minor=in_flight,
         lifetime_minor=totals["lifetime_minor"],
@@ -116,6 +120,23 @@ async def get_summary(user: AuthenticatedUser) -> EarningsSummary:
         completed_shifts=worker["completed_shift_count"],
         min_withdrawal_minor=settings.min_withdrawal_minor,
         recent=[LedgerEntry.model_validate(dict(r)) for r in recent],
+        reliability=reliability,
+    )
+
+
+async def _reliability(conn: asyncpg.Connection, worker: asyncpg.Record) -> Reliability:
+    from app.services.cancellations.cancellation_service import load_policy
+
+    now = utc_now()
+    policy = await load_policy(conn)
+    limited = worker["feed_limited_until"]
+    return Reliability(
+        strikes=float(await cancellation_repository.active_strike_weight(conn, worker["id"], now)),
+        strikes_to_limit=float(policy.strikes_to_limit),
+        strikes_to_ban=float(policy.strikes_to_ban),
+        window_days=policy.strike_window_days,
+        feed_limited_until=limited if limited and limited > now else None,
+        on_hold=worker["banned_at"] is not None,
     )
 
 

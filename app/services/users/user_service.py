@@ -8,6 +8,7 @@ import asyncpg
 
 from app.constants.users.user_route_strings import (
     MSG_DEVICE_NOT_FOUND,
+    MSG_ROLE_NOT_REGISTERED,
     MSG_USER_NOT_FOUND,
 )
 from app.db.pool import get_pool
@@ -16,6 +17,7 @@ from app.exceptions.api_errors import (
 )
 from app.repositories.users import user_repository
 from app.schemas.users.user_schemas import (
+    ActiveRoleRequest,
     BusinessProfileSummary,
     DeviceRegisterRequest,
     DeviceResponse,
@@ -61,6 +63,14 @@ async def build_me(conn: asyncpg.Connection, user_id: UUID) -> MeResponse:
         worker_profile=worker,
         created_at=row["created_at"],
     )
+
+
+async def switch_active_role(user: AuthenticatedUser, body: ActiveRoleRequest) -> MeResponse:
+    async with get_pool().acquire() as conn:
+        if body.role not in await user_repository.list_active_roles(conn, user.user_id):
+            raise not_found("role_not_registered", MSG_ROLE_NOT_REGISTERED.format(role=body.role))
+        await user_repository.set_active_role(conn, user.user_id, body.role)
+        return await build_me(conn, user.user_id)
 
 
 async def register_device(user: AuthenticatedUser, body: DeviceRegisterRequest) -> DeviceResponse:

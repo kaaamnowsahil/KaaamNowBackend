@@ -22,5 +22,30 @@ CREATE TABLE IF NOT EXISTS shift_invoices (
         CHECK (total_minor = worker_subtotal_minor + platform_fee_minor)
 );
 
+ALTER TABLE shift_invoices
+    ADD COLUMN IF NOT EXISTS gateway_fee_minor BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS gateway_fee_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS worker_fee_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0;
+-- ``deposit``: paid when a scheduled shift is posted (booked amount). ``final``: after the
+-- shift on approved minutes; the paid deposit is applied and any excess is refunded.
+ALTER TABLE shift_invoices
+    ADD COLUMN IF NOT EXISTS invoice_kind VARCHAR(16) NOT NULL DEFAULT 'final',
+    ADD COLUMN IF NOT EXISTS deposit_applied_minor BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS refund_due_minor BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE shift_invoices DROP CONSTRAINT IF EXISTS shift_invoices_kind_chk;
+ALTER TABLE shift_invoices ADD CONSTRAINT shift_invoices_kind_chk
+    CHECK (invoice_kind IN ('deposit', 'final'));
+ALTER TABLE shift_invoices DROP CONSTRAINT IF EXISTS shift_invoices_shift_uid;
+CREATE UNIQUE INDEX IF NOT EXISTS shift_invoices_shift_kind_uid
+    ON shift_invoices (shift_id, invoice_kind);
+ALTER TABLE shift_invoices DROP CONSTRAINT IF EXISTS shift_invoices_total_chk;
+ALTER TABLE shift_invoices ADD CONSTRAINT shift_invoices_total_chk
+    CHECK (total_minor = worker_subtotal_minor + platform_fee_minor + gateway_fee_minor);
+
 CREATE INDEX IF NOT EXISTS shift_invoices_business_idx
     ON shift_invoices (business_profile_id, issued_at DESC);
+
+-- Promo discount already taken off commission / gateway (shown as a separate line in apps).
+ALTER TABLE shift_invoices
+    ADD COLUMN IF NOT EXISTS promo_discount_minor BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS promo_code VARCHAR(32);

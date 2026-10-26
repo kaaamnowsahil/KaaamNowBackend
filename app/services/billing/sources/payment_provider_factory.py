@@ -1,15 +1,21 @@
-"""Payment gateway adapters. Real gateway (Razorpay / Cashfree / PhonePe) is an OWNER DECISION.
+"""Payment gateway adapters.
 
+``razorpay``: Standard Checkout. We create an order, the app opens Razorpay Checkout with
+``checkout_key`` + ``provider_order_id``, then calls verify / confirm; webhooks also settle.
 ``fake`` simulates a gateway in dev/test: orders are created locally and ``fetch_status``
 reports success, so the full pay → settle → earnings flow can be exercised end to end.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import quote
+
+import httpx
 
 from app.config.settings import load_settings
 
@@ -69,8 +75,85 @@ class FakePaymentProvider:
         return ProviderStatus("succeeded", f"fake_pay_{secrets.token_hex(8)}")
 
 
+class PaymentProviderError(RuntimeError):
+    pass
+
+
+class RazorpayPaymentProvider:
+    name = "razorpay"
+    _TIMEOUT_SECONDS = 15.0
+
+    def __init__(self) -> None:
+        settings = load_settings()
+        if not settings.razorpay_key_id or not settings.razorpay_key_secret:
+            raise PaymentProviderError("RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set")
+        self._key_id = settings.razorpay_key_id
+        self._key_secret = settings.razorpay_key_secret
+        self._base = settings.razorpay_api_base.rstrip("/")
+        self._currency = settings.default_currency
+
+    async def _request(self, method: str, path: str, json: dict | None = None) -> dict:
+        async with httpx.AsyncClient(
+            auth=(self._key_id, self._key_secret), timeout=self._TIMEOUT_SECONDS
+        ) as client:
+            resp = await client.request(method, f"{self._base}{path}", json=json)
+        if resp.status_code >= 400:
+            error = resp.json().get("error", {}) if resp.content else {}
+            raise PaymentProviderError(
+                f"Razorpay {method} {path} → {resp.status_code}: "
+                f"{error.get('description') or resp.text[:200]}"
+            )
+        return resp.json()
+
+    async def create_order(
+        self, *, reference: str, amount_minor: int, method: str
+    ) -> ProviderOrder:
+        order = await self._request(
+            "POST",
+            "/orders",
+            {
+                "amount": amount_minor,
+                "currency": self._currency,
+                "receipt": reference[:40],
+                "notes": {"reference": reference, "method": method},
+            },
+        )
+        return ProviderOrder(order["id"], None, None)
+
+    async def fetch_status(self, order_id: str) -> ProviderStatus:
+        """Captured payment = paid. An authorized one is captured here (auto-capture off)."""
+        payments = (await self._request("GET", f"/orders/{order_id}/payments")).get("items", [])
+        for payment in payments:
+            if payment["status"] == "captured":
+                return ProviderStatus("succeeded", payment["id"])
+        for payment in payments:
+            if payment["status"] == "authorized":
+                captured = await self._request(
+                    "POST",
+                    f"/payments/{payment['id']}/capture",
+                    {"amount": payment["amount"], "currency": payment["currency"]},
+                )
+                if captured.get("status") == "captured":
+                    return ProviderStatus("succeeded", payment["id"])
+                return ProviderStatus("pending")
+        if payments and all(p["status"] == "failed" for p in payments):
+            last = payments[0]
+            return ProviderStatus(
+                "failed", last["id"], (last.get("error_description") or "payment_failed")[:200]
+            )
+        return ProviderStatus("pending")
+
+    def checkout_signature_valid(self, order_id: str, payment_id: str, signature: str) -> bool:
+        expected = hmac.new(
+            self._key_secret.encode(), f"{order_id}|{payment_id}".encode(), hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(expected, signature.strip())
+
+
 def get_payment_provider(name: str | None = None) -> PaymentProvider:
     provider = name or load_settings().payment_provider
     if provider == "fake":
         return FakePaymentProvider()
+    if provider == "razorpay":
+        return RazorpayPaymentProvider()
     raise RuntimeError(f"PAYMENT_PROVIDER={provider!r} is not implemented")

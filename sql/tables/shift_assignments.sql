@@ -22,6 +22,25 @@ CREATE TABLE IF NOT EXISTS shift_assignments (
     ))
 );
 
+-- Day of shift: 4-char check-in code shown only to the business; early-end PIN shown to the
+-- side that did NOT request it; accepted extensions add extended_minutes after ends_at.
+ALTER TABLE shift_assignments
+    ADD COLUMN IF NOT EXISTS check_in_code VARCHAR(8),
+    ADD COLUMN IF NOT EXISTS early_end_pin VARCHAR(8),
+    ADD COLUMN IF NOT EXISTS early_end_requested_by VARCHAR(16),
+    ADD COLUMN IF NOT EXISTS early_end_pin_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS ended_reason VARCHAR(24),
+    ADD COLUMN IF NOT EXISTS extended_minutes INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS extension_prompted_at TIMESTAMPTZ;
+ALTER TABLE shift_assignments DROP CONSTRAINT IF EXISTS shift_assignments_day_of_shift_chk;
+ALTER TABLE shift_assignments ADD CONSTRAINT shift_assignments_day_of_shift_chk CHECK (
+    extended_minutes >= 0
+    AND (early_end_requested_by IS NULL OR early_end_requested_by IN ('worker', 'business'))
+    AND (ended_reason IS NULL OR ended_reason IN (
+        'scheduled_end', 'mutual', 'business_stopped', 'worker_left'
+    ))
+);
+
 -- A worker holds at most one live (non-cancelled) seat per shift.
 CREATE UNIQUE INDEX IF NOT EXISTS shift_assignments_one_seat_per_worker_uid
     ON shift_assignments (shift_id, worker_profile_id) WHERE status <> 'cancelled';

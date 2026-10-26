@@ -86,6 +86,11 @@ async def feed(
         lat, lng = await _worker_point(conn, worker, latitude, longitude)
         if lat is None or lng is None:
             raise bad_request("location_required", MSG_WORKER_LOCATION_REQUIRED)
+        now = utc_now()
+        if worker["feed_limited_until"] is not None and worker["feed_limited_until"] > now:
+            page_limit = max(min(page_limit, settings.limited_feed_size - offset), 0)
+            if page_limit == 0:
+                return FeedPage(items=[], limit=0, offset=offset)
         radius = min(radius_km or settings.feed_radius_km, settings.worker_max_shift_distance_km)
         lat_delta, lng_delta = bounding_box_deltas(lat, radius)
         rows = await shift_repository.list_feed(
@@ -102,7 +107,7 @@ async def feed(
             business_type_slugs=business_type_slugs,
             query=(query or "").strip() or None,
             sort=sort,
-            now=utc_now(),
+            now=now,
             limit=page_limit,
             offset=offset,
         )

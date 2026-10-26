@@ -46,6 +46,7 @@ SELECT w.user_id FROM (
     LEFT JOIN worker_locations wl ON wl.worker_profile_id = wp.id
     WHERE ($4::boolean IS FALSE OR wp.verification_status = 'verified')
       AND wp.user_id <> $7
+      AND wp.banned_at IS NULL
 ) w
 WHERE w.lat BETWEEN $1::float8 - $5::float8 AND $1::float8 + $5::float8
   AND w.lng BETWEEN $2::float8 - $6::float8 AND $2::float8 + $6::float8

@@ -107,11 +107,22 @@ class SupportTicketCreate(BaseModel):
     shift_id: UUID | None = None
 
 
+class EmergencyTicketCreate(BaseModel):
+    """Emergency button on a booking: urgent ticket with the shift and both parties."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignment_id: UUID
+    message: str = Field(default="", max_length=4000)
+
+
 class SupportTicketResponse(BaseModel):
     id: UUID
     topic: str
     subject: str
     status: str
+    priority: str = "normal"
+    assignment_id: UUID | None = None
     created_at: datetime
     support_email: str
     support_emails: list[str]

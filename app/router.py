@@ -22,12 +22,15 @@ from app.routes.lookups.lookup_router import LOOKUP_ROUTERS
 from app.routes.lookups.shift_filter_router import router as shift_filter_router
 from app.routes.notifications.notifications_router import router as notifications_router
 from app.routes.profiles.admin_verification_router import router as admin_verification_router
+from app.routes.promos.promo_router import business_router as promo_business_router
+from app.routes.promos.promo_router import worker_router as promo_worker_router
 from app.routes.ratings.ratings_router import router as ratings_router
 from app.routes.shifts.assignments_router import router as assignments_router
 from app.routes.shifts.business_shifts_router import live_router as business_live_router
 from app.routes.shifts.business_shifts_router import router as business_shifts_router
 from app.routes.shifts.worker_shifts_router import live_router as worker_live_router
 from app.routes.shifts.worker_shifts_router import router as worker_shifts_router
+from app.routes.support.admin_override_router import router as admin_override_router
 from app.routes.users.me_router import router as me_router
 
 _ROUTERS = (
@@ -41,6 +44,7 @@ _ROUTERS = (
     admin_account_deletion_router,
     # Before admin_crud_router: its /admin/{resource} would swallow /admin/faqs and /admin/terms.
     content_admin_router,
+    admin_override_router,
     admin_crud_router,
     notifications_router,
     business_shifts_router,
@@ -57,6 +61,8 @@ _ROUTERS = (
     catalog_router,
     content_router,
     support_router,
+    promo_business_router,
+    promo_worker_router,
 )
 
 

@@ -26,5 +26,10 @@ CREATE TABLE IF NOT EXISTS worker_profiles (
 ALTER TABLE worker_profiles ADD COLUMN IF NOT EXISTS age SMALLINT
     CONSTRAINT worker_profiles_age_chk CHECK (age IS NULL OR age BETWEEN 18 AND 70);
 
+-- Strikes: fewer shifts in the feed until feed_limited_until; banned_at blocks applying.
+ALTER TABLE worker_profiles
+    ADD COLUMN IF NOT EXISTS feed_limited_until TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS worker_profiles_home_geo_idx
     ON worker_profiles (latitude, longitude) WHERE verification_status = 'verified';

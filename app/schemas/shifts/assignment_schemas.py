@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.attendance.attendance_schemas import ExtensionView
 from app.schemas.shifts.application_schemas import WorkerSummary
-from app.schemas.shifts.shift_schemas import BusinessCard, WorkerShiftCard
+from app.schemas.shifts.shift_schemas import BusinessCard, CancellationQuote, WorkerShiftCard
 
 
 class AttendanceSummary(BaseModel):
@@ -31,6 +33,9 @@ class RosterEntry(BaseModel):
     late_cancellation: bool
     worker: WorkerSummary
     attendance: AttendanceSummary | None = None
+    check_in_code: str | None = Field(default=None, description="Tell this worker on arrival.")
+    extended_minutes: int = 0
+    ended_reason: str | None = None
 
 
 class Roster(BaseModel):
@@ -70,6 +75,18 @@ class AssignmentDetail(BaseModel):
     ratings: list[RatingView] = Field(default_factory=list)
     can_rate: bool = False
     check_in_opens_at: datetime
+    check_in_code: str | None = Field(
+        default=None, description="Business only: the worker enters it to check in."
+    )
+    ends_at: datetime = Field(description="Booked end plus accepted extensions.")
+    extended_minutes: int = 0
+    can_end: bool = Field(description="End time reached: either side can end without a PIN.")
+    ended_reason: str | None = None
+    early_end_requested_by: Literal["worker", "business"] | None = None
+    early_end_pin: str | None = Field(
+        default=None, description="Shown only to the side that did NOT ask to end early."
+    )
+    pending_extension: ExtensionView | None = None
 
 
 class TrackingPoint(BaseModel):
@@ -123,3 +140,4 @@ class AssignmentCancelResponse(BaseModel):
     status: str
     late_cancellation: bool
     shift_status: str
+    charge: CancellationQuote | None = None

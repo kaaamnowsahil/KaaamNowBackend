@@ -17,5 +17,6 @@ SELECT id, slug FROM work_categories WHERE slug = ANY($1::varchar[]) AND is_acti
 """
 
 GET_ACTIVE_FEE_POLICY = """
-SELECT version, percentage FROM platform_fee_policies WHERE is_active
+SELECT version, percentage, worker_percentage, gateway_percentage
+FROM platform_fee_policies WHERE is_active
 """

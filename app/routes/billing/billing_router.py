@@ -15,13 +15,13 @@ from app.constants.application.application_common import (
 )
 from app.constants.billing.billing_route_strings import (
     BUSINESS_ROUTE_PREFIX,
-    HEADER_WEBHOOK_SIGNATURE,
     OPENAPI_TAG_BILLING,
     OPENAPI_TAG_WEBHOOKS,
     PATH_INVOICE,
     PATH_INVOICE_PAYMENTS,
     PATH_PAYMENT,
     PATH_PAYMENT_CONFIRM,
+    PATH_PAYMENT_RAZORPAY_VERIFY,
     PATH_PAYMENTS,
     PATH_SHIFT_INVOICE,
     PATH_WEBHOOK,
@@ -33,6 +33,7 @@ from app.schemas.billing.billing_schemas import (
     PaymentCreate,
     PaymentHistoryPage,
     PaymentResponse,
+    RazorpayCheckoutResult,
     ReceiptResponse,
     WebhookAck,
 )
@@ -122,6 +123,17 @@ async def confirm(payment_id: UUID, user: RequireBillingWrite) -> PaymentRespons
     return await payment_service.confirm_payment(user, payment_id)
 
 
+@router.post(
+    PATH_PAYMENT_RAZORPAY_VERIFY,
+    response_model=PaymentResponse,
+    summary=swagger_summary("Verify Razorpay Checkout result", SWAGGER_ROLE_BUSINESS),
+)
+async def razorpay_verify(
+    payment_id: UUID, body: RazorpayCheckoutResult, user: RequireBillingWrite
+) -> PaymentResponse:
+    return await payment_service.verify_razorpay_checkout(user, payment_id, body)
+
+
 @webhook_router.post(
     PATH_WEBHOOK,
     response_model=WebhookAck,
@@ -129,6 +141,4 @@ async def confirm(payment_id: UUID, user: RequireBillingWrite) -> PaymentRespons
 )
 async def webhook(provider: str, request: Request) -> WebhookAck:
     body = await request.body()
-    return await payment_service.handle_webhook(
-        provider, body, request.headers.get(HEADER_WEBHOOK_SIGNATURE)
-    )
+    return await payment_service.handle_webhook(provider, body, request.headers)

@@ -18,10 +18,12 @@ SELECT s.*, wc.slug AS category_slug, wc.name AS category_name,
         WHERE sa.shift_id = s.id AND sa.status = 'checked_in') AS checked_in_count,
        (SELECT count(*) FROM shift_applications ap
         WHERE ap.shift_id = s.id AND ap.status = 'applied') AS pending_applications,
-       i.id AS invoice_id, i.status AS invoice_status
+       i.id AS invoice_id, i.status AS invoice_status,
+       d.id AS deposit_invoice_id, d.status AS deposit_status
 FROM shifts s
 JOIN work_categories wc ON wc.id = s.category_id
-LEFT JOIN shift_invoices i ON i.shift_id = s.id
+LEFT JOIN shift_invoices i ON i.shift_id = s.id AND i.invoice_kind = 'final'
+LEFT JOIN shift_invoices d ON d.shift_id = s.id AND d.invoice_kind = 'deposit'
 """
 
 INSERT_SHIFT = """
@@ -67,15 +69,15 @@ PUBLISH_LIVE_SHIFT = """
 UPDATE shifts SET status = 'searching', published_at = $2, fee_policy_version = $3,
     fee_percentage = $4, search_radius_km = $5, max_search_radius_km = $6,
     search_started_at = $2, search_expires_at = $7, radius_expanded_at = NULL,
-    updated_at = now()
+    worker_fee_percentage = $8, gateway_fee_percentage = $9, updated_at = now()
 WHERE id = $1
 """
 
 PUBLISH_SCHEDULED_SHIFT = """
-UPDATE shifts SET status = 'open', shift_type = 'scheduled', published_at = $2,
+UPDATE shifts SET status = 'awaiting_payment', shift_type = 'scheduled', published_at = $2,
     fee_policy_version = $3, fee_percentage = $4, search_radius_km = NULL,
     max_search_radius_km = NULL, search_started_at = NULL, search_expires_at = NULL,
-    updated_at = now()
+    worker_fee_percentage = $5, gateway_fee_percentage = $6, updated_at = now()
 WHERE id = $1
 """
 
@@ -116,7 +118,7 @@ def _shift_group_sql(alias: str, now_param: str) -> str:
     return f"""CASE
         WHEN {alias}.status IN ('draft', 'cancelled', 'completed', 'in_progress')
             THEN {alias}.status
-        WHEN {alias}.status IN ('searching', 'open', 'filled')
+        WHEN {alias}.status IN ('awaiting_payment', 'searching', 'open', 'filled')
             AND {alias}.ends_at > {now_param}::timestamptz THEN 'upcoming'
         ELSE 'expired'
     END"""
@@ -147,7 +149,7 @@ LIST_DASHBOARD_SHIFTS = f"""
 {_BUSINESS_SHIFT_SELECT}
 WHERE s.business_profile_id = ANY($1::uuid[]) AND s.shift_type = $2
   AND (
-      s.status IN ('searching', 'open', 'filled', 'in_progress')
+      s.status IN ('awaiting_payment', 'searching', 'open', 'filled', 'in_progress')
       OR (s.status = 'completed' AND (i.status IS NULL OR i.status = 'pending'))
       OR (s.status = 'expired' AND s.updated_at > $3::timestamptz - interval '1 day')
   )
@@ -157,7 +159,7 @@ ORDER BY s.starts_at
 LIST_DASHBOARD_NEXT_SCHEDULED = f"""
 {_BUSINESS_SHIFT_SELECT}
 WHERE s.business_profile_id = ANY($1::uuid[]) AND s.shift_type = 'scheduled'
-  AND s.status IN ('open', 'filled') AND s.starts_at > $2::timestamptz
+  AND s.status IN ('awaiting_payment', 'open', 'filled') AND s.starts_at > $2::timestamptz
 ORDER BY s.starts_at
 LIMIT $3
 """
@@ -166,7 +168,8 @@ DASHBOARD_SUMMARY = """
 SELECT
     (SELECT count(*) FROM shifts s
      WHERE s.business_profile_id = ANY($1::uuid[])
-       AND s.status IN ('searching', 'open', 'filled', 'in_progress')) AS active_shifts,
+       AND s.status IN ('awaiting_payment', 'searching', 'open', 'filled', 'in_progress')
+    ) AS active_shifts,
     (SELECT count(*) FROM shift_assignments sa JOIN shifts s ON s.id = sa.shift_id
      WHERE s.business_profile_id = ANY($1::uuid[])
        AND s.status IN ('searching', 'open', 'filled', 'in_progress')
@@ -298,6 +301,13 @@ SELECT EXISTS (
 )
 """
 
+COUNT_WORKER_UPCOMING_BOOKINGS = """
+SELECT count(*) FROM shift_assignments sa JOIN shifts s ON s.id = sa.shift_id
+WHERE sa.worker_profile_id = $1
+  AND sa.status IN ('confirmed', 'en_route')
+  AND s.ends_at > $2
+"""
+
 LIST_DUE_LIVE_EXPANSIONS = """
 SELECT id FROM shifts
 WHERE shift_type = 'live' AND status = 'searching' AND radius_expanded_at IS NULL
@@ -314,6 +324,12 @@ SELECT id FROM shifts
 WHERE shift_type = 'live' AND status = 'searching' AND search_expires_at <= $1
 """
 
+LIST_OPEN_SCHEDULED_APPLY_CLOSED = """
+SELECT id FROM shifts
+WHERE shift_type = 'scheduled' AND status = 'open' AND starts_at <= $1 AND starts_at > $2
+"""
+
 LIST_OPEN_SCHEDULED_PAST_START = """
-SELECT id FROM shifts WHERE shift_type = 'scheduled' AND status = 'open' AND starts_at <= $1
+SELECT id FROM shifts
+WHERE shift_type = 'scheduled' AND status IN ('open', 'awaiting_payment') AND starts_at <= $1
 """

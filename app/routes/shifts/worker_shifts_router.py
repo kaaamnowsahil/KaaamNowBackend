@@ -22,6 +22,7 @@ from app.constants.shifts.shift_route_strings import (
     PATH_MY_SHIFTS,
     PATH_START_TRAVEL,
     PATH_WORKER_ASSIGNMENT_CANCEL,
+    PATH_WORKER_ASSIGNMENT_CANCEL_PREVIEW,
     PATH_WORKER_SHIFT,
     WORKER_ROUTE_PREFIX,
 )
@@ -33,6 +34,7 @@ from app.schemas.shifts.assignment_schemas import (
     AssignmentDetail,
 )
 from app.schemas.shifts.shift_schemas import (
+    CancellationQuote,
     FeedPage,
     LiveRequestItem,
     MyShiftsPage,
@@ -188,6 +190,17 @@ async def decline_selection(application_id: UUID, user: RequireWorkWrite) -> App
 )
 async def start_travel(assignment_id: UUID, user: RequireWorkWrite) -> AssignmentDetail:
     return await assignment_service.start_travel(user, assignment_id)
+
+
+@router.get(
+    PATH_WORKER_ASSIGNMENT_CANCEL_PREVIEW,
+    response_model=CancellationQuote,
+    summary=swagger_summary("Cancellation fee preview for my booking", SWAGGER_ROLE_WORKER),
+)
+async def cancel_assignment_preview(
+    assignment_id: UUID, user: RequireWorkRead
+) -> CancellationQuote:
+    return await assignment_service.cancel_preview(user, assignment_id, as_party=PARTY_WORKER)
 
 
 @router.post(

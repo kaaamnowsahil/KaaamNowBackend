@@ -31,6 +31,7 @@ PATH_SHIFTS_BULK_PUBLISH: Final[str] = "/shifts/bulk-publish"
 MAX_BULK_SHIFTS: Final[int] = 31
 PATH_SHIFT_PUBLISH: Final[str] = "/shifts/{shift_id}/publish"
 PATH_SHIFT_CANCEL: Final[str] = "/shifts/{shift_id}/cancel"
+PATH_SHIFT_CANCEL_PREVIEW: Final[str] = "/shifts/{shift_id}/cancel-preview"
 PATH_SHIFT_CONVERT: Final[str] = "/shifts/{shift_id}/convert-to-scheduled"
 PATH_SHIFT_RETRY_LIVE: Final[str] = "/shifts/{shift_id}/retry-live"
 PATH_SHIFT_LIVE_SEARCH: Final[str] = "/shifts/{shift_id}/live-search"
@@ -40,6 +41,7 @@ PATH_BUSINESS_APPLICATIONS: Final[str] = "/applications"
 PATH_APPLICATION_SELECT: Final[str] = "/applications/{application_id}/select"
 PATH_APPLICATION_REJECT: Final[str] = "/applications/{application_id}/reject"
 PATH_BUSINESS_ASSIGNMENT_CANCEL: Final[str] = "/assignments/{assignment_id}/cancel"
+PATH_BUSINESS_ASSIGNMENT_CANCEL_PREVIEW: Final[str] = "/assignments/{assignment_id}/cancel-preview"
 
 # --- Worker paths ---
 PATH_FEED: Final[str] = "/feed"
@@ -54,6 +56,7 @@ PATH_APPLICATION_CONFIRM: Final[str] = "/applications/{application_id}/confirm"
 PATH_APPLICATION_DECLINE: Final[str] = "/applications/{application_id}/decline"
 PATH_START_TRAVEL: Final[str] = "/assignments/{assignment_id}/start-travel"
 PATH_WORKER_ASSIGNMENT_CANCEL: Final[str] = "/assignments/{assignment_id}/cancel"
+PATH_WORKER_ASSIGNMENT_CANCEL_PREVIEW: Final[str] = "/assignments/{assignment_id}/cancel-preview"
 
 # --- Shared assignment paths ---
 PATH_ASSIGNMENT: Final[str] = "/{assignment_id}"
@@ -66,6 +69,7 @@ SHIFT_LIVE: Final[str] = "live"
 SHIFT_SCHEDULED: Final[str] = "scheduled"
 
 SHIFT_DRAFT: Final[str] = "draft"
+SHIFT_AWAITING_PAYMENT: Final[str] = "awaiting_payment"
 SHIFT_SEARCHING: Final[str] = "searching"
 SHIFT_OPEN: Final[str] = "open"
 SHIFT_FILLED: Final[str] = "filled"
@@ -90,7 +94,12 @@ SHIFT_GROUPS: Final[tuple[tuple[str, str], ...]] = (
     ("cancelled", "Cancelled"),
 )
 DASHBOARD_NEXT_SCHEDULED_LIMIT: Final[int] = 2
-DASHBOARD_UPCOMING_STATUSES: Final[tuple[str, ...]] = (SHIFT_SEARCHING, SHIFT_OPEN, SHIFT_FILLED)
+DASHBOARD_UPCOMING_STATUSES: Final[tuple[str, ...]] = (
+    SHIFT_AWAITING_PAYMENT,
+    SHIFT_SEARCHING,
+    SHIFT_OPEN,
+    SHIFT_FILLED,
+)
 # Section order and titles on Business / Work Home.
 DASHBOARD_GROUPS: Final[tuple[tuple[str, str], ...]] = (
     (DASHBOARD_GROUP_COMPLETED, "Completed"),
@@ -100,6 +109,7 @@ DASHBOARD_GROUPS: Final[tuple[tuple[str, str], ...]] = (
 )
 SHIFT_CANCELLABLE_STATUSES: Final[tuple[str, ...]] = (
     SHIFT_DRAFT,
+    SHIFT_AWAITING_PAYMENT,
     SHIFT_SEARCHING,
     SHIFT_OPEN,
     SHIFT_FILLED,
@@ -137,6 +147,14 @@ ASG_SEAT_HOLDING_STATUSES: Final[tuple[str, ...]] = (
 )
 ASG_WORKED_STATUSES: Final[tuple[str, ...]] = (ASG_CHECKED_OUT, ASG_APPROVED)
 
+EXTENSION_REQUESTED: Final[str] = "requested"
+EXTENSION_ACCEPTED: Final[str] = "accepted"
+EXTENSION_DECLINED: Final[str] = "declined"
+END_SCHEDULED: Final[str] = "scheduled_end"
+END_MUTUAL: Final[str] = "mutual"
+END_BUSINESS_STOPPED: Final[str] = "business_stopped"
+END_WORKER_LEFT: Final[str] = "worker_left"
+
 MY_SHIFTS_TABS: Final[tuple[str, ...]] = ("upcoming", "active", "completed", "applications")
 DASHBOARD_TABS: Final[tuple[str, ...]] = ("live", "scheduled")
 FEED_SORTS: Final[tuple[str, ...]] = ("distance", "starts_at", "pay")
@@ -169,6 +187,11 @@ MSG_SHIFT_TOO_SHORT: Final[str] = "Shifts must be at least 1 hour long."
 MSG_SHIFT_TOO_LONG: Final[str] = "Shifts can be at most 16 hours long."
 MSG_SHIFT_IN_PAST: Final[str] = "Scheduled shifts must start in the future."
 MSG_SHIFT_TOO_FAR: Final[str] = "Shifts can be scheduled at most 60 days ahead."
+MSG_SHIFT_TOO_SOON: Final[str] = "Shifts must be posted at least {hours} hours before they start."
+MSG_APPLY_CLOSED: Final[str] = "Booking for this shift closed {hours} hours before it starts."
+MSG_TOO_MANY_BOOKINGS: Final[str] = (
+    "You already have {count} upcoming shifts. Finish or cancel one to book another."
+)
 MSG_LIVE_START_NOW: Final[str] = "Live shifts must start now (within 30 minutes)."
 MSG_BREAK_TOO_LONG: Final[str] = "Break is longer than the shift."
 MSG_CONVERT_NOT_ALLOWED: Final[str] = (

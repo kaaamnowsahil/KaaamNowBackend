@@ -17,6 +17,23 @@ ON CONFLICT DO NOTHING
 RETURNING worker_profile_id, amount_minor
 """
 
+INSERT_WORKER_COMMISSIONS_FOR_INVOICE = """
+INSERT INTO earning_ledger_entries (
+    worker_profile_id, entry_type, amount_minor, currency, assignment_id, invoice_id, description
+)
+SELECT a.worker_profile_id, 'commission',
+       -round(l.amount_minor * i.worker_fee_percentage / 100)::bigint, i.currency, a.id, i.id,
+       'Commission ' || trim_scale(i.worker_fee_percentage)::text || '%: ' || s.job_title
+FROM shift_invoice_lines l
+JOIN shift_invoices i ON i.id = l.invoice_id
+JOIN shift_assignments a ON a.id = l.assignment_id
+JOIN shifts s ON s.id = i.shift_id
+WHERE l.invoice_id = $1 AND l.line_kind = 'worker_pay'
+  AND round(l.amount_minor * i.worker_fee_percentage / 100) > 0
+ON CONFLICT DO NOTHING
+RETURNING worker_profile_id, amount_minor, assignment_id, currency
+"""
+
 INSERT_LEDGER_ENTRY = """
 INSERT INTO earning_ledger_entries (
     worker_profile_id, entry_type, amount_minor, currency, withdrawal_id, description
@@ -32,9 +49,12 @@ SELECT COALESCE(SUM(amount_minor), 0) FROM earning_ledger_entries WHERE worker_p
 EARNINGS_SUMMARY = """
 SELECT
     COALESCE(SUM(amount_minor), 0) AS available_minor,
-    COALESCE(SUM(amount_minor) FILTER (WHERE entry_type = 'shift_earning'), 0) AS lifetime_minor,
-    COALESCE(SUM(amount_minor) FILTER (
-        WHERE entry_type = 'shift_earning' AND created_at >= $2), 0) AS this_month_minor
+    COALESCE(SUM(amount_minor) FILTER (WHERE entry_type IN (
+        'shift_earning', 'commission', 'cancellation_compensation', 'promo_credit'
+    )), 0) AS lifetime_minor,
+    COALESCE(SUM(amount_minor) FILTER (WHERE entry_type IN (
+        'shift_earning', 'commission', 'cancellation_compensation', 'promo_credit'
+    ) AND created_at >= $2), 0) AS this_month_minor
 FROM earning_ledger_entries WHERE worker_profile_id = $1
 """
 

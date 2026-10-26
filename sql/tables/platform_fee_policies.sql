@@ -10,5 +10,11 @@ CREATE TABLE IF NOT EXISTS platform_fee_policies (
     CONSTRAINT platform_fee_policies_percentage_chk CHECK (percentage >= 0 AND percentage <= 100)
 );
 
+-- ``percentage`` is the business commission. Worker commission is deducted from worker pay;
+-- the gateway charge is added for the business on top of pay + commission.
+ALTER TABLE platform_fee_policies
+    ADD COLUMN IF NOT EXISTS worker_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS gateway_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0;
+
 CREATE UNIQUE INDEX IF NOT EXISTS platform_fee_policies_one_active_uid
     ON platform_fee_policies (is_active) WHERE is_active;

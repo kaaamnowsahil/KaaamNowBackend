@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, status
 
 from app.constants.application.application_common import (
     SWAGGER_ROLE_ANY_USER,
+    SWAGGER_ROLE_PARTICIPANT,
     SWAGGER_ROLE_PUBLIC,
     swagger_summary,
 )
@@ -14,6 +15,7 @@ from app.constants.content.content_route_strings import (
     FAQ_SEARCH_MAX_LENGTH,
     OPENAPI_TAG_CONTENT,
     OPENAPI_TAG_SUPPORT,
+    PATH_EMERGENCY,
     PATH_FAQS,
     PATH_TERMS,
     PATH_TICKETS,
@@ -23,6 +25,7 @@ from app.dependencies import CurrentUser, OptionalUser
 from app.schemas.content.content_schemas import (
     Audience,
     ContentPage,
+    EmergencyTicketCreate,
     FaqList,
     SupportTicketCreate,
     SupportTicketResponse,
@@ -63,3 +66,13 @@ async def faqs(
 )
 async def create_ticket(body: SupportTicketCreate, user: CurrentUser) -> SupportTicketResponse:
     return await content_service.create_ticket(user, body)
+
+
+@support_router.post(
+    PATH_EMERGENCY,
+    response_model=SupportTicketResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=swagger_summary("Emergency on a booking", SWAGGER_ROLE_PARTICIPANT),
+)
+async def emergency(body: EmergencyTicketCreate, user: CurrentUser) -> SupportTicketResponse:
+    return await content_service.create_emergency(user, body)

@@ -56,9 +56,11 @@ SELECT
         AS pending_withdrawals_minor,
     (SELECT COALESCE(sum(amount_minor), 0) FROM withdrawals WHERE status = $3)
         AS total_paid_out_minor,
-    (SELECT COALESCE(sum(total_minor), 0) FROM shift_invoices WHERE status = $4)
+    (SELECT COALESCE(sum(total_minor), 0) FROM shift_invoices
+     WHERE status = $4 AND invoice_kind = 'final')
         AS invoiced_paid_minor,
-    (SELECT COALESCE(sum(platform_fee_minor), 0) FROM shift_invoices WHERE status = $4)
+    (SELECT COALESCE(sum(platform_fee_minor), 0) FROM shift_invoices
+     WHERE status = $4 AND invoice_kind = 'final')
         AS platform_fees_minor,
     (SELECT COALESCE(sum(amount_minor), 0) FROM payments WHERE status = $5)
         AS payments_succeeded_minor

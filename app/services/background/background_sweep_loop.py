@@ -36,7 +36,9 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         expire_live_offers,
         expire_selection_confirmations,
         finish_live_searches,
+        prompt_extensions,
         refresh_live_searches,
+        release_unfilled_seats,
     )
     from app.services.users.deletion_service import (
         expire_holds,
@@ -48,6 +50,8 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         ("refresh_live_searches", refresh_live_searches),
         ("finish_live_searches", finish_live_searches),
         ("expire_selection_confirmations", expire_selection_confirmations),
+        ("release_unfilled_seats", release_unfilled_seats),
+        ("prompt_extensions", prompt_extensions),
         ("close_scheduled_recruiting", close_scheduled_recruiting),
         ("expire_stale_payments", expire_stale_payments),
         ("advance_processing_withdrawals", advance_processing_withdrawals),

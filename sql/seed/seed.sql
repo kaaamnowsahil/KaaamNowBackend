@@ -214,6 +214,34 @@ INSERT INTO platform_fee_policies (version, percentage, is_active, notes)
 SELECT 1, 5.00, true, 'DEV DEFAULT from Figma copy (5% on top of worker pay). Confirm before launch.'
 WHERE NOT EXISTS (SELECT 1 FROM platform_fee_policies);
 
+-- Marketplace rules v1: no platform fee; 4% commission from business + 4% from worker;
+-- ~2% gateway charge paid by the business. Applied once; later versions come from admin.
+UPDATE platform_fee_policies SET is_active = false
+WHERE is_active AND NOT EXISTS (SELECT 1 FROM platform_fee_policies WHERE version = 2);
+INSERT INTO platform_fee_policies (version, percentage, worker_percentage, gateway_percentage, is_active, notes)
+SELECT 2, 4.00, 4.00, 2.00, true, 'Rules v1: 4% business + 4% worker commission, 2% gateway (business).'
+WHERE NOT EXISTS (SELECT 1 FROM platform_fee_policies WHERE version = 2);
+
+-- Cancellation rules v1 (docs/marketplace-rules.md §5, §6). Amounts in paise.
+INSERT INTO cancellation_policies (version, is_active, notes)
+VALUES (1, true, 'Rules v1')
+ON CONFLICT (version) DO NOTHING;
+INSERT INTO cancellation_policy_tiers (
+    policy_version, party, event, hours_from, hours_to, flat_fee_minor, booking_pct,
+    fee_cap_minor, worker_share_pct, strike_weight, business_voucher
+) VALUES
+    (1, 'worker', 'cancel', 12, NULL, 0, 0, NULL, 0, 0, false),
+    (1, 'worker', 'cancel', 6, 12, 4900, 0, NULL, 0, 0, false),
+    (1, 'worker', 'cancel', 2, 6, 8900, 0, NULL, 0, 0, false),
+    (1, 'worker', 'cancel', 0, 2, 14900, 0, NULL, 0, 0.5, true),
+    (1, 'worker', 'no_show', 0, NULL, 0, 50, 39900, 0, 1, true),
+    (1, 'worker', 'walk_off', 0, NULL, 0, 50, NULL, 0, 0, true),
+    (1, 'business', 'cancel', 12, NULL, 0, 0, NULL, 0, 0, false),
+    (1, 'business', 'cancel', 6, 12, 0, 50, NULL, 30, 0, false),
+    (1, 'business', 'cancel', 2, 6, 0, 70, NULL, 40, 0, false),
+    (1, 'business', 'cancel', 0, 2, 0, 100, NULL, 80, 0, false)
+ON CONFLICT (policy_version, party, event, hours_from) DO NOTHING;
+
 -- Terms & Conditions (worker + business share the Figma copy dated 1 October 2026)
 INSERT INTO content_pages (slug, audience, title, body_markdown, effective_date) VALUES
     ('terms', 'worker', 'Terms & Conditions',

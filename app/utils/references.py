@@ -17,3 +17,11 @@ def new_reference(prefix: str, digits: int = 8) -> str:
 
 def new_numeric_code(length: int) -> str:
     return "".join(secrets.choice("0123456789") for _ in range(length))
+
+
+CHECK_IN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def new_check_in_code(length: int = 4) -> str:
+    """Alphanumeric without look-alikes (0/O, 1/I), e.g. ``K7P2``."""
+    return "".join(secrets.choice(CHECK_IN_CODE_ALPHABET) for _ in range(length))

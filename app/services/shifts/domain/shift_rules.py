@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from decimal import Decimal
 
 from app.constants.shifts.shift_route_strings import (
     DASHBOARD_GROUP_COMPLETED,
@@ -21,6 +20,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_TOO_FAR,
     MSG_SHIFT_TOO_LONG,
     MSG_SHIFT_TOO_SHORT,
+    MSG_SHIFT_TOO_SOON,
     MSG_SHIFT_WINDOW_INVALID,
     SHIFT_COMPLETED,
     SHIFT_IN_PROGRESS,
@@ -28,8 +28,9 @@ from app.constants.shifts.shift_route_strings import (
 )
 from app.exceptions.api_errors import bad_request
 from app.schemas.shifts.shift_schemas import ShiftCostEstimate
+from app.services.promos.promo_rules import Promo, discount_charge
 from app.utils.clock import minutes_between
-from app.utils.money import pay_for_minutes, platform_fee
+from app.utils.money import FeeRates, business_charge, pay_for_minutes, worker_commission
 
 
 def resolve_window(
@@ -59,6 +60,7 @@ def validate_window(
     ends_at: datetime,
     break_minutes: int,
     now: datetime,
+    min_lead_hours: int = 0,
 ) -> None:
     if ends_at <= starts_at:
         raise bad_request("shift_window_invalid", MSG_SHIFT_WINDOW_INVALID)
@@ -76,6 +78,8 @@ def validate_window(
     else:
         if starts_at <= now:
             raise bad_request("shift_in_past", MSG_SHIFT_IN_PAST)
+        if starts_at < now + timedelta(hours=min_lead_hours):
+            raise bad_request("shift_too_soon", MSG_SHIFT_TOO_SOON.format(hours=min_lead_hours))
         if starts_at > now + timedelta(days=MAX_SCHEDULE_AHEAD_DAYS):
             raise bad_request("shift_too_far", MSG_SHIFT_TOO_FAR)
 
@@ -89,21 +93,31 @@ def estimate_cost(
     hourly_rate_minor: int,
     workers_required: int,
     minutes_per_worker: int,
-    fee_percentage: Decimal,
+    rates: FeeRates,
     currency: str,
+    promo: Promo | None = None,
 ) -> ShiftCostEstimate:
     pay_per_worker = pay_for_minutes(hourly_rate_minor, minutes_per_worker)
-    subtotal = pay_per_worker * workers_required
-    fee = platform_fee(subtotal, fee_percentage)
+    charge, discount = discount_charge(
+        business_charge(pay_per_worker * workers_required, rates), promo
+    )
+    worker_fee = worker_commission(pay_per_worker, rates)
     return ShiftCostEstimate(
         currency=currency,
         paid_minutes_per_worker=minutes_per_worker,
         pay_per_worker_minor=pay_per_worker,
         workers_required=workers_required,
-        worker_subtotal_minor=subtotal,
-        fee_percentage=float(fee_percentage),
-        platform_fee_minor=fee,
-        total_minor=subtotal + fee,
+        worker_subtotal_minor=charge.worker_subtotal_minor,
+        fee_percentage=float(rates.business_pct),
+        platform_fee_minor=charge.commission_minor,
+        gateway_fee_percentage=float(rates.gateway_pct),
+        gateway_fee_minor=charge.gateway_fee_minor,
+        total_minor=charge.total_minor,
+        promo_code=promo.code if promo else None,
+        promo_discount_minor=discount,
+        worker_fee_percentage=float(rates.worker_pct),
+        worker_fee_per_worker_minor=worker_fee,
+        worker_net_per_worker_minor=pay_per_worker - worker_fee,
     )
 
 

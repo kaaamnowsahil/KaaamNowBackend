@@ -17,6 +17,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/business_types.sql",
     "tables/shift_filter_options.sql",
     "tables/platform_fee_policies.sql",
+    "tables/cancellation_policies.sql",
     # Identity
     "tables/users.sql",
     "tables/user_roles.sql",
@@ -39,22 +40,29 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/shift_applications.sql",
     "tables/shift_assignments.sql",
     "tables/attendance_records.sql",
+    "tables/shift_extensions.sql",
     "tables/assignment_messages.sql",
     # Billing
     "tables/shift_invoices.sql",
     "tables/shift_invoice_lines.sql",
     "tables/payments.sql",
     "tables/payment_webhook_events.sql",
+    "tables/promo_codes.sql",
+    "tables/promo_redemptions.sql",
+    "tables/cancellation_charges.sql",
     # Earnings
     "tables/payout_accounts.sql",
     "tables/withdrawals.sql",
     "tables/earning_ledger_entries.sql",
+    "tables/worker_strikes.sql",
     # Engagement
     "tables/ratings.sql",
     "tables/notifications.sql",
     "tables/content_pages.sql",
+    "tables/terms_acceptances.sql",
     "tables/faq_entries.sql",
     "tables/support_tickets.sql",
+    "tables/admin_overrides.sql",
     # Foreign keys (parent__child naming)
     "relations/languages__users.sql",
     "relations/users__auth.sql",
@@ -70,4 +78,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "relations/worker_profiles__earnings.sql",
     "relations/shift_assignments__ratings.sql",
     "relations/users__notifications_support.sql",
+    "relations/users__terms_acceptances.sql",
+    "relations/cancellations.sql",
+    "relations/shift_assignments__shift_extensions.sql",
 )

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +15,7 @@ from app.repositories.shifts.shift_queries import (
     COUNT_ACTIVE_WORKERS_NEAR,
     COUNT_BUSINESS_SHIFT_GROUPS,
     COUNT_SEATS,
+    COUNT_WORKER_UPCOMING_BOOKINGS,
     DASHBOARD_SUMMARY,
     EXPAND_SEARCH_RADIUS,
     FEED_ORDER_BY,
@@ -29,6 +29,7 @@ from app.repositories.shifts.shift_queries import (
     LIST_DASHBOARD_SHIFTS,
     LIST_DUE_LIVE_EXPANSIONS,
     LIST_LIVE_SEARCHES_TO_REFRESH,
+    LIST_OPEN_SCHEDULED_APPLY_CLOSED,
     LIST_OPEN_SCHEDULED_PAST_START,
     LIST_TIMED_OUT_LIVE_SEARCHES,
     LOCK_SHIFT,
@@ -41,6 +42,7 @@ from app.repositories.shifts.shift_queries import (
     UPDATE_DRAFT_SHIFT,
     WORKER_HAS_OVERLAP,
 )
+from app.utils.money import FeeRates
 
 _SHIFT_WRITE_COLUMNS = (
     "category_id",
@@ -146,7 +148,7 @@ async def publish_live(
     *,
     now: datetime,
     fee_policy_version: int,
-    fee_percentage: Decimal,
+    rates: FeeRates,
     radius_km: float,
     max_radius_km: float,
     expires_at: datetime,
@@ -156,10 +158,12 @@ async def publish_live(
         shift_id,
         now,
         fee_policy_version,
-        fee_percentage,
+        rates.business_pct,
         radius_km,
         max_radius_km,
         expires_at,
+        rates.worker_pct,
+        rates.gateway_pct,
     )
 
 
@@ -169,9 +173,17 @@ async def publish_scheduled(
     *,
     now: datetime,
     fee_policy_version: int,
-    fee_percentage: Decimal,
+    rates: FeeRates,
 ) -> None:
-    await conn.execute(PUBLISH_SCHEDULED_SHIFT, shift_id, now, fee_policy_version, fee_percentage)
+    await conn.execute(
+        PUBLISH_SCHEDULED_SHIFT,
+        shift_id,
+        now,
+        fee_policy_version,
+        rates.business_pct,
+        rates.worker_pct,
+        rates.gateway_pct,
+    )
 
 
 async def convert_to_scheduled(
@@ -389,6 +401,12 @@ async def worker_has_overlap(
     )
 
 
+async def count_worker_upcoming_bookings(
+    conn: asyncpg.Connection, worker_profile_id: UUID, now: datetime
+) -> int:
+    return int(await conn.fetchval(COUNT_WORKER_UPCOMING_BOOKINGS, worker_profile_id, now))
+
+
 async def list_due_live_expansions(conn: asyncpg.Connection, before: datetime) -> list[UUID]:
     return [r["id"] for r in await conn.fetch(LIST_DUE_LIVE_EXPANSIONS, before)]
 
@@ -399,6 +417,13 @@ async def list_live_searches_to_refresh(conn: asyncpg.Connection, now: datetime)
 
 async def list_timed_out_live_searches(conn: asyncpg.Connection, now: datetime) -> list[UUID]:
     return [r["id"] for r in await conn.fetch(LIST_TIMED_OUT_LIVE_SEARCHES, now)]
+
+
+async def list_open_scheduled_apply_closed(
+    conn: asyncpg.Connection, closes_before: datetime, now: datetime
+) -> list[UUID]:
+    """Open scheduled shifts that start within the apply cut-off but haven't started."""
+    return [r["id"] for r in await conn.fetch(LIST_OPEN_SCHEDULED_APPLY_CLOSED, closes_before, now)]
 
 
 async def list_open_scheduled_past_start(conn: asyncpg.Connection, now: datetime) -> list[UUID]:
