@@ -11738,12 +11738,17 @@ components:
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        worker_hourly_rate_minor:
+          type: integer
+          title: Worker Hourly Rate Minor
+          description: Hourly rate after worker commission.
         currency:
           type: string
           title: Currency
         estimated_pay_minor:
           type: integer
           title: Estimated Pay Minor
+          description: Paid minutes × rate, after worker commission.
         spots_left:
           type: integer
           title: Spots Left
@@ -11786,6 +11791,7 @@ components:
       - ends_at
       - break_minutes
       - hourly_rate_minor
+      - worker_hourly_rate_minor
       - currency
       - estimated_pay_minor
       - spots_left
@@ -11862,12 +11868,17 @@ components:
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        worker_hourly_rate_minor:
+          type: integer
+          title: Worker Hourly Rate Minor
+          description: Hourly rate after worker commission.
         currency:
           type: string
           title: Currency
         estimated_pay_minor:
           type: integer
           title: Estimated Pay Minor
+          description: Paid minutes × rate, after worker commission.
         spots_left:
           type: integer
           title: Spots Left
@@ -11931,6 +11942,7 @@ components:
       - ends_at
       - break_minutes
       - hourly_rate_minor
+      - worker_hourly_rate_minor
       - currency
       - estimated_pay_minor
       - spots_left

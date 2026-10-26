@@ -23,7 +23,7 @@ from app.schemas.shifts.shift_schemas import (
     WorkerShiftDetail,
 )
 from app.services.shifts.domain.shift_rules import paid_minutes
-from app.utils.money import pay_for_minutes
+from app.utils.money import pay_for_minutes, platform_fee
 
 
 def live_search_state(row: asyncpg.Record, now: datetime) -> LiveSearchState:
@@ -60,6 +60,9 @@ def business_card(row: asyncpg.Record) -> BusinessCard:
 
 def _card_fields(row: asyncpg.Record) -> dict:
     minutes = paid_minutes(row["starts_at"], row["ends_at"], row["break_minutes"])
+    worker_pct = Decimal(row["worker_fee_percentage"] or 0)
+    hourly_rate = row["hourly_rate_minor"]
+    gross_pay = pay_for_minutes(hourly_rate, minutes)
     distance = row["distance_km"]
     return {
         "id": row["id"],
@@ -77,9 +80,10 @@ def _card_fields(row: asyncpg.Record) -> dict:
         "starts_at": row["starts_at"],
         "ends_at": row["ends_at"],
         "break_minutes": row["break_minutes"],
-        "hourly_rate_minor": row["hourly_rate_minor"],
+        "hourly_rate_minor": hourly_rate,
+        "worker_hourly_rate_minor": hourly_rate - platform_fee(hourly_rate, worker_pct),
         "currency": row["currency"],
-        "estimated_pay_minor": pay_for_minutes(row["hourly_rate_minor"], minutes),
+        "estimated_pay_minor": gross_pay - platform_fee(gross_pay, worker_pct),
         "spots_left": max(row["workers_required"] - row["booked_count"], 0),
         "my_application_id": row["my_application_id"],
         "my_application_status": row["my_application_status"],
