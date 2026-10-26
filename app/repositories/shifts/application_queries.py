@@ -9,10 +9,13 @@ ap.confirm_by, ap.applied_at, ap.decided_at, ap.responded_at
 
 # Re-applying after withdraw / decline / expiry reopens the same row.
 UPSERT_APPLICATION = f"""
-INSERT INTO shift_applications AS ap (shift_id, worker_profile_id, distance_km, cover_note)
-VALUES ($1, $2, $3, $4)
+INSERT INTO shift_applications AS ap (
+    shift_id, worker_profile_id, distance_km, cover_note, applied_latitude, applied_longitude
+)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (shift_id, worker_profile_id) DO UPDATE SET
     status = 'applied', distance_km = EXCLUDED.distance_km, cover_note = EXCLUDED.cover_note,
+    applied_latitude = EXCLUDED.applied_latitude, applied_longitude = EXCLUDED.applied_longitude,
     confirm_by = NULL, applied_at = now(), decided_at = NULL, responded_at = NULL,
     updated_at = now()
 WHERE ap.status IN ('withdrawn', 'declined', 'expired')

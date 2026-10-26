@@ -18,6 +18,8 @@ SELECT s.*, wc.slug AS category_slug, wc.name AS category_name,
         WHERE sa.shift_id = s.id AND sa.status = 'checked_in') AS checked_in_count,
        (SELECT count(*) FROM shift_applications ap
         WHERE ap.shift_id = s.id AND ap.status = 'applied') AS pending_applications,
+       (SELECT count(*) FROM shift_applications ap
+        WHERE ap.shift_id = s.id AND ap.status IN ('withdrawn', 'declined')) AS withdrawn_count,
        i.id AS invoice_id, i.status AS invoice_status,
        d.id AS deposit_invoice_id, d.status AS deposit_status
 FROM shifts s

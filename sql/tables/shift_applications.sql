@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS shift_applications (
     ))
 );
 
+-- Where the worker was when they applied; distance_km and the max-distance check use this point.
+ALTER TABLE shift_applications
+    ADD COLUMN IF NOT EXISTS applied_latitude DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS applied_longitude DOUBLE PRECISION;
+
 CREATE INDEX IF NOT EXISTS shift_applications_shift_status_idx
     ON shift_applications (shift_id, status);
 CREATE INDEX IF NOT EXISTS shift_applications_worker_idx

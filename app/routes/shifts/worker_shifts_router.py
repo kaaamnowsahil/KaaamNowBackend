@@ -104,8 +104,10 @@ async def my_shifts(
     tab: Literal["upcoming", "active", "completed", "applications"] = "upcoming",
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lng: float | None = Query(default=None, ge=-180, le=180),
 ) -> MyShiftsPage:
-    return await shift_feed_service.my_shifts(user, tab, limit, offset)
+    return await shift_feed_service.my_shifts(user, tab, limit, offset, latitude=lat, longitude=lng)
 
 
 @live_router.get(
@@ -122,8 +124,13 @@ async def live_requests(user: RequireWorkRead) -> list[LiveRequestItem]:
     response_model=WorkerShiftDetail,
     summary=swagger_summary("Shift detail", SWAGGER_ROLE_WORKER),
 )
-async def shift_detail(shift_id: UUID, user: RequireWorkRead) -> WorkerShiftDetail:
-    return await shift_feed_service.get_shift(user, shift_id)
+async def shift_detail(
+    shift_id: UUID,
+    user: RequireWorkRead,
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lng: float | None = Query(default=None, ge=-180, le=180),
+) -> WorkerShiftDetail:
+    return await shift_feed_service.get_shift(user, shift_id, latitude=lat, longitude=lng)
 
 
 @live_router.post(

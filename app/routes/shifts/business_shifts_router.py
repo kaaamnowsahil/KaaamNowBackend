@@ -273,9 +273,12 @@ async def applicants(
 )
 async def all_applicants(
     user: RequireShiftsRead,
-    status: Literal["applied", "selected", "confirmed", "rejected"] = Query(
+    status: Literal["applied", "selected", "confirmed", "rejected", "withdrawn"] = Query(
         default="applied",
-        description="`rejected` also covers declined, withdrawn and expired applications.",
+        description=(
+            "`rejected` also covers declined, withdrawn and expired applications; "
+            "`withdrawn` is only workers who withdrew or declined."
+        ),
     ),
     business_profile_id: UUID | None = Query(default=None, description=DESC_ENTITY_FILTER),
     limit: int | None = Query(default=None, ge=1),

@@ -114,10 +114,15 @@ async def feed(
     return FeedPage(items=[worker_shift_card(r) for r in rows], limit=page_limit, offset=offset)
 
 
-async def get_shift(user: AuthenticatedUser, shift_id: UUID) -> WorkerShiftDetail:
+async def get_shift(
+    user: AuthenticatedUser,
+    shift_id: UUID,
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> WorkerShiftDetail:
     async with get_pool().acquire() as conn:
         worker = await require_worker_profile(conn, user.user_id)
-        lat, lng = await _worker_point(conn, worker, None, None)
+        lat, lng = await _worker_point(conn, worker, latitude, longitude)
         row = await shift_repository.get_worker_shift(
             conn, shift_id, worker_profile_id=worker["id"], latitude=lat, longitude=lng
         )
@@ -136,12 +141,17 @@ async def get_shift(user: AuthenticatedUser, shift_id: UUID) -> WorkerShiftDetai
 
 
 async def my_shifts(
-    user: AuthenticatedUser, tab: str, limit: int | None, offset: int
+    user: AuthenticatedUser,
+    tab: str,
+    limit: int | None,
+    offset: int,
+    latitude: float | None = None,
+    longitude: float | None = None,
 ) -> MyShiftsPage:
     page_limit = clamp_page_limit(limit)
     async with get_pool().acquire() as conn:
         worker = await require_worker_profile(conn, user.user_id)
-        lat, lng = await _worker_point(conn, worker, None, None)
+        lat, lng = await _worker_point(conn, worker, latitude, longitude)
         if tab in _ASSIGNMENT_TABS:
             statuses, newest_first = _ASSIGNMENT_TABS[tab]
             rows = await shift_repository.list_my_assignment_shifts(

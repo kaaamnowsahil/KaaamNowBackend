@@ -238,6 +238,9 @@ class ShiftResponse(BaseModel):
     cancellation_cutoff_hours: int
     booked_count: int
     pending_applications: int
+    withdrawn_count: int = Field(
+        default=0, description="Workers who withdrew their application or booking, or declined."
+    )
     estimate: ShiftCostEstimate
     live_search: LiveSearchState | None = None
     invoice_id: UUID | None = None
@@ -269,6 +272,7 @@ class ShiftListItem(BaseModel):
     booked_count: int
     checked_in_count: int
     pending_applications: int
+    withdrawn_count: int = 0
     hourly_rate_minor: int
     currency: str
     starts_at: datetime
