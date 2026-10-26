@@ -11852,6 +11852,12 @@ components:
         cancellation_cutoff_hours:
           type: integer
           title: Cancellation Cutoff Hours
+        has_time_conflict:
+          type: boolean
+          title: Has Time Conflict
+          description: True when the worker already has another booking overlapping
+            this shift.
+          default: false
       type: object
       required:
       - id

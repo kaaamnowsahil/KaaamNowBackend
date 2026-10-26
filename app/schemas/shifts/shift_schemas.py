@@ -408,6 +408,10 @@ class WorkerShiftDetail(WorkerShiftCard):
     arrival_instructions: str
     site_contact_name: str
     cancellation_cutoff_hours: int
+    has_time_conflict: bool = Field(
+        default=False,
+        description="True when the worker already has another booking overlapping this shift.",
+    )
 
 
 class FeedPage(BaseModel):

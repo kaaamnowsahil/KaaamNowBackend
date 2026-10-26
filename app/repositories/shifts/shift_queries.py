@@ -261,7 +261,9 @@ SELECT * FROM (
       )
 ) c
 WHERE c.distance_km <= $11
-  AND (c.booked_count < c.workers_required OR c.my_assignment_id IS NOT NULL)
+  AND c.booked_count < c.workers_required
+  AND (c.my_assignment_id IS NULL OR c.my_assignment_status = 'cancelled')
+  AND (c.my_application_status IS NULL OR c.my_application_status NOT IN ('applied', 'selected'))
 ORDER BY {{order_by}}
 LIMIT $14 OFFSET $15
 """
