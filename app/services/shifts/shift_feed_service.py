@@ -121,9 +121,18 @@ async def get_shift(user: AuthenticatedUser, shift_id: UUID) -> WorkerShiftDetai
         row = await shift_repository.get_worker_shift(
             conn, shift_id, worker_profile_id=worker["id"], latitude=lat, longitude=lng
         )
-    if row is None or (row["status"] == "draft"):
-        raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
-    return worker_shift_detail(row)
+        if row is None or (row["status"] == "draft"):
+            raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
+        has_conflict = row["my_assignment_id"] is None and (
+            await shift_repository.worker_has_overlap(
+                conn,
+                worker["id"],
+                starts_at=row["starts_at"],
+                ends_at=row["ends_at"],
+                exclude_shift_id=row["id"],
+            )
+        )
+    return worker_shift_detail(row).model_copy(update={"has_time_conflict": has_conflict})
 
 
 async def my_shifts(
