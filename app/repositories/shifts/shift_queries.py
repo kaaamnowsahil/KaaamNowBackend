@@ -205,7 +205,7 @@ WORKER_CARD_SELECT = f"""
 SELECT s.id, s.shift_type, s.status, s.job_title, wc.slug AS category_slug,
        wc.name AS category_name, s.workplace_name, s.address_text, s.latitude, s.longitude,
        s.starts_at, s.ends_at, s.break_minutes, s.hourly_rate_minor, s.currency,
-       s.workers_required, s.responsibilities, s.requirements, s.arrival_instructions,
+       s.worker_fee_percentage, s.workers_required, s.responsibilities, s.requirements, s.arrival_instructions,
        s.site_contact_name, s.cancellation_cutoff_hours, s.business_profile_id,
        s.search_radius_km,
        bp.user_id AS business_user_id, bp.business_name, bp.logo_url,

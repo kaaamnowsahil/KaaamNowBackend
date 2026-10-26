@@ -397,8 +397,9 @@ class WorkerShiftCard(BaseModel):
     ends_at: datetime
     break_minutes: int
     hourly_rate_minor: int
+    worker_hourly_rate_minor: int = Field(description="Hourly rate after worker commission.")
     currency: str
-    estimated_pay_minor: int
+    estimated_pay_minor: int = Field(description="Paid minutes × rate, after worker commission.")
     spots_left: int
     my_application_id: UUID | None = None
     my_application_status: str | None = None
