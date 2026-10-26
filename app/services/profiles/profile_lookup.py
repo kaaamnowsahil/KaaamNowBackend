@@ -16,6 +16,7 @@ from app.constants.profiles.profile_route_strings import (
     MSG_BUSINESS_NOT_FOUND,
     MSG_BUSINESS_PROFILE_INCOMPLETE,
     MSG_BUSINESS_PROFILE_MISSING,
+    MSG_WORKER_BANNED,
     MSG_WORKER_NOT_VERIFIED,
     MSG_WORKER_PROFILE_MISSING,
     VERIFICATION_VERIFIED,
@@ -97,6 +98,8 @@ async def worker_home_point(
 
 
 def ensure_worker_can_work(worker: asyncpg.Record) -> None:
+    if worker["banned_at"] is not None:
+        raise forbidden("worker_banned", MSG_WORKER_BANNED)
     if load_settings().require_verified_workers and (
         worker["verification_status"] != VERIFICATION_VERIFIED
     ):

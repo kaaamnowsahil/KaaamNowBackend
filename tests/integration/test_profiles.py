@@ -276,8 +276,6 @@ async def test_removed_profile_routes(app_client: httpx.AsyncClient) -> None:
     for method, path in (
         ("GET", "/me"),
         ("PATCH", "/me"),
-        ("PUT", "/me/active-role"),
-        ("POST", "/me/roles"),
         ("POST", "/me/photo"),
         ("GET", "/business/profile"),
         ("PATCH", "/business/profile"),

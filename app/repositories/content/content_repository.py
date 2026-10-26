@@ -17,6 +17,7 @@ from app.repositories.content.content_queries import (
     ADMIN_UPSERT_TERMS,
     GET_CONTENT_PAGE,
     INSERT_SUPPORT_TICKET,
+    LIST_ACTIVE_ADMIN_USER_IDS,
     LIST_FAQS,
     USER_CAN_SEE_SHIFT,
 )
@@ -109,5 +110,13 @@ async def insert_support_ticket(
     subject: str,
     message: str,
     shift_id: UUID | None,
+    priority: str = "normal",
+    assignment_id: UUID | None = None,
 ) -> asyncpg.Record:
-    return await conn.fetchrow(INSERT_SUPPORT_TICKET, user_id, topic, subject, message, shift_id)
+    return await conn.fetchrow(
+        INSERT_SUPPORT_TICKET, user_id, topic, subject, message, shift_id, priority, assignment_id
+    )
+
+
+async def list_active_admin_user_ids(conn: asyncpg.Connection) -> list[UUID]:
+    return [r["user_id"] for r in await conn.fetch(LIST_ACTIVE_ADMIN_USER_IDS)]

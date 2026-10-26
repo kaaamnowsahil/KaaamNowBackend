@@ -17,7 +17,15 @@ from app.constants.shifts.shift_route_strings import MAX_BULK_SHIFTS
 
 ShiftType = Literal["live", "scheduled"]
 ShiftStatus = Literal[
-    "draft", "searching", "open", "filled", "in_progress", "completed", "expired", "cancelled"
+    "draft",
+    "awaiting_payment",
+    "searching",
+    "open",
+    "filled",
+    "in_progress",
+    "completed",
+    "expired",
+    "cancelled",
 ]
 
 
@@ -64,6 +72,9 @@ class ShiftCreate(_ShiftFields):
     workers_required: int = Field(ge=1, le=100)
     hourly_rate_minor: int = Field(gt=0, le=10_000_000, examples=[15000])
     publish: bool = Field(default=False, description="Create and post in one step.")
+    promo_code: str | None = Field(
+        default=None, max_length=32, description="Promo code or free-fees voucher."
+    )
 
 
 class ShiftPatch(_ShiftFields):
@@ -91,6 +102,9 @@ class ShiftBulkCreate(BaseModel):
         description="Business / Work entity for every shift. Defaults to the primary one.",
     )
     publish: bool = Field(default=False, description="Post all shifts; false saves drafts.")
+    promo_code: str | None = Field(
+        default=None, max_length=32, description="Applied to every date; each one uses the code."
+    )
     shifts: list[ShiftBulkItem] = Field(min_length=1, max_length=MAX_BULK_SHIFTS)
 
 
@@ -117,6 +131,7 @@ class ShiftEstimateRequest(BaseModel):
     ends_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=60, le=16 * 60)
     break_minutes: int = Field(default=0, ge=0, le=240)
+    promo_code: str | None = Field(default=None, max_length=32)
 
 
 class ShiftCostEstimate(BaseModel):
@@ -127,9 +142,20 @@ class ShiftCostEstimate(BaseModel):
     pay_per_worker_minor: int
     workers_required: int
     worker_subtotal_minor: int
-    fee_percentage: float
-    platform_fee_minor: int
-    total_minor: int
+    fee_percentage: float = Field(description="Business commission %.")
+    platform_fee_minor: int = Field(description="Business commission amount.")
+    gateway_fee_percentage: float
+    gateway_fee_minor: int
+    total_minor: int = Field(
+        description="What the business pays: pay + commission + gateway − promo discount."
+    )
+    promo_code: str | None = None
+    promo_discount_minor: int = Field(
+        default=0, description="Already taken off platform_fee_minor / gateway_fee_minor."
+    )
+    worker_fee_percentage: float
+    worker_fee_per_worker_minor: int
+    worker_net_per_worker_minor: int = Field(description="Worker take-home after commission.")
 
 
 class ConvertToScheduledRequest(BaseModel):
@@ -146,6 +172,34 @@ class ShiftCancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str = Field(default="", max_length=200)
+
+
+class CancellationQuote(BaseModel):
+    """Fee preview for one seat (also returned after the cancel). Amounts in paise."""
+
+    party: Literal["worker", "business", "system"]
+    event: Literal["cancel", "no_show", "walk_off", "unfilled"]
+    hours_before: float
+    booking_minor: int
+    fee_minor: int = Field(description="Charged to the side that cancelled.")
+    worker_compensation_minor: int = Field(description="Paid to the worker (business cancel).")
+    business_refund_minor: int
+    strike_weight: float
+    business_voucher: bool = Field(description="Business gets a free-fees voucher.")
+    seat_reopens: bool
+    currency: str
+
+
+class ShiftCancelPreview(BaseModel):
+    """What cancelling the whole shift now would cost. Amounts in paise."""
+
+    shift_id: UUID
+    booked_workers: int
+    fee_minor: int
+    worker_compensation_minor: int
+    business_refund_minor: int = Field(description="Back to the business from the deposit.")
+    currency: str
+    seats: list[CancellationQuote]
 
 
 class LiveSearchState(BaseModel):
@@ -187,6 +241,10 @@ class ShiftResponse(BaseModel):
     estimate: ShiftCostEstimate
     live_search: LiveSearchState | None = None
     invoice_id: UUID | None = None
+    deposit_invoice_id: UUID | None = Field(
+        default=None, description="Pay this invoice to open an awaiting_payment shift."
+    )
+    deposit_status: str | None = None
     published_at: datetime | None = None
     filled_at: datetime | None = None
     started_at: datetime | None = None
@@ -220,6 +278,8 @@ class ShiftListItem(BaseModel):
     workplace_name: str
     address_text: str
     invoice_status: str | None = None
+    deposit_invoice_id: UUID | None = None
+    deposit_status: str | None = None
 
 
 ShiftGroupKey = Literal["upcoming", "in_progress", "draft", "completed", "expired", "cancelled"]

@@ -71,6 +71,8 @@ class KaaamNowSettings(BaseSettings):
     jwt_issuer: str = "kaaamnow"
     jwt_access_minutes: int = Field(default=15, ge=1)
     jwt_refresh_days: int = Field(default=30, ge=1)
+    # A just-rotated refresh token may be presented again by a racing/retried client request.
+    jwt_refresh_reuse_grace_seconds: int = Field(default=30, ge=0)
 
     # --- Admin panel login (env-backed admin accounts) ---
     # Comma-separated; every listed email signs in with the shared ADMIN_PASSWORD.
@@ -104,23 +106,41 @@ class KaaamNowSettings(BaseSettings):
     live_search_timeout_seconds: int = 1800
     live_offer_timeout_seconds: int = 300
     live_dispatch_batch_size: int = 50
-    scheduled_notify_radius_km: float = 5.0
+    scheduled_notify_radius_km: float = 30.0
     feed_radius_km: float = 15.0
     # Hard cap: workers never see or apply to shifts farther than this from their own location.
     worker_max_shift_distance_km: float = 30.0
     # A live location this recent beats the saved profile address (worker moved city).
     worker_location_valid_hours: int = Field(default=24, ge=1)
     selection_confirm_hours: int = 12
+    # Scheduled shifts must be posted at least this long before they start.
+    scheduled_min_lead_hours: int = 24
+    # Applying (= instant booking) closes this long before the shift starts.
+    apply_closes_hours_before: int = 2
+    max_upcoming_bookings_per_worker: int = 5
+    # Workers with too many strikes see at most this many shifts in the feed.
+    limited_feed_size: int = 5
     default_cancellation_cutoff_hours: int = 12
     check_in_radius_m: int = 200
     check_in_opens_minutes_before: int = 30
     no_show_grace_minutes: int = 30
+    # Either side may end without a PIN from this many minutes before the booked end.
+    end_shift_grace_minutes: int = 10
+    early_end_pin_valid_minutes: int = 10
+    extension_prompt_minutes_before: int = 15
+    overtime_rate_pct: int = 130
+    # Business stops work without a reason: worker keeps this share of the full booking.
+    business_stop_worker_share_pct: int = 80
     tracking_average_speed_kmph: float = 20.0
 
     # --- Payments / payouts ---
     payment_provider: str = "fake"
     payment_expiry_seconds: int = 300
     payment_webhook_secret: str = ""
+    # Razorpay Standard Checkout (PAYMENT_PROVIDER=razorpay). Key id is public (sent to apps).
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_api_base: str = "https://api.razorpay.com/v1"
     upi_payee_vpa: str = "kaaamnow@upi"
     upi_payee_name: str = "KaaamNow"
     payout_provider: str = "fake"
@@ -128,6 +148,9 @@ class KaaamNowSettings(BaseSettings):
 
     # --- Notifications / media / support ---
     push_provider: str = "console"
+    # push_provider=fcm: path to the Firebase service-account JSON (Project settings →
+    # Service accounts → Generate new private key). Never commit the file.
+    firebase_service_account_file: str = ""
     media_storage: str = MEDIA_STORAGE_LOCAL
     media_dir: str = ""
     media_base_url: str = "/media"

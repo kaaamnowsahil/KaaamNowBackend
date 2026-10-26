@@ -9,20 +9,26 @@ from app.constants.application.application_constants import ROLE_BUSINESS, ROLE_
 from app.constants.content.content_route_strings import (
     MSG_CONTENT_NOT_FOUND,
     MSG_SUPPORT_SHIFT_NOT_FOUND,
+    PRIORITY_URGENT,
     SLUG_TERMS,
+    TOPIC_EMERGENCY,
 )
+from app.constants.notifications.notification_route_strings import KIND_SUPPORT_EMERGENCY
 from app.db.pool import get_pool
 from app.exceptions.api_errors import not_found
 from app.repositories.content import content_repository
 from app.schemas.content.content_schemas import (
     ContentPage,
     ContentSection,
+    EmergencyTicketCreate,
     FaqItem,
     FaqList,
     SupportTicketCreate,
     SupportTicketResponse,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.notifications.notification_service import notify_many
+from app.services.shifts.assignment_service import PARTY_BUSINESS, load_context
 
 _SECTION_HEADING = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 _NON_SLUG_CHARS = re.compile(r"[^a-z0-9]+")
@@ -89,6 +95,41 @@ async def create_ticket(
             message=body.message.strip(),
             shift_id=body.shift_id,
         )
+    return SupportTicketResponse(
+        **dict(row), support_email=load_settings().support_email, support_emails=support_emails()
+    )
+
+
+async def create_emergency(
+    user: AuthenticatedUser, body: EmergencyTicketCreate
+) -> SupportTicketResponse:
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            ctx, party = await load_context(conn, body.assignment_id, user)
+            who = "Business" if party == PARTY_BUSINESS else "Worker"
+            message = body.message.strip() or f"{who} pressed the emergency button."
+            row = await content_repository.insert_support_ticket(
+                conn,
+                user_id=user.user_id,
+                topic=TOPIC_EMERGENCY,
+                subject=f"Emergency: {ctx['job_title']} ({who.lower()})"[:160],
+                message=message,
+                shift_id=ctx["shift_id"],
+                priority=PRIORITY_URGENT,
+                assignment_id=body.assignment_id,
+            )
+            await notify_many(
+                conn,
+                await content_repository.list_active_admin_user_ids(conn),
+                KIND_SUPPORT_EMERGENCY,
+                f"Emergency: {ctx['job_title']}",
+                f"{who} at {ctx['business_name']} needs help. {message}"[:300],
+                {
+                    "ticket_id": row["id"],
+                    "shift_id": ctx["shift_id"],
+                    "assignment_id": body.assignment_id,
+                },
+            )
     return SupportTicketResponse(
         **dict(row), support_email=load_settings().support_email, support_emails=support_emails()
     )

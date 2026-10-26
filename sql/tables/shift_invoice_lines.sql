@@ -13,5 +13,9 @@ CREATE TABLE IF NOT EXISTS shift_invoice_lines (
     CONSTRAINT shift_invoice_lines_amount_chk CHECK (amount_minor >= 0)
 );
 
+ALTER TABLE shift_invoice_lines DROP CONSTRAINT IF EXISTS shift_invoice_lines_kind_chk;
+ALTER TABLE shift_invoice_lines ADD CONSTRAINT shift_invoice_lines_kind_chk
+    CHECK (line_kind IN ('worker_pay', 'platform_fee', 'gateway_fee'));
+
 CREATE INDEX IF NOT EXISTS shift_invoice_lines_invoice_idx
     ON shift_invoice_lines (invoice_id, sort_order);

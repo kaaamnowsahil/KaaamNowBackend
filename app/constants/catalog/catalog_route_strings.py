@@ -12,6 +12,7 @@ OPENAPI_TAG_CATALOG: Final[str] = "catalog"
 PATH_RATING_TAGS: Final[str] = "/rating-tags"
 PATH_PAYMENT_METHODS: Final[str] = "/payment-methods"
 PATH_FEE_POLICY: Final[str] = "/fee-policy"
+PATH_CANCELLATION_POLICY: Final[str] = "/cancellation-policy"
 
 # Figma "Pay for this shift" option list, in display order.
 PAYMENT_METHODS: Final[tuple[tuple[str, str], ...]] = (
@@ -47,3 +48,4 @@ RATING_TAGS: Final[dict[str, tuple[str, ...]]] = {
 MSG_CATEGORY_UNKNOWN: Final[str] = "Unknown work category."
 MSG_BUSINESS_TYPE_UNKNOWN: Final[str] = "Unknown Business / Work type."
 MSG_NO_ACTIVE_FEE_POLICY: Final[str] = "No active platform fee policy is configured."
+MSG_NO_ACTIVE_CANCELLATION_POLICY: Final[str] = "No active cancellation policy is configured."

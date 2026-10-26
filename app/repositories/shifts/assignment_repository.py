@@ -8,24 +8,36 @@ from uuid import UUID
 import asyncpg
 
 from app.repositories.shifts.assignment_queries import (
+    ADD_EXTENDED_MINUTES,
     CANCEL_ASSIGNMENT,
     CANCEL_SHIFT_ASSIGNMENTS,
     COUNT_ASSIGNMENTS_IN,
+    EXPIRE_OPEN_EXTENSIONS,
     GET_ASSIGNMENT_CONTEXT,
     GET_BUSINESS_CONTACT,
+    GET_EXTENSION,
+    GET_OPEN_EXTENSION,
     GET_WORKER_SUMMARY,
     INSERT_ASSIGNMENT,
+    INSERT_EXTENSION,
     INSERT_MESSAGE,
+    LIST_EXTENSION_PROMPTS_DUE,
+    LIST_EXTENSIONS,
     LIST_MESSAGES,
     LIST_ROSTER,
     LIST_SHIFT_ASSIGNMENTS,
     LIST_WORKER_USER_IDS_FOR_SHIFT,
     LOCK_ASSIGNMENT_CONTEXT,
+    MARK_EXTENSION_PROMPTED,
     MARK_MESSAGES_READ,
     SET_ASSIGNMENT_STATUS,
+    SET_EARLY_END_PIN,
+    SET_ENDED,
+    SET_EXTENSION_STATUS,
     START_TRAVEL,
     USER_IDS_FOR_WORKER_PROFILES,
 )
+from app.utils.references import new_check_in_code
 
 
 async def insert_assignment(
@@ -48,6 +60,7 @@ async def insert_assignment(
         application_id,
         hourly_rate_minor,
         now,
+        new_check_in_code(),
     )
 
 
@@ -150,3 +163,73 @@ async def mark_messages_read(
     conn: asyncpg.Connection, assignment_id: UUID, reader_user_id: UUID, now: datetime
 ) -> None:
     await conn.execute(MARK_MESSAGES_READ, assignment_id, reader_user_id, now)
+
+
+async def set_early_end_pin(
+    conn: asyncpg.Connection,
+    assignment_id: UUID,
+    *,
+    pin: str | None,
+    requested_by: str | None,
+    expires_at: datetime | None,
+) -> None:
+    await conn.execute(SET_EARLY_END_PIN, assignment_id, pin, requested_by, expires_at)
+
+
+async def set_ended(conn: asyncpg.Connection, assignment_id: UUID, reason: str) -> None:
+    await conn.execute(SET_ENDED, assignment_id, reason)
+
+
+async def add_extended_minutes(conn: asyncpg.Connection, assignment_id: UUID, minutes: int) -> None:
+    await conn.execute(ADD_EXTENDED_MINUTES, assignment_id, minutes)
+
+
+async def insert_extension(
+    conn: asyncpg.Connection,
+    assignment_id: UUID,
+    *,
+    extra_minutes: int,
+    requested_by_user_id: UUID,
+    now: datetime,
+) -> UUID:
+    return await conn.fetchval(
+        INSERT_EXTENSION, assignment_id, extra_minutes, requested_by_user_id, now
+    )
+
+
+async def lock_open_extension(
+    conn: asyncpg.Connection, assignment_id: UUID
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_OPEN_EXTENSION, assignment_id)
+
+
+async def lock_extension(conn: asyncpg.Connection, extension_id: UUID) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_EXTENSION, extension_id)
+
+
+async def set_extension_status(
+    conn: asyncpg.Connection, extension_id: UUID, status: str, now: datetime
+) -> None:
+    await conn.execute(SET_EXTENSION_STATUS, extension_id, status, now)
+
+
+async def list_extensions(conn: asyncpg.Connection, assignment_id: UUID) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_EXTENSIONS, assignment_id)
+
+
+async def expire_open_extensions(
+    conn: asyncpg.Connection, assignment_id: UUID, now: datetime
+) -> None:
+    await conn.execute(EXPIRE_OPEN_EXTENSIONS, assignment_id, now)
+
+
+async def list_extension_prompts_due(
+    conn: asyncpg.Connection, start: datetime, end: datetime
+) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_EXTENSION_PROMPTS_DUE, start, end)
+
+
+async def mark_extension_prompted(
+    conn: asyncpg.Connection, assignment_ids: list[UUID], now: datetime
+) -> None:
+    await conn.execute(MARK_EXTENSION_PROMPTED, assignment_ids, now)

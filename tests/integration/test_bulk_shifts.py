@@ -115,7 +115,7 @@ async def test_bulk_publish_posts_existing_drafts(
     assert resp.status_code == 200, resp.text
     items = resp.json()["items"]
     assert [i["id"] for i in items] == draft_ids
-    assert {i["status"] for i in items} == {"open"}
+    assert {i["status"] for i in items} == {"awaiting_payment"}
     assert await _shift_count(db, business.user_id) == before
 
 
@@ -194,7 +194,7 @@ async def test_shift_site_location_does_not_need_profile_location(
     )
     assert resp.status_code == 201, resp.text
     shift = resp.json()["items"][0]
-    assert shift["status"] == "open"
+    assert shift["status"] == "awaiting_payment"
     assert shift["address_text"] == site["address_text"]
 
     missing = await app_client.post(

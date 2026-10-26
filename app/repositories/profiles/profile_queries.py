@@ -111,7 +111,8 @@ wp.id, wp.user_id, u.full_name, u.email, u.photo_url, u.phone, wp.age, wp.addres
 wp.locality,
 wp.latitude, wp.longitude, wp.verification_status, wp.verification_note, wp.verified_at,
 wp.is_available, wp.availability_changed_at, wp.rating_avg, wp.rating_count,
-wp.completed_shift_count, wp.created_at, wp.updated_at,
+wp.completed_shift_count, wp.created_at, wp.updated_at, wp.feed_limited_until,
+wp.banned_at,
 COALESCE(
     (SELECT array_agg(wc.slug ORDER BY wc.sort_order)
      FROM worker_work_categories wwc JOIN work_categories wc ON wc.id = wwc.category_id

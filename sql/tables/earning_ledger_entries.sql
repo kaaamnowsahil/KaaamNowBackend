@@ -19,6 +19,38 @@ CREATE TABLE IF NOT EXISTS earning_ledger_entries (
     )
 );
 
+-- ``commission`` (negative): worker commission deducted from a shift earning.
+ALTER TABLE earning_ledger_entries DROP CONSTRAINT IF EXISTS earning_ledger_entries_type_chk;
+ALTER TABLE earning_ledger_entries ADD CONSTRAINT earning_ledger_entries_type_chk
+    CHECK (entry_type IN ('shift_earning', 'withdrawal', 'withdrawal_reversal', 'commission'));
+ALTER TABLE earning_ledger_entries DROP CONSTRAINT IF EXISTS earning_ledger_entries_sign_chk;
+ALTER TABLE earning_ledger_entries ADD CONSTRAINT earning_ledger_entries_sign_chk CHECK (
+    (entry_type IN ('withdrawal', 'commission') AND amount_minor < 0)
+    OR (entry_type NOT IN ('withdrawal', 'commission') AND amount_minor > 0)
+);
+
+-- ``adjustment`` (negative): platform share when the business stops work early (rules §8).
+-- ``promo_credit`` (positive): worker promo code applied to a payout's commission.
+-- ``fee_waiver`` (positive): admin refunded a fee / adjustment for one booking (rules §10).
+-- Cancellation money: ``cancellation_fee`` (negative, may push the balance below zero; it is
+-- recovered from later earnings) and ``cancellation_compensation`` (business cancelled late).
+ALTER TABLE earning_ledger_entries ALTER COLUMN entry_type TYPE VARCHAR(32);
+ALTER TABLE earning_ledger_entries DROP CONSTRAINT IF EXISTS earning_ledger_entries_type_chk;
+ALTER TABLE earning_ledger_entries ADD CONSTRAINT earning_ledger_entries_type_chk CHECK (
+    entry_type IN (
+        'shift_earning', 'withdrawal', 'withdrawal_reversal', 'commission',
+        'cancellation_fee', 'cancellation_compensation', 'adjustment', 'promo_credit',
+        'fee_waiver'
+    )
+);
+ALTER TABLE earning_ledger_entries DROP CONSTRAINT IF EXISTS earning_ledger_entries_sign_chk;
+ALTER TABLE earning_ledger_entries ADD CONSTRAINT earning_ledger_entries_sign_chk CHECK (
+    (entry_type IN ('withdrawal', 'commission', 'cancellation_fee', 'adjustment')
+        AND amount_minor < 0)
+    OR (entry_type NOT IN ('withdrawal', 'commission', 'cancellation_fee', 'adjustment')
+        AND amount_minor > 0)
+);
+
 -- Idempotency: one earning per assignment, one debit / reversal per withdrawal.
 CREATE UNIQUE INDEX IF NOT EXISTS earning_ledger_entries_assignment_uid
     ON earning_ledger_entries (entry_type, assignment_id) WHERE assignment_id IS NOT NULL;

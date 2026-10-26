@@ -19,7 +19,17 @@ PayoutAccountType = Literal["upi", "paytm", "bank"]
 
 class LedgerEntry(BaseModel):
     id: UUID
-    entry_type: Literal["shift_earning", "withdrawal", "withdrawal_reversal"]
+    entry_type: Literal[
+        "shift_earning",
+        "withdrawal",
+        "withdrawal_reversal",
+        "commission",
+        "cancellation_fee",
+        "cancellation_compensation",
+        "adjustment",
+        "promo_credit",
+        "fee_waiver",
+    ]
     amount_minor: int
     currency: str
     assignment_id: UUID | None = None
@@ -34,9 +44,23 @@ class LedgerPage(BaseModel):
     offset: int
 
 
+class Reliability(BaseModel):
+    """Active strikes and what they lead to (cancellation policy thresholds)."""
+
+    strikes: float
+    strikes_to_limit: float = Field(description="Feed is limited from this many strikes.")
+    strikes_to_ban: float = Field(description="Account goes on hold from this many strikes.")
+    window_days: int = Field(description="Strikes expire after this many days.")
+    feed_limited_until: datetime | None = None
+    on_hold: bool
+
+
 class EarningsSummary(BaseModel):
     currency: str
-    available_minor: int = Field(description="Withdrawable now.")
+    available_minor: int = Field(description="Withdrawable now. Negative while fees are owed.")
+    dues_minor: int = Field(
+        default=0, description="Fees owed; recovered from the next earnings before payouts."
+    )
     pending_minor: int = Field(description="Approved work awaiting business payment.")
     in_flight_withdrawals_minor: int
     lifetime_minor: int
@@ -44,6 +68,7 @@ class EarningsSummary(BaseModel):
     completed_shifts: int
     min_withdrawal_minor: int
     recent: list[LedgerEntry]
+    reliability: Reliability | None = None
 
 
 class PayoutAccountCreate(BaseModel):

@@ -150,7 +150,37 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         soft_delete=True,
         default_sort="sort_order",
     ),
-    _resource("support_tickets", searchable=("subject", "message", "status", "topic")),
+    _resource(
+        "support_tickets",
+        searchable=("subject", "message", "status", "topic", "priority"),
+        default_sort="-created_at",
+    ),
+    # Marketplace rules: cancellations, strikes, promos, T&C, day-of-shift
+    _resource("cancellation_policies", default_sort="-version"),
+    _resource("cancellation_policy_tiers", searchable=("party", "event")),
+    _resource(
+        "cancellation_charges",
+        operations=READ_ONLY_OPS,
+        searchable=("party", "event"),
+        default_sort="-created_at",
+    ),
+    # Void strikes through /admin/bookings/{id}/overrides so bans are re-evaluated.
+    _resource("worker_strikes", operations=READ_ONLY_OPS, searchable=("reason",)),
+    _resource(
+        "promo_codes",
+        searchable=("code", "target_role", "source"),
+        read_only=frozenset({"used_count"}),
+        default_sort="-created_at",
+    ),
+    _resource("promo_redemptions", operations=READ_ONLY_OPS, searchable=("status",)),
+    _resource("terms_acceptances", operations=READ_ONLY_OPS, searchable=("audience",)),
+    _resource("shift_extensions", operations=READ_ONLY_OPS, searchable=("status",)),
+    _resource(
+        "admin_overrides",
+        operations=READ_ONLY_OPS,
+        searchable=("action", "reason"),
+        default_sort="-created_at",
+    ),
 )
 
 _BY_NAME: Final[dict[str, AdminResource]] = {r.name: r for r in ADMIN_RESOURCES}

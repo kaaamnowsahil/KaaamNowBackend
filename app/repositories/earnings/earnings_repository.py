@@ -22,6 +22,7 @@ from app.repositories.earnings.earnings_queries import (
     INSERT_PAYOUT_ACCOUNT,
     INSERT_SHIFT_EARNINGS_FOR_INVOICE,
     INSERT_WITHDRAWAL,
+    INSERT_WORKER_COMMISSIONS_FOR_INVOICE,
     LIST_IN_FLIGHT_WITHDRAWALS,
     LIST_LEDGER,
     LIST_PAYOUT_ACCOUNTS,
@@ -40,6 +41,13 @@ async def credit_invoice_earnings(
 ) -> list[asyncpg.Record]:
     """Idempotent: re-settling the same invoice inserts nothing."""
     return await conn.fetch(INSERT_SHIFT_EARNINGS_FOR_INVOICE, invoice_id)
+
+
+async def debit_invoice_commissions(
+    conn: asyncpg.Connection, invoice_id: UUID
+) -> list[asyncpg.Record]:
+    """Idempotent: one commission debit per assignment."""
+    return await conn.fetch(INSERT_WORKER_COMMISSIONS_FOR_INVOICE, invoice_id)
 
 
 async def insert_ledger_entry(

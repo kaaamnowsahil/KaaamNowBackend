@@ -10,11 +10,13 @@ from app.constants.application.application_common import SWAGGER_ROLE_PUBLIC, sw
 from app.constants.catalog.catalog_route_strings import (
     CATALOG_ROUTE_PREFIX,
     OPENAPI_TAG_CATALOG,
+    PATH_CANCELLATION_POLICY,
     PATH_FEE_POLICY,
     PATH_PAYMENT_METHODS,
     PATH_RATING_TAGS,
 )
 from app.schemas.catalog.catalog_schemas import (
+    CancellationPolicy,
     FeePolicy,
     PaymentMethod,
     RatingTags,
@@ -51,3 +53,12 @@ async def payment_methods() -> list[PaymentMethod]:
 )
 async def fee_policy() -> FeePolicy:
     return await catalog_service.get_fee_policy()
+
+
+@router.get(
+    PATH_CANCELLATION_POLICY,
+    response_model=CancellationPolicy,
+    summary=swagger_summary("Active cancellation fee tiers", SWAGGER_ROLE_PUBLIC),
+)
+async def cancellation_policy() -> CancellationPolicy:
+    return await catalog_service.get_cancellation_policy()

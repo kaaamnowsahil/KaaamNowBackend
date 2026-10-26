@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -41,6 +41,12 @@ class MeResponse(BaseModel):
     created_at: datetime
 
 
+class ActiveRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: SelfServiceRole
+
+
 class DeviceRegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -55,3 +61,21 @@ class DeviceResponse(BaseModel):
     app_version: str
     is_active: bool
     last_seen_at: datetime
+
+
+TermsAudience = Literal["worker", "business"]
+
+
+class TermsStatus(BaseModel):
+    """Posting needs ``business`` accepted, applying needs ``worker`` accepted."""
+
+    audience: TermsAudience
+    version: date | None = Field(description="Effective date of the current terms.")
+    accepted: bool
+    accepted_at: datetime | None = None
+
+
+class TermsAcceptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    audience: TermsAudience

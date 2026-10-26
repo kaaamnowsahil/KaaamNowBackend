@@ -18,6 +18,8 @@ PATH_BUSINESSES: Final[str] = "/businesses"
 PATH_BUSINESS: Final[str] = "/businesses/{business_profile_id}"
 PATH_BUSINESS_LOGO: Final[str] = "/businesses/{business_profile_id}/logo"
 PATH_DEVICES: Final[str] = "/devices"
+PATH_ACTIVE_ROLE: Final[str] = "/active-role"
+PATH_ROLES: Final[str] = "/roles"
 PATH_DEVICE: Final[str] = "/devices/{device_id}"
 PATH_DELETION_REQUESTS: Final[str] = "/deletion-requests"
 PATH_CURRENT_DELETION_REQUEST: Final[str] = "/deletion-requests/current"
@@ -39,7 +41,15 @@ MSG_PHOTO_TYPE: Final[str] = "Photo must be JPEG, PNG or WebP."
 MSG_PHOTO_TOO_LARGE: Final[str] = "Photo is larger than the allowed size."
 MSG_PHOTO_CONTENT: Final[str] = "File contents do not match a JPEG, PNG or WebP image."
 MSG_DEVICE_NOT_FOUND: Final[str] = "Device not found."
+MSG_ROLE_NOT_REGISTERED: Final[str] = "You have no {role} account. Create one first."
 MSG_DELETION_REQUEST_NOT_FOUND: Final[str] = "Account deletion request not found."
 MSG_DELETION_REQUEST_BLOCKED: Final[str] = (
     "Resolve active bookings, payments, support cases, and legal holds before approval."
 )
+
+PATH_TERMS: Final[str] = "/terms"
+PATH_TERMS_ACCEPT: Final[str] = "/terms/accept"
+TERMS_AUDIENCES: Final[tuple[str, ...]] = ("worker", "business")
+MSG_TERMS_REQUIRED: Final[str] = "Please accept the latest Terms & Conditions to continue."
+MSG_TERMS_MISSING: Final[str] = "Terms & Conditions are not published yet."
+USER_AGENT_MAX_LENGTH: Final[int] = 300

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import asyncpg
 import httpx
@@ -14,7 +15,7 @@ from app.db.pool import get_pool
 from app.services.billing.validation.webhook_signature import sign_payload
 from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
 from app.services.users.deletion_service import process_deletion_requests
-from tests.integration.conftest import NEAR_LAT, NEAR_LNG, login
+from tests.integration.conftest import NEAR_LAT, NEAR_LNG, login, pay_deposit
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -120,6 +121,14 @@ async def test_auth_refresh_rotation_and_reuse(app_client: httpx.AsyncClient) ->
     first = tokens["refresh_token"]
     rotated = await app_client.post(f"{API}/auth/token/refresh", json={"refresh_token": first})
     assert rotated.status_code == 200, rotated.text
+    racing = await app_client.post(f"{API}/auth/token/refresh", json={"refresh_token": first})
+    assert racing.status_code == 200, racing.text  # concurrent retry within the grace window
+    async with get_pool().acquire() as conn:
+        await conn.execute(
+            "UPDATE refresh_tokens SET revoked_at = revoked_at - interval '1 hour' "
+            "WHERE token_hash = encode(sha256($1::text::bytea), 'hex')",
+            first,
+        )
     reused = await app_client.post(f"{API}/auth/token/refresh", json={"refresh_token": first})
     assert reused.status_code == 401
     newer = rotated.json()["refresh_token"]
@@ -360,8 +369,8 @@ async def test_live_flow_end_to_end(app_client, db, make_business, make_worker) 
     assert receipt["invoice"]["status"] == "paid"
 
     summary = (await app_client.get(f"{API}/worker/earnings", headers=worker.headers)).json()
-    assert summary["available_minor"] == 45000
-    assert summary["lifetime_minor"] == 45000
+    assert summary["available_minor"] == 43200  # Rs 450 - 4% commission
+    assert summary["lifetime_minor"] == 43200
     assert summary["completed_shifts"] == 1
 
     rate = await app_client.post(
@@ -408,7 +417,9 @@ async def test_scheduled_flow(app_client, make_business, make_worker) -> None:  
     )
     assert resp.status_code == 201, resp.text
     shift = resp.json()
-    assert shift["status"] == "open"
+    assert shift["status"] == "awaiting_payment"
+    assert shift["estimate"]["total_minor"] == 57283  # Rs 540 + 4% + 2% gateway on Rs 561.60
+    shift = await pay_deposit(app_client, business, shift["id"])
 
     feed = (
         await app_client.get(
@@ -425,6 +436,7 @@ async def test_scheduled_flow(app_client, make_business, make_worker) -> None:  
         headers=worker.headers,
     )
     assert applied.status_code == 201, applied.text
+    assert applied.json()["status"] == "confirmed"
     application_id = applied.json()["id"]
 
     applicants = (
@@ -441,23 +453,8 @@ async def test_scheduled_flow(app_client, make_business, make_worker) -> None:  
         assert resp.status_code == 200, resp.text
         return [item["application_id"] for item in resp.json()["items"]]
 
-    applied_page = (
-        await app_client.get(f"{API}/business/applications", headers=business.headers)
-    ).json()
-    assert applied_page["items"][0]["shift"]["id"] == shift["id"]
-    assert applied_page["items"][0]["worker"]["full_name"] == "Meena"
-
-    selected = await app_client.post(
-        f"{API}/business/applications/{application_id}/select", headers=business.headers
-    )
-    assert selected.status_code == 200, selected.text
-    assert application_id in await business_applicant_ids("selected")
-    assert application_id not in await business_applicant_ids("applied")
-    confirmed = await app_client.post(
-        f"{API}/worker/applications/{application_id}/confirm", headers=worker.headers
-    )
-    assert confirmed.status_code == 200, confirmed.text
     assert application_id in await business_applicant_ids("confirmed")
+    assert application_id not in await business_applicant_ids("applied")
 
     detail = (
         await app_client.get(f"{API}/business/shifts/{shift['id']}", headers=business.headers)
@@ -498,63 +495,16 @@ async def test_scheduled_flow(app_client, make_business, make_worker) -> None:  
     assert again.status_code == 409, again.text
 
 
-async def test_worker_cannot_withdraw_inside_cutoff(  # type: ignore[no-untyped-def]
-    app_client, make_business, make_worker
-) -> None:
-    business = await make_business()
-    worker = await make_worker("Arjun", online=False)
-    starts = (datetime.now(UTC) + timedelta(hours=6)).replace(microsecond=0)
-    shift = await app_client.post(
-        f"{API}/business/shifts",
-        json={
-            "shift_type": "scheduled",
-            "category_slug": "house-help",
-            "job_title": "Evening help",
-            "workers_required": 1,
-            "hourly_rate_minor": 12000,
-            "starts_at": starts.isoformat(),
-            "duration_minutes": 240,
-            "break_minutes": 0,
-            "publish": True,
-        },
-        headers=business.headers,
-    )
-    assert shift.status_code == 201, shift.text
-    applied = await app_client.post(
-        f"{API}/worker/shifts/{shift.json()['id']}/applications", json={}, headers=worker.headers
-    )
-    assert applied.status_code == 201, applied.text
-    application_id = applied.json()["id"]
-    for path, headers in (
-        (f"business/applications/{application_id}/select", business.headers),
-        (f"worker/applications/{application_id}/confirm", worker.headers),
-    ):
-        resp = await app_client.post(f"{API}/{path}", headers=headers)
-        assert resp.status_code == 200, resp.text
-    my = (await app_client.get(f"{API}/worker/my-shifts", headers=worker.headers)).json()
-    assignment_id = my["items"][0]["assignment_id"]
-
-    blocked = await app_client.post(
-        f"{API}/worker/assignments/{assignment_id}/cancel",
-        json={"reason": "Something came up"},
-        headers=worker.headers,
-    )
-    assert blocked.status_code == 409, blocked.text
-    assert blocked.json()["code"] == "cancellation_cutoff"
-
-
-async def test_business_rejected_applicants(app_client, make_business, make_worker) -> None:  # type: ignore[no-untyped-def]
-    business = await make_business()
-    rejected_worker = await make_worker("Ravi", online=False)
-    declining_worker = await make_worker("Asha", online=False)
-    starts = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+async def _post_scheduled(  # type: ignore[no-untyped-def]
+    app_client, business, title: str, starts: datetime, workers_required: int = 1
+) -> str:
     resp = await app_client.post(
         f"{API}/business/shifts",
         json={
             "shift_type": "scheduled",
             "category_slug": "house-help",
-            "job_title": "Party helpers",
-            "workers_required": 2,
+            "job_title": title,
+            "workers_required": workers_required,
             "hourly_rate_minor": 12000,
             "starts_at": starts.isoformat(),
             "duration_minutes": 300,
@@ -564,123 +514,91 @@ async def test_business_rejected_applicants(app_client, make_business, make_work
         headers=business.headers,
     )
     assert resp.status_code == 201, resp.text
-    shift_id = resp.json()["id"]
+    await pay_deposit(app_client, business, resp.json()["id"])
+    return resp.json()["id"]
 
-    application_ids = {}
-    for name, worker in (("rejected", rejected_worker), ("declining", declining_worker)):
+
+async def test_shift_must_be_posted_24h_ahead(app_client, make_business) -> None:  # type: ignore[no-untyped-def]
+    business = await make_business()
+    starts = (datetime.now(UTC) + timedelta(hours=20)).replace(microsecond=0)
+    resp = await app_client.post(
+        f"{API}/business/shifts",
+        json={
+            "shift_type": "scheduled",
+            "category_slug": "house-help",
+            "job_title": "Too soon",
+            "workers_required": 1,
+            "hourly_rate_minor": 12000,
+            "starts_at": starts.isoformat(),
+            "duration_minutes": 300,
+            "publish": True,
+        },
+        headers=business.headers,
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["code"] == "shift_too_soon"
+
+
+async def test_apply_books_seats_until_full(app_client, make_business, make_worker) -> None:  # type: ignore[no-untyped-def]
+    business = await make_business()
+    first = await make_worker("Ravi", online=False)
+    second = await make_worker("Asha", online=False)
+    late = await make_worker("Gopal", online=False)
+    starts = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    shift_id = await _post_scheduled(app_client, business, "Party helpers", starts, 2)
+
+    for worker in (first, second):
         applied = await app_client.post(
             f"{API}/worker/shifts/{shift_id}/applications", json={}, headers=worker.headers
         )
         assert applied.status_code == 201, applied.text
-        application_ids[name] = applied.json()["id"]
+        assert applied.json()["status"] == "confirmed"
 
-    rejected = await app_client.post(
-        f"{API}/business/applications/{application_ids['rejected']}/reject",
-        headers=business.headers,
+    detail = (
+        await app_client.get(f"{API}/business/shifts/{shift_id}", headers=business.headers)
+    ).json()
+    assert detail["status"] == "filled"
+    blocked = await app_client.post(
+        f"{API}/worker/shifts/{shift_id}/applications", json={}, headers=late.headers
     )
-    assert rejected.status_code == 200, rejected.text
-    selected = await app_client.post(
-        f"{API}/business/applications/{application_ids['declining']}/select",
-        headers=business.headers,
-    )
-    assert selected.status_code == 200, selected.text
-    declined = await app_client.post(
-        f"{API}/worker/applications/{application_ids['declining']}/decline",
-        headers=declining_worker.headers,
-    )
-    assert declined.status_code == 200, declined.text
-
-    page = await app_client.get(
-        f"{API}/business/applications", params={"status": "rejected"}, headers=business.headers
-    )
-    assert page.status_code == 200, page.text
-    statuses = {item["application_id"]: item["status"] for item in page.json()["items"]}
-    assert statuses == {
-        application_ids["rejected"]: "rejected",
-        application_ids["declining"]: "declined",
-    }
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["code"] == "shift_not_recruiting"
 
 
-async def test_clashing_offer_stays_open_for_worker_to_decline(  # type: ignore[no-untyped-def]
-    app_client, make_business, make_worker
+async def test_apply_rejects_clash_and_closes_2h_before(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_business, make_worker
 ) -> None:
     business = await make_business()
     worker = await make_worker("Kiran", online=False)
     starts = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    booked = await _post_scheduled(app_client, business, "Booked shift", starts)
+    clashing = await _post_scheduled(app_client, business, "Clashing shift", starts)
 
-    async def create_shift(title: str) -> str:
-        resp = await app_client.post(
-            f"{API}/business/shifts",
-            json={
-                "shift_type": "scheduled",
-                "category_slug": "house-help",
-                "job_title": title,
-                "workers_required": 1,
-                "hourly_rate_minor": 12000,
-                "starts_at": starts.isoformat(),
-                "duration_minutes": 300,
-                "break_minutes": 30,
-                "publish": True,
-            },
-            headers=business.headers,
-        )
-        assert resp.status_code == 201, resp.text
-        return resp.json()["id"]
-
-    async def apply(shift_id: str) -> str:
-        resp = await app_client.post(
-            f"{API}/worker/shifts/{shift_id}/applications", json={}, headers=worker.headers
-        )
-        assert resp.status_code == 201, resp.text
-        return resp.json()["id"]
-
-    booked_app = await apply(await create_shift("Booked shift"))
-    clashing_app = await apply(await create_shift("Clashing shift"))
-    for application_id in (booked_app, clashing_app):
-        resp = await app_client.post(
-            f"{API}/business/applications/{application_id}/select", headers=business.headers
-        )
-        assert resp.status_code == 200, resp.text
-
-    confirmed = await app_client.post(
-        f"{API}/worker/applications/{booked_app}/confirm", headers=worker.headers
+    resp = await app_client.post(
+        f"{API}/worker/shifts/{booked}/applications", json={}, headers=worker.headers
     )
-    assert confirmed.status_code == 200, confirmed.text
+    assert resp.status_code == 201, resp.text
     clash = await app_client.post(
-        f"{API}/worker/applications/{clashing_app}/confirm", headers=worker.headers
+        f"{API}/worker/shifts/{clashing}/applications", json={}, headers=worker.headers
     )
     assert clash.status_code == 409, clash.text
     assert clash.json()["code"] == "overlapping_shift"
-    my_applications = (
-        await app_client.get(
-            f"{API}/worker/my-shifts", params={"tab": "applications"}, headers=worker.headers
-        )
-    ).json()
-    assert {i["application_id"]: i["application_status"] for i in my_applications["items"]} == {
-        clashing_app: "selected"
-    }
 
-    declined = await app_client.post(
-        f"{API}/worker/applications/{clashing_app}/decline", headers=worker.headers
+    closing = await _post_scheduled(
+        app_client, business, "Closing soon", starts + timedelta(days=1)
     )
-    assert declined.status_code == 200, declined.text
-    rejected_page = (
-        await app_client.get(
-            f"{API}/business/applications",
-            params={"status": "rejected"},
-            headers=business.headers,
-        )
-    ).json()
-    assert {item["application_id"]: item["status"] for item in rejected_page["items"]} == {
-        clashing_app: "declined"
-    }
-
-    late_app = await apply(await create_shift("Applied after booking"))
-    blocked = await app_client.post(
-        f"{API}/business/applications/{late_app}/select", headers=business.headers
+    soon = datetime.now(UTC) + timedelta(hours=1)
+    await db.execute(
+        "UPDATE shifts SET starts_at = $2, ends_at = $3 WHERE id = $1",
+        UUID(closing),
+        soon,
+        soon + timedelta(hours=4),
     )
-    assert blocked.status_code == 409, blocked.text
-    assert blocked.json()["code"] == "worker_unavailable"
+    closed = await app_client.post(
+        f"{API}/worker/shifts/{closing}/applications", json={}, headers=worker.headers
+    )
+    assert closed.status_code == 409, closed.text
+    assert closed.json()["code"] == "apply_closed"
 
 
 async def test_withdrawals_paid_failed_and_idempotent(  # type: ignore[no-untyped-def]
@@ -809,3 +727,205 @@ async def test_support_ticket(app_client: httpx.AsyncClient) -> None:
     )
     assert resp.status_code == 201, resp.text
     assert resp.json()["status"] == "open"
+
+
+async def test_deposit_covers_final_cost_and_refunds_excess(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_business, make_worker
+) -> None:
+    business = await make_business()
+    worker = await make_worker("Lata", online=False)
+    starts = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    shift_id = await _post_scheduled(app_client, business, "Deposit shift", starts)
+    shift = (
+        await app_client.get(f"{API}/business/shifts/{shift_id}", headers=business.headers)
+    ).json()
+    deposit = (
+        await app_client.get(
+            f"{API}/business/invoices/{shift['deposit_invoice_id']}", headers=business.headers
+        )
+    ).json()
+    assert deposit["invoice_kind"] == "deposit"
+    assert deposit["status"] == "paid"
+    assert deposit["total_minor"] == 57283
+
+    applied = await app_client.post(
+        f"{API}/worker/shifts/{shift_id}/applications", json={}, headers=worker.headers
+    )
+    assert applied.status_code == 201, applied.text
+    now = datetime.now(UTC)
+    await db.execute(
+        "UPDATE shifts SET starts_at = $2, ends_at = $3 WHERE id = $1",
+        UUID(shift_id),
+        now - timedelta(minutes=10),
+        now + timedelta(hours=4, minutes=50),
+    )
+    my = (await app_client.get(f"{API}/worker/my-shifts", headers=worker.headers)).json()
+    assignment_id = my["items"][0]["assignment_id"]
+    as_worker = (
+        await app_client.get(f"{API}/assignments/{assignment_id}", headers=worker.headers)
+    ).json()
+    assert as_worker["check_in_code"] is None
+    code = (
+        await app_client.get(f"{API}/assignments/{assignment_id}", headers=business.headers)
+    ).json()["check_in_code"]
+    assert code and code != shift["check_in_code"]
+    checked_in = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/check-in",
+        json={"latitude": 28.6316, "longitude": 77.2168, "check_in_code": code.lower()},
+        headers=worker.headers,
+    )
+    assert checked_in.status_code == 200, checked_in.text
+    early = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/check-out", json={}, headers=worker.headers
+    )
+    assert early.status_code == 409 and early.json()["code"] == "early_end_pin_required"
+    asked = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/early-end/request", headers=worker.headers
+    )
+    assert asked.status_code == 200, asked.text
+    assert asked.json()["early_end_pin"] is None
+    pin = (
+        await app_client.get(f"{API}/assignments/{assignment_id}", headers=business.headers)
+    ).json()["early_end_pin"]
+    assert pin
+    wrong = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/early-end",
+        json={"pin": "0000" if pin != "0000" else "1111"},
+        headers=worker.headers,
+    )
+    assert wrong.status_code == 400, wrong.text
+    resp = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/early-end",
+        json={"pin": pin},
+        headers=worker.headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ended_reason"] == "mutual"
+    resp = await app_client.post(
+        f"{API}/business/assignments/{assignment_id}/attendance/approve",
+        json={"approved_minutes": 180},
+        headers=business.headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    final = await app_client.post(
+        f"{API}/business/shifts/{shift_id}/invoice", headers=business.headers
+    )
+    assert final.status_code in (200, 201), final.text
+    invoice = final.json()
+    # 3 h x Rs 120 = Rs 360; + 4% = Rs 374.40; + 2% gateway = Rs 7.49
+    assert invoice["invoice_kind"] == "final"
+    assert invoice["total_minor"] == 36000 + 1440 + 749
+    assert invoice["status"] == "paid"
+    assert invoice["deposit_applied_minor"] == 57283
+    assert invoice["amount_due_minor"] == 0
+    assert invoice["refund_due_minor"] == 57283 - 38189
+    assert {line["line_kind"] for line in invoice["lines"]} == {
+        "worker_pay",
+        "platform_fee",
+        "gateway_fee",
+    }
+
+    summary = (await app_client.get(f"{API}/worker/earnings", headers=worker.headers)).json()
+    assert summary["available_minor"] == 36000 - 1440
+
+
+async def test_terms_must_be_accepted_before_posting_and_applying(  # type: ignore[no-untyped-def]
+    app_client, db
+) -> None:
+    from tests.integration.conftest import BUSINESS_LAT, BUSINESS_LNG, signup
+
+    await db.execute(
+        "INSERT INTO content_pages (slug, audience, title, body_markdown, effective_date) "
+        "VALUES ('terms', 'business', 'Terms', '## Terms', DATE '2026-10-01') "
+        "ON CONFLICT (slug, audience) DO NOTHING"
+    )
+
+    business = await signup(
+        app_client,
+        "business",
+        {
+            "business_name": "No Terms Yet",
+            "contact_name": "Owner",
+            "business_type_slug": "hospitality",
+            "category_slug": "hospitality",
+            "address_text": "Block A, Connaught Place",
+            "locality": "Connaught Place",
+            "latitude": BUSINESS_LAT,
+            "longitude": BUSINESS_LNG,
+        },
+        accept_terms=False,
+    )
+    status = (await app_client.get(f"{API}/me/terms", headers=business.headers)).json()
+    assert {s["audience"]: s["accepted"] for s in status}["business"] is False
+
+    starts = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    body = {
+        "shift_type": "scheduled",
+        "category_slug": "house-help",
+        "job_title": "Needs terms",
+        "workers_required": 1,
+        "hourly_rate_minor": 12000,
+        "starts_at": starts.isoformat(),
+        "duration_minutes": 300,
+        "publish": True,
+    }
+    blocked = await app_client.post(f"{API}/business/shifts", json=body, headers=business.headers)
+    assert blocked.status_code == 403, blocked.text
+    assert blocked.json()["code"] == "terms_required"
+
+    accepted = await app_client.post(
+        f"{API}/me/terms/accept", json={"audience": "business"}, headers=business.headers
+    )
+    assert accepted.json()["accepted"] is True
+    posted = await app_client.post(f"{API}/business/shifts", json=body, headers=business.headers)
+    assert posted.status_code == 201, posted.text
+
+
+async def test_switch_active_role_needs_registered_role(app_client, make_business) -> None:  # type: ignore[no-untyped-def]
+    business = await make_business("Role Switch Cafe")
+    missing = await app_client.put(
+        f"{API}/me/active-role", json={"role": "worker"}, headers=business.headers
+    )
+    assert missing.status_code == 404, missing.text
+    assert missing.json()["code"] == "role_not_registered"
+
+    switched = await app_client.put(
+        f"{API}/me/active-role", json={"role": "business"}, headers=business.headers
+    )
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["active_role"] == "business"
+
+
+async def test_business_adds_worker_role_and_switches(app_client, make_business) -> None:  # type: ignore[no-untyped-def]
+    business = await make_business("Two Roles Cafe")
+    worker_details = {
+        "full_name": "Ignored Name",
+        "age": 30,
+        "address_text": "Connaught Place, New Delhi",
+        "locality": "Connaught Place",
+        "latitude": NEAR_LAT,
+        "longitude": NEAR_LNG,
+        "work_type_slugs": ["hospitality"],
+    }
+    added = await app_client.post(
+        f"{API}/me/roles",
+        json={"role": "worker", "worker": worker_details},
+        headers=business.headers,
+    )
+    assert added.status_code == 201, added.text
+    body = added.json()
+    assert sorted(body["me"]["roles"]) == ["business", "worker"]
+    assert body["me"]["active_role"] == "worker"
+    assert body["me"]["full_name"] == "Owner"
+    headers = {"Authorization": f"Bearer {body['tokens']['access_token']}"}
+
+    again = await app_client.post(
+        f"{API}/me/roles", json={"role": "worker", "worker": worker_details}, headers=headers
+    )
+    assert again.status_code == 409
+    earnings = await app_client.get(f"{API}/worker/earnings", headers=headers)
+    assert earnings.status_code == 200, earnings.text
+
+    back = await app_client.put(f"{API}/me/active-role", json={"role": "business"}, headers=headers)
+    assert back.json()["active_role"] == "business"

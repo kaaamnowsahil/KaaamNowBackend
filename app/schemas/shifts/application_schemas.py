@@ -58,6 +58,7 @@ class ApplicantItem(BaseModel):
     distance_km: float | None = None
     cover_note: str
     worker: WorkerSummary
+    assignment_id: UUID | None = Field(default=None, description="Set once the seat is booked.")
 
 
 class ApplicantList(BaseModel):

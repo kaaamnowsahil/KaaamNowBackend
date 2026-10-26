@@ -69,7 +69,8 @@ SELECT
     (SELECT count(*)
      FROM shifts s
      JOIN business_profiles bp ON bp.id = s.business_profile_id
-     WHERE bp.user_id = $1 AND s.status IN ('searching', 'open', 'filled', 'in_progress')
+     WHERE bp.user_id = $1
+       AND s.status IN ('awaiting_payment', 'searching', 'open', 'filled', 'in_progress')
     ) AS active_shifts,
     (SELECT count(*)
      FROM shift_assignments sa

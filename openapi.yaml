@@ -603,6 +603,62 @@ paths:
                 $ref: '#/components/schemas/AccountDeletionRequestResponse'
       security:
       - HTTPBearer: []
+  /api/v1/me/roles:
+    post:
+      tags:
+      - me
+      summary: Add my other role (Business / Work or Worker); returns new tokens ·
+        Any signed-in user
+      operationId: add_role_api_v1_me_roles_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleAddRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpVerifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/active-role:
+    put:
+      tags:
+      - me
+      summary: Switch between my Business / Work and Worker roles · Any signed-in
+        user
+      operationId: switch_active_role_api_v1_me_active_role_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActiveRoleRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/me/devices:
     post:
       tags:
@@ -655,6 +711,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/me/terms:
+    get:
+      tags:
+      - me
+      summary: Terms & Conditions acceptance status · Any signed-in user
+      operationId: get_terms_status_api_v1_me_terms_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/TermsStatus'
+                type: array
+                title: Response Get Terms Status Api V1 Me Terms Get
+      security:
+      - HTTPBearer: []
+  /api/v1/me/terms/accept:
+    post:
+      tags:
+      - me
+      summary: Accept the current Terms & Conditions · Any signed-in user
+      operationId: accept_terms_api_v1_me_terms_accept_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TermsAcceptRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TermsStatus'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/work-categories:
     get:
       tags:
@@ -1631,6 +1732,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/bookings/{assignment_id}/ledger:
+    get:
+      tags:
+      - admin - support
+      summary: Booking ledger · Admin
+      operationId: booking_ledger_api_v1_admin_bookings__assignment_id__ledger_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingLedger'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/bookings/{assignment_id}/overrides:
+    post:
+      tags:
+      - admin - support
+      summary: Override booking fee / strike / voucher · Admin
+      operationId: apply_override_api_v1_admin_bookings__assignment_id__overrides_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/admin/resources:
     get:
       tags:
@@ -2154,6 +2319,7 @@ paths:
             items:
               enum:
               - draft
+              - awaiting_payment
               - searching
               - open
               - filled
@@ -2366,6 +2532,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ShiftResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/shifts/{shift_id}/cancel-preview:
+    get:
+      tags:
+      - business / work shifts
+      summary: Cancellation fee preview for a shift · Business / Work
+      operationId: cancel_preview_api_v1_business_shifts__shift_id__cancel_preview_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: shift_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Shift Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftCancelPreview'
         '422':
           description: Validation Error
           content:
@@ -2601,6 +2796,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/cancel-preview:
+    get:
+      tags:
+      - business / work shifts
+      summary: Fee preview for removing a booked worker · Business / Work
+      operationId: cancel_assignment_preview_api_v1_business_assignments__assignment_id__cancel_preview_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancellationQuote'
         '422':
           description: Validation Error
           content:
@@ -3084,6 +3308,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/assignments/{assignment_id}/cancel-preview:
+    get:
+      tags:
+      - worker shifts
+      summary: Cancellation fee preview for my booking · Worker
+      operationId: cancel_assignment_preview_api_v1_worker_assignments__assignment_id__cancel_preview_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancellationQuote'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/worker/assignments/{assignment_id}/cancel:
     post:
       tags:
@@ -3424,6 +3677,142 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/assignments/{assignment_id}/early-end/request:
+    post:
+      tags:
+      - attendance
+      summary: Ask business for early-end PIN · Worker
+      operationId: worker_request_early_end_api_v1_worker_assignments__assignment_id__early_end_request_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/assignments/{assignment_id}/early-end:
+    post:
+      tags:
+      - attendance
+      summary: End early with PIN · Worker
+      operationId: worker_end_early_api_v1_worker_assignments__assignment_id__early_end_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EarlyEndRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/assignments/{assignment_id}/extensions/{extension_id}/accept:
+    post:
+      tags:
+      - attendance
+      summary: Accept extension · Worker
+      operationId: accept_extension_api_v1_worker_assignments__assignment_id__extensions__extension_id__accept_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      - name: extension_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Extension Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/assignments/{assignment_id}/extensions/{extension_id}/decline:
+    post:
+      tags:
+      - attendance
+      summary: Decline extension · Worker
+      operationId: decline_extension_api_v1_worker_assignments__assignment_id__extensions__extension_id__decline_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      - name: extension_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Extension Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/business/assignments/{assignment_id}/attendance/approve:
     post:
       tags:
@@ -3482,6 +3871,169 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/end:
+    post:
+      tags:
+      - attendance
+      summary: End shift · Business / Work
+      operationId: business_end_api_v1_business_assignments__assignment_id__end_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/early-end/request:
+    post:
+      tags:
+      - attendance
+      summary: Ask worker for early-end PIN · Business / Work
+      operationId: business_request_early_end_api_v1_business_assignments__assignment_id__early_end_request_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/early-end:
+    post:
+      tags:
+      - attendance
+      summary: End early with PIN · Business / Work
+      operationId: business_end_early_api_v1_business_assignments__assignment_id__early_end_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EarlyEndRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/stop:
+    post:
+      tags:
+      - attendance
+      summary: Stop work · Business / Work
+      operationId: stop_work_api_v1_business_assignments__assignment_id__stop_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StopWorkRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/extensions:
+    post:
+      tags:
+      - attendance
+      summary: Request extension · Business / Work
+      operationId: request_extension_api_v1_business_assignments__assignment_id__extensions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionView'
         '422':
           description: Validation Error
           content:
@@ -3726,6 +4278,41 @@ paths:
           type: string
           format: uuid
           title: Payment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/payments/{payment_id}/razorpay-verify:
+    post:
+      tags:
+      - billing
+      summary: Verify Razorpay Checkout result · Business / Work
+      operationId: razorpay_verify_api_v1_business_payments__payment_id__razorpay_verify_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RazorpayCheckoutResult'
       responses:
         '200':
           description: Successful Response
@@ -4171,6 +4758,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FeePolicy'
+  /api/v1/catalog/cancellation-policy:
+    get:
+      tags:
+      - catalog
+      summary: Active cancellation fee tiers · Public
+      operationId: cancellation_policy_api_v1_catalog_cancellation_policy_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancellationPolicy'
   /api/v1/content/terms:
     get:
       tags:
@@ -4265,6 +4865,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SupportTicketResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/support/emergency:
+    post:
+      tags:
+      - support
+      summary: Emergency on a booking · Shift participant
+      operationId: emergency_api_v1_support_emergency_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyTicketCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/business/promo-codes/validate:
+    post:
+      tags:
+      - promo codes
+      summary: Check a promo code · Business / Work
+      operationId: validate_business_code_api_v1_business_promo_codes_validate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoCodeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/business/promo-codes:
+    get:
+      tags:
+      - promo codes
+      summary: My free-fees vouchers · Business / Work
+      operationId: list_vouchers_api_v1_business_promo_codes_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoList'
+      security:
+      - HTTPBearer: []
+  /api/v1/worker/promo-codes:
+    get:
+      tags:
+      - promo codes
+      summary: Promo waiting for next payout · Worker
+      operationId: worker_status_api_v1_worker_promo_codes_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPromoStatus'
+      security:
+      - HTTPBearer: []
+  /api/v1/worker/promo-codes/redeem:
+    post:
+      tags:
+      - promo codes
+      summary: Apply promo to next payout · Worker
+      operationId: redeem_api_v1_worker_promo_codes_redeem_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoCodeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPromoStatus'
         '422':
           description: Validation Error
           content:
@@ -4442,6 +5153,19 @@ components:
       title: AccountProfilePatch
       description: Profile fields for an account without a Business / Work or Worker
         profile.
+    ActiveRoleRequest:
+      properties:
+        role:
+          type: string
+          enum:
+          - business
+          - worker
+          title: Role
+      additionalProperties: false
+      type: object
+      required:
+      - role
+      title: ActiveRoleRequest
     AdminAccountDeletionRequest:
       properties:
         id:
@@ -5065,6 +5789,13 @@ components:
           title: Cover Note
         worker:
           $ref: '#/components/schemas/WorkerSummary'
+        assignment_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
+          description: Set once the seat is booked.
       type: object
       required:
       - application_id
@@ -5252,6 +5983,10 @@ components:
         shift_status:
           type: string
           title: Shift Status
+        charge:
+          anyOf:
+          - $ref: '#/components/schemas/CancellationQuote'
+          - type: 'null'
       type: object
       required:
       - assignment_id
@@ -5339,6 +6074,48 @@ components:
           type: string
           format: date-time
           title: Check In Opens At
+        check_in_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Check In Code
+          description: 'Business only: the worker enters it to check in.'
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+          description: Booked end plus accepted extensions.
+        extended_minutes:
+          type: integer
+          title: Extended Minutes
+          default: 0
+        can_end:
+          type: boolean
+          title: Can End
+          description: 'End time reached: either side can end without a PIN.'
+        ended_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ended Reason
+        early_end_requested_by:
+          anyOf:
+          - type: string
+            enum:
+            - worker
+            - business
+          - type: 'null'
+          title: Early End Requested By
+        early_end_pin:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Early End Pin
+          description: Shown only to the side that did NOT ask to end early.
+        pending_extension:
+          anyOf:
+          - $ref: '#/components/schemas/ExtensionView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -5351,6 +6128,8 @@ components:
       - worker
       - business
       - check_in_opens_at
+      - ends_at
+      - can_end
       title: AssignmentDetail
     AssignmentRatings:
       properties:
@@ -5505,6 +6284,79 @@ components:
       required:
       - file
       title: Body_upload_profile_image_api_v1_me_profile_image_post
+    BookingLedger:
+      properties:
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        shift_id:
+          type: string
+          format: uuid
+          title: Shift Id
+        job_title:
+          type: string
+          title: Job Title
+        status:
+          type: string
+          title: Status
+        worker_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Worker Name
+        business_name:
+          type: string
+          title: Business Name
+        currency:
+          type: string
+          title: Currency
+        invoices:
+          items:
+            $ref: '#/components/schemas/LedgerLine'
+          type: array
+          title: Invoices
+        charges:
+          items:
+            $ref: '#/components/schemas/LedgerLine'
+          type: array
+          title: Charges
+        worker_entries:
+          items:
+            $ref: '#/components/schemas/LedgerLine'
+          type: array
+          title: Worker Entries
+        strikes:
+          items:
+            $ref: '#/components/schemas/LedgerLine'
+          type: array
+          title: Strikes
+        vouchers:
+          items:
+            $ref: '#/components/schemas/LedgerLine'
+          type: array
+          title: Vouchers
+        overrides:
+          items:
+            $ref: '#/components/schemas/OverrideView'
+          type: array
+          title: Overrides
+      type: object
+      required:
+      - assignment_id
+      - shift_id
+      - job_title
+      - status
+      - worker_name
+      - business_name
+      - currency
+      - invoices
+      - charges
+      - worker_entries
+      - strikes
+      - vouchers
+      - overrides
+      title: BookingLedger
     BusinessApplicantItem:
       properties:
         application_id:
@@ -5548,6 +6400,13 @@ components:
           title: Cover Note
         worker:
           $ref: '#/components/schemas/WorkerSummary'
+        assignment_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
+          description: Set once the seat is booked.
         shift:
           $ref: '#/components/schemas/ApplicantShiftSummary'
       type: object
@@ -6057,6 +6916,7 @@ components:
           type: string
           enum:
           - draft
+          - awaiting_payment
           - searching
           - open
           - filled
@@ -6113,6 +6973,17 @@ components:
           - type: string
           - type: 'null'
           title: Invoice Status
+        deposit_invoice_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Deposit Invoice Id
+        deposit_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deposit Status
         group:
           type: string
           enum:
@@ -6148,6 +7019,165 @@ components:
       - address_text
       - group
       title: BusinessShiftItem
+    CancellationPolicy:
+      properties:
+        version:
+          type: integer
+          title: Version
+        strike_window_days:
+          type: integer
+          title: Strike Window Days
+        strikes_to_limit:
+          type: number
+          title: Strikes To Limit
+        limit_days:
+          type: integer
+          title: Limit Days
+        strikes_to_ban:
+          type: number
+          title: Strikes To Ban
+        voucher_valid_days:
+          type: integer
+          title: Voucher Valid Days
+        unfilled_cutoff_hours:
+          type: integer
+          title: Unfilled Cutoff Hours
+          description: Seats still empty this many hours before start are refunded
+            with a voucher.
+        tiers:
+          items:
+            $ref: '#/components/schemas/CancellationTier'
+          type: array
+          title: Tiers
+      type: object
+      required:
+      - version
+      - strike_window_days
+      - strikes_to_limit
+      - limit_days
+      - strikes_to_ban
+      - voucher_valid_days
+      - unfilled_cutoff_hours
+      - tiers
+      title: CancellationPolicy
+    CancellationQuote:
+      properties:
+        party:
+          type: string
+          enum:
+          - worker
+          - business
+          - system
+          title: Party
+        event:
+          type: string
+          enum:
+          - cancel
+          - no_show
+          - walk_off
+          - unfilled
+          title: Event
+        hours_before:
+          type: number
+          title: Hours Before
+        booking_minor:
+          type: integer
+          title: Booking Minor
+        fee_minor:
+          type: integer
+          title: Fee Minor
+          description: Charged to the side that cancelled.
+        worker_compensation_minor:
+          type: integer
+          title: Worker Compensation Minor
+          description: Paid to the worker (business cancel).
+        business_refund_minor:
+          type: integer
+          title: Business Refund Minor
+        strike_weight:
+          type: number
+          title: Strike Weight
+        business_voucher:
+          type: boolean
+          title: Business Voucher
+          description: Business gets a free-fees voucher.
+        seat_reopens:
+          type: boolean
+          title: Seat Reopens
+        currency:
+          type: string
+          title: Currency
+      type: object
+      required:
+      - party
+      - event
+      - hours_before
+      - booking_minor
+      - fee_minor
+      - worker_compensation_minor
+      - business_refund_minor
+      - strike_weight
+      - business_voucher
+      - seat_reopens
+      - currency
+      title: CancellationQuote
+      description: Fee preview for one seat (also returned after the cancel). Amounts
+        in paise.
+    CancellationTier:
+      properties:
+        party:
+          type: string
+          title: Party
+          description: '`business` or `worker`.'
+        event:
+          type: string
+          title: Event
+          description: '`cancel`, `no_show` or `walk_off`.'
+        hours_from:
+          type: number
+          title: Hours From
+          description: Tier applies when at least this many hours remain.
+        hours_to:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Hours To
+          description: Upper bound in hours; null means no limit.
+        flat_fee_minor:
+          type: integer
+          title: Flat Fee Minor
+        booking_pct:
+          type: number
+          title: Booking Pct
+          description: '% of the booking amount charged.'
+        fee_cap_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Fee Cap Minor
+        worker_share_pct:
+          type: number
+          title: Worker Share Pct
+          description: '% of the booking amount paid to the worker.'
+        strike_weight:
+          type: number
+          title: Strike Weight
+        business_voucher:
+          type: boolean
+          title: Business Voucher
+      type: object
+      required:
+      - party
+      - event
+      - hours_from
+      - hours_to
+      - flat_fee_minor
+      - booking_pct
+      - fee_cap_minor
+      - worker_share_pct
+      - strike_weight
+      - business_voucher
+      title: CancellationTier
     CheckInRequest:
       properties:
         latitude:
@@ -6164,8 +7194,9 @@ components:
           type: string
           maxLength: 8
           minLength: 4
-          pattern: ^\d+$
+          pattern: ^[A-Za-z0-9]+$
           title: Check In Code
+          description: 4-character code shown in the business app for this booking.
       additionalProperties: false
       type: object
       required:
@@ -6370,6 +7401,7 @@ components:
           type: string
           enum:
           - draft
+          - awaiting_payment
           - searching
           - open
           - filled
@@ -6426,6 +7458,17 @@ components:
           - type: string
           - type: 'null'
           title: Invoice Status
+        deposit_invoice_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Deposit Invoice Id
+        deposit_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deposit Status
         dashboard_group:
           type: string
           enum:
@@ -6576,6 +7619,26 @@ components:
       - is_active
       - last_seen_at
       title: DeviceResponse
+    EarlyEndRequest:
+      properties:
+        pin:
+          type: string
+          maxLength: 8
+          minLength: 4
+          pattern: ^\d+$
+          title: Pin
+        note:
+          type: string
+          maxLength: 500
+          title: Note
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - pin
+      title: EarlyEndRequest
+      description: The side ending early enters the PIN shown in the other side's
+        app.
     EarningsSummary:
       properties:
         currency:
@@ -6584,7 +7647,12 @@ components:
         available_minor:
           type: integer
           title: Available Minor
-          description: Withdrawable now.
+          description: Withdrawable now. Negative while fees are owed.
+        dues_minor:
+          type: integer
+          title: Dues Minor
+          description: Fees owed; recovered from the next earnings before payouts.
+          default: 0
         pending_minor:
           type: integer
           title: Pending Minor
@@ -6609,6 +7677,10 @@ components:
             $ref: '#/components/schemas/LedgerEntry'
           type: array
           title: Recent
+        reliability:
+          anyOf:
+          - $ref: '#/components/schemas/Reliability'
+          - type: 'null'
       type: object
       required:
       - currency
@@ -6621,6 +7693,72 @@ components:
       - min_withdrawal_minor
       - recent
       title: EarningsSummary
+    EmergencyTicketCreate:
+      properties:
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        message:
+          type: string
+          maxLength: 4000
+          title: Message
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - assignment_id
+      title: EmergencyTicketCreate
+      description: 'Emergency button on a booking: urgent ticket with the shift and
+        both parties.'
+    ExtensionRequest:
+      properties:
+        extra_minutes:
+          type: integer
+          maximum: 240.0
+          minimum: 15.0
+          title: Extra Minutes
+          description: Paid at the overtime rate (130%).
+      additionalProperties: false
+      type: object
+      required:
+      - extra_minutes
+      title: ExtensionRequest
+    ExtensionView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        extra_minutes:
+          type: integer
+          title: Extra Minutes
+        status:
+          type: string
+          enum:
+          - requested
+          - accepted
+          - declined
+          - cancelled
+          - expired
+          title: Status
+        requested_at:
+          type: string
+          format: date-time
+          title: Requested At
+        responded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Responded At
+      type: object
+      required:
+      - id
+      - extra_minutes
+      - status
+      - requested_at
+      title: ExtensionView
     FaqItem:
       properties:
         id:
@@ -6674,10 +7812,21 @@ components:
         percentage:
           type: number
           title: Percentage
+          description: Business commission %.
+        worker_percentage:
+          type: number
+          title: Worker Percentage
+          description: Worker commission % (deducted from pay).
+        gateway_percentage:
+          type: number
+          title: Gateway Percentage
+          description: Gateway charge % paid by the business.
       type: object
       required:
       - version
       - percentage
+      - worker_percentage
+      - gateway_percentage
       title: FeePolicy
     FeedPage:
       properties:
@@ -6740,6 +7889,7 @@ components:
           enum:
           - worker_pay
           - platform_fee
+          - gateway_fee
           title: Line Kind
         description:
           type: string
@@ -6782,6 +7932,14 @@ components:
         reference:
           type: string
           title: Reference
+        invoice_kind:
+          type: string
+          enum:
+          - deposit
+          - final
+          title: Invoice Kind
+          description: 'deposit: paid at posting. final: after the shift; the deposit
+            is applied.'
         status:
           type: string
           enum:
@@ -6805,12 +7963,43 @@ components:
         platform_fee_minor:
           type: integer
           title: Platform Fee Minor
+          description: Business service fee (commission).
+        gateway_fee_minor:
+          type: integer
+          title: Gateway Fee Minor
         total_minor:
           type: integer
           title: Total Minor
         fee_percentage:
           type: number
           title: Fee Percentage
+        gateway_fee_percentage:
+          type: number
+          title: Gateway Fee Percentage
+        worker_fee_percentage:
+          type: number
+          title: Worker Fee Percentage
+        deposit_applied_minor:
+          type: integer
+          title: Deposit Applied Minor
+        amount_due_minor:
+          type: integer
+          title: Amount Due Minor
+          description: What a payment on this invoice charges now.
+        refund_due_minor:
+          type: integer
+          title: Refund Due Minor
+          description: Deposit excess owed back to the business.
+        promo_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Promo Code
+        promo_discount_minor:
+          type: integer
+          title: Promo Discount Minor
+          description: Already taken off the service fee / gateway charge above.
+          default: 0
         lines:
           items:
             $ref: '#/components/schemas/InvoiceLine'
@@ -6831,14 +8020,21 @@ components:
       - id
       - shift_id
       - reference
+      - invoice_kind
       - status
       - currency
       - job_title
       - shift_starts_at
       - worker_subtotal_minor
       - platform_fee_minor
+      - gateway_fee_minor
       - total_minor
       - fee_percentage
+      - gateway_fee_percentage
+      - worker_fee_percentage
+      - deposit_applied_minor
+      - amount_due_minor
+      - refund_due_minor
       - lines
       - issued_at
       title: InvoiceResponse
@@ -6854,6 +8050,12 @@ components:
           - shift_earning
           - withdrawal
           - withdrawal_reversal
+          - commission
+          - cancellation_fee
+          - cancellation_compensation
+          - adjustment
+          - promo_credit
+          - fee_waiver
           title: Entry Type
         amount_minor:
           type: integer
@@ -6889,6 +8091,29 @@ components:
       - description
       - created_at
       title: LedgerEntry
+    LedgerLine:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        amount_minor:
+          type: integer
+          title: Amount Minor
+        description:
+          type: string
+          title: Description
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - kind
+      - amount_minor
+      - description
+      - created_at
+      title: LedgerLine
+      description: One money / reliability event on the booking, newest first.
     LedgerPage:
       properties:
         items:
@@ -6971,6 +8196,7 @@ components:
           type: string
           enum:
           - draft
+          - awaiting_payment
           - searching
           - open
           - filled
@@ -7491,11 +8717,22 @@ components:
         resend_after_seconds:
           type: integer
           title: Resend After Seconds
+        delivery_channel:
+          type: string
+          title: Delivery Channel
+          description: 'How the code was sent: sms, whatsapp, voice or console (development).'
+        sender_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sender Name
+          description: Sender shown on the message, e.g. the SMS header.
       type: object
       required:
       - phone
       - expires_in_seconds
       - resend_after_seconds
+      - delivery_channel
       title: OtpSendResponse
     OtpVerifyRequest:
       properties:
@@ -7558,6 +8795,82 @@ components:
       - needs_role_selection
       - me
       title: OtpVerifyResponse
+    OverrideRequest:
+      properties:
+        action:
+          type: string
+          enum:
+          - waive_worker_fee
+          - void_strike
+          - unban_worker
+          - revoke_voucher
+          - refund_business
+          title: Action
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 5
+          title: Reason
+        amount_minor:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Amount Minor
+          description: 'Only for refund_business: extra refund to the business.'
+        support_ticket_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Support Ticket Id
+      additionalProperties: false
+      type: object
+      required:
+      - action
+      - reason
+      title: OverrideRequest
+    OverrideView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        action:
+          type: string
+          title: Action
+        amount_minor:
+          type: integer
+          title: Amount Minor
+        reason:
+          type: string
+          title: Reason
+        admin_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Admin User Id
+        support_ticket_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Support Ticket Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - action
+      - amount_minor
+      - reason
+      - admin_user_id
+      - support_ticket_id
+      - created_at
+      title: OverrideView
     PasswordLoginRequest:
       properties:
         phone:
@@ -7807,6 +9120,16 @@ components:
           - type: string
           - type: 'null'
           title: Checkout Url
+        provider_order_id:
+          type: string
+          title: Provider Order Id
+          description: 'Razorpay: pass as ``order_id`` to Checkout.'
+        checkout_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Checkout Key
+          description: 'Razorpay key id: pass as ``key`` to Checkout.'
         expires_at:
           type: string
           format: date-time
@@ -7836,6 +9159,7 @@ components:
       - amount_minor
       - currency
       - reference
+      - provider_order_id
       - expires_at
       - created_at
       title: PaymentResponse
@@ -8028,6 +9352,82 @@ components:
       - registered
       - roles
       title: PhoneCheckResponse
+    PromoCodeRequest:
+      properties:
+        code:
+          type: string
+          maxLength: 32
+          minLength: 2
+          title: Code
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      title: PromoCodeRequest
+    PromoList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PromoView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: PromoList
+    PromoView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        discount_type:
+          type: string
+          enum:
+          - flat
+          - percent
+          - waive_fees
+          title: Discount Type
+        discount_value:
+          type: number
+          title: Discount Value
+          description: ₹ for flat, % for percent, 0 for waive_fees.
+        applies_to:
+          type: string
+          enum:
+          - commission
+          - gateway
+          - all_fees
+          title: Applies To
+        max_discount_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Discount Minor
+        valid_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Valid Until
+        is_voucher:
+          type: boolean
+          title: Is Voucher
+          description: Free-fees voucher issued to this business.
+      type: object
+      required:
+      - id
+      - code
+      - discount_type
+      - discount_value
+      - applies_to
+      - max_discount_minor
+      - valid_until
+      - is_voucher
+      title: PromoView
     RatingCreate:
       properties:
         stars:
@@ -8094,6 +9494,28 @@ components:
       - review
       - created_at
       title: RatingView
+    RazorpayCheckoutResult:
+      properties:
+        razorpay_payment_id:
+          type: string
+          maxLength: 64
+          title: Razorpay Payment Id
+        razorpay_order_id:
+          type: string
+          maxLength: 64
+          title: Razorpay Order Id
+        razorpay_signature:
+          type: string
+          maxLength: 128
+          title: Razorpay Signature
+      additionalProperties: false
+      type: object
+      required:
+      - razorpay_payment_id
+      - razorpay_order_id
+      - razorpay_signature
+      title: RazorpayCheckoutResult
+      description: Fields Razorpay Checkout passes to its ``handler`` on success.
     ReceiptResponse:
       properties:
         payment:
@@ -8121,6 +9543,41 @@ components:
       required:
       - refresh_token
       title: RefreshRequest
+    Reliability:
+      properties:
+        strikes:
+          type: number
+          title: Strikes
+        strikes_to_limit:
+          type: number
+          title: Strikes To Limit
+          description: Feed is limited from this many strikes.
+        strikes_to_ban:
+          type: number
+          title: Strikes To Ban
+          description: Account goes on hold from this many strikes.
+        window_days:
+          type: integer
+          title: Window Days
+          description: Strikes expire after this many days.
+        feed_limited_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Feed Limited Until
+        on_hold:
+          type: boolean
+          title: On Hold
+      type: object
+      required:
+      - strikes
+      - strikes_to_limit
+      - strikes_to_ban
+      - window_days
+      - on_hold
+      title: Reliability
+      description: Active strikes and what they lead to (cancellation policy thresholds).
     ReviewSnippet:
       properties:
         stars:
@@ -8149,6 +9606,28 @@ components:
       - rater_name
       - created_at
       title: ReviewSnippet
+    RoleAddRequest:
+      properties:
+        role:
+          type: string
+          enum:
+          - business
+          - worker
+          title: Role
+        worker:
+          anyOf:
+          - $ref: '#/components/schemas/SignupWorkerDetails'
+          - type: 'null'
+        business:
+          anyOf:
+          - $ref: '#/components/schemas/SignupBusinessDetails'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - role
+      title: RoleAddRequest
+      description: A signed-in user adds their other role (the phone is already verified).
     Roster:
       properties:
         shift_id:
@@ -8205,6 +9684,21 @@ components:
           anyOf:
           - $ref: '#/components/schemas/AttendanceSummary'
           - type: 'null'
+        check_in_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Check In Code
+          description: Tell this worker on arrival.
+        extended_minutes:
+          type: integer
+          title: Extended Minutes
+          default: 0
+        ended_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ended Reason
       type: object
       required:
       - assignment_id
@@ -8229,6 +9723,13 @@ components:
           title: Publish
           description: Post all shifts; false saves drafts.
           default: false
+        promo_code:
+          anyOf:
+          - type: string
+            maxLength: 32
+          - type: 'null'
+          title: Promo Code
+          description: Applied to every date; each one uses the code.
         shifts:
           items:
             $ref: '#/components/schemas/ShiftBulkItem'
@@ -8388,6 +9889,44 @@ components:
       required:
       - items
       title: ShiftBulkResponse
+    ShiftCancelPreview:
+      properties:
+        shift_id:
+          type: string
+          format: uuid
+          title: Shift Id
+        booked_workers:
+          type: integer
+          title: Booked Workers
+        fee_minor:
+          type: integer
+          title: Fee Minor
+        worker_compensation_minor:
+          type: integer
+          title: Worker Compensation Minor
+        business_refund_minor:
+          type: integer
+          title: Business Refund Minor
+          description: Back to the business from the deposit.
+        currency:
+          type: string
+          title: Currency
+        seats:
+          items:
+            $ref: '#/components/schemas/CancellationQuote'
+          type: array
+          title: Seats
+      type: object
+      required:
+      - shift_id
+      - booked_workers
+      - fee_minor
+      - worker_compensation_minor
+      - business_refund_minor
+      - currency
+      - seats
+      title: ShiftCancelPreview
+      description: What cancelling the whole shift now would cost. Amounts in paise.
     ShiftCancelRequest:
       properties:
         reason:
@@ -8418,12 +9957,42 @@ components:
         fee_percentage:
           type: number
           title: Fee Percentage
+          description: Business commission %.
         platform_fee_minor:
           type: integer
           title: Platform Fee Minor
+          description: Business commission amount.
+        gateway_fee_percentage:
+          type: number
+          title: Gateway Fee Percentage
+        gateway_fee_minor:
+          type: integer
+          title: Gateway Fee Minor
         total_minor:
           type: integer
           title: Total Minor
+          description: 'What the business pays: pay + commission + gateway − promo
+            discount.'
+        promo_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Promo Code
+        promo_discount_minor:
+          type: integer
+          title: Promo Discount Minor
+          description: Already taken off platform_fee_minor / gateway_fee_minor.
+          default: 0
+        worker_fee_percentage:
+          type: number
+          title: Worker Fee Percentage
+        worker_fee_per_worker_minor:
+          type: integer
+          title: Worker Fee Per Worker Minor
+        worker_net_per_worker_minor:
+          type: integer
+          title: Worker Net Per Worker Minor
+          description: Worker take-home after commission.
       type: object
       required:
       - currency
@@ -8433,7 +10002,12 @@ components:
       - worker_subtotal_minor
       - fee_percentage
       - platform_fee_minor
+      - gateway_fee_percentage
+      - gateway_fee_minor
       - total_minor
+      - worker_fee_percentage
+      - worker_fee_per_worker_minor
+      - worker_net_per_worker_minor
       title: ShiftCostEstimate
       description: Figma "Estimated cost" card.
     ShiftCreate:
@@ -8564,6 +10138,13 @@ components:
           title: Publish
           description: Create and post in one step.
           default: false
+        promo_code:
+          anyOf:
+          - type: string
+            maxLength: 32
+          - type: 'null'
+          title: Promo Code
+          description: Promo code or free-fees voucher.
       additionalProperties: false
       type: object
       required:
@@ -8610,6 +10191,12 @@ components:
           minimum: 0.0
           title: Break Minutes
           default: 0
+        promo_code:
+          anyOf:
+          - type: string
+            maxLength: 32
+          - type: 'null'
+          title: Promo Code
       additionalProperties: false
       type: object
       required:
@@ -8961,6 +10548,7 @@ components:
           type: string
           enum:
           - draft
+          - awaiting_payment
           - searching
           - open
           - filled
@@ -9051,6 +10639,18 @@ components:
             format: uuid
           - type: 'null'
           title: Invoice Id
+        deposit_invoice_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Deposit Invoice Id
+          description: Pay this invoice to open an awaiting_payment shift.
+        deposit_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deposit Status
         published_at:
           anyOf:
           - type: string
@@ -9328,6 +10928,28 @@ components:
       - work_type_slugs
       title: SignupWorkerDetails
       description: App worker signup step 2 ("Tell us about you").
+    StopWorkRequest:
+      properties:
+        reason:
+          type: string
+          enum:
+          - business_stopped
+          - worker_left
+          title: Reason
+        note:
+          type: string
+          maxLength: 500
+          title: Note
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - reason
+      title: StopWorkRequest
+      description: 'Business ends without the worker''s PIN. ``business_stopped``:
+        business pays the full
+
+        booking, worker gets 80%. ``worker_left``: actual hours, worker walk-off fee.'
     SupportTicketCreate:
       properties:
         topic:
@@ -9378,6 +11000,16 @@ components:
         status:
           type: string
           title: Status
+        priority:
+          type: string
+          title: Priority
+          default: normal
+        assignment_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
         created_at:
           type: string
           format: date-time
@@ -9400,6 +11032,51 @@ components:
       - support_email
       - support_emails
       title: SupportTicketResponse
+    TermsAcceptRequest:
+      properties:
+        audience:
+          type: string
+          enum:
+          - worker
+          - business
+          title: Audience
+      additionalProperties: false
+      type: object
+      required:
+      - audience
+      title: TermsAcceptRequest
+    TermsStatus:
+      properties:
+        audience:
+          type: string
+          enum:
+          - worker
+          - business
+          title: Audience
+        version:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Version
+          description: Effective date of the current terms.
+        accepted:
+          type: boolean
+          title: Accepted
+        accepted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Accepted At
+      type: object
+      required:
+      - audience
+      - version
+      - accepted
+      title: TermsStatus
+      description: Posting needs ``business`` accepted, applying needs ``worker``
+        accepted.
     TokenPair:
       properties:
         access_token:
@@ -9862,6 +11539,17 @@ components:
       - verification_status
       - is_available
       title: WorkerProfileSummary
+    WorkerPromoStatus:
+      properties:
+        pending:
+          anyOf:
+          - $ref: '#/components/schemas/PromoView'
+          - type: 'null'
+      type: object
+      required:
+      - pending
+      title: WorkerPromoStatus
+      description: Code waiting to discount the commission on the worker's next payout.
     WorkerPublicProfile:
       properties:
         id:
@@ -9939,6 +11627,7 @@ components:
           type: string
           enum:
           - draft
+          - awaiting_payment
           - searching
           - open
           - filled
@@ -10062,6 +11751,7 @@ components:
           type: string
           enum:
           - draft
+          - awaiting_payment
           - searching
           - open
           - filled

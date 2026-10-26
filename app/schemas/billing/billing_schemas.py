@@ -12,7 +12,7 @@ PaymentMethodCode = Literal["google_pay", "paytm", "apple_pay", "upi_qr", "card_
 
 
 class InvoiceLine(BaseModel):
-    line_kind: Literal["worker_pay", "platform_fee"]
+    line_kind: Literal["worker_pay", "platform_fee", "gateway_fee"]
     description: str
     assignment_id: UUID | None = None
     minutes: int | None = None
@@ -24,14 +24,27 @@ class InvoiceResponse(BaseModel):
     id: UUID
     shift_id: UUID
     reference: str
+    invoice_kind: Literal["deposit", "final"] = Field(
+        description="deposit: paid at posting. final: after the shift; the deposit is applied."
+    )
     status: Literal["pending", "paid", "void"]
     currency: str
     job_title: str
     shift_starts_at: datetime
     worker_subtotal_minor: int
-    platform_fee_minor: int
+    platform_fee_minor: int = Field(description="Business service fee (commission).")
+    gateway_fee_minor: int
     total_minor: int
     fee_percentage: float
+    gateway_fee_percentage: float
+    worker_fee_percentage: float
+    deposit_applied_minor: int
+    amount_due_minor: int = Field(description="What a payment on this invoice charges now.")
+    refund_due_minor: int = Field(description="Deposit excess owed back to the business.")
+    promo_code: str | None = None
+    promo_discount_minor: int = Field(
+        default=0, description="Already taken off the service fee / gateway charge above."
+    )
     lines: list[InvoiceLine]
     issued_at: datetime
     paid_at: datetime | None = None
@@ -54,10 +67,24 @@ class PaymentResponse(BaseModel):
     reference: str
     upi_payload: str | None = Field(default=None, description="Render as QR / open UPI intent.")
     checkout_url: str | None = None
+    provider_order_id: str = Field(description="Razorpay: pass as ``order_id`` to Checkout.")
+    checkout_key: str | None = Field(
+        default=None, description="Razorpay key id: pass as ``key`` to Checkout."
+    )
     expires_at: datetime
     paid_at: datetime | None = None
     failure_reason: str | None = None
     created_at: datetime
+
+
+class RazorpayCheckoutResult(BaseModel):
+    """Fields Razorpay Checkout passes to its ``handler`` on success."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    razorpay_payment_id: str = Field(max_length=64)
+    razorpay_order_id: str = Field(max_length=64)
+    razorpay_signature: str = Field(max_length=128)
 
 
 class ReceiptResponse(BaseModel):

@@ -55,9 +55,13 @@ from app.schemas.auth.auth_schemas import (
     PasswordLoginRequest,
     PasswordResetConfirmRequest,
     PhoneCheckResponse,
+    RoleAddRequest,
+    SignupBusinessDetails,
     SignupRequest,
+    SignupWorkerDetails,
     TokenPair,
 )
+from app.security.authenticated_user import AuthenticatedUser
 from app.security.jwt_tokens import hash_refresh_token
 from app.security.password_hash import burn_password_check, hash_password, verify_password
 from app.services.auth.domain.token_issuer import issue_token_pair
@@ -207,6 +211,91 @@ async def verify_firebase(
     return await _sign_in(phone, role)
 
 
+async def _resolve_catalog(
+    conn: asyncpg.Connection,
+    worker: SignupWorkerDetails | None,
+    business: SignupBusinessDetails | None,
+) -> tuple[list[UUID], list[UUID], UUID | None]:
+    category_ids: list[UUID] = []
+    business_type_ids: list[UUID] = []
+    category_id: UUID | None = None
+    if worker is not None:
+        category_ids = await catalog_service.resolve_category_ids(conn, worker.work_type_slugs)
+    if business is not None:
+        business_type_ids = await catalog_service.resolve_business_type_ids(
+            conn, business.chosen_business_type_slugs() or []
+        )
+        if business.category_slug:
+            category_id = await catalog_service.resolve_category_id(conn, business.category_slug)
+    return category_ids, business_type_ids, category_id
+
+
+async def _create_role_profile(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    *,
+    worker: SignupWorkerDetails | None,
+    business: SignupBusinessDetails | None,
+    language_code: str | None,
+    is_first_role: bool,
+    catalog: tuple[list[UUID], list[UUID], UUID | None],
+) -> str:
+    """Grant the role and create its profile; returns the role."""
+    category_ids, business_type_ids, category_id = catalog
+    # Adding a second role must not overwrite the name/email of the existing account.
+    if worker is not None:
+        await user_repository.update_user_fields(
+            conn,
+            user_id,
+            full_name=worker.full_name.strip() if is_first_role else None,
+            email_set=worker.email is not None and is_first_role,
+            email=worker.email,
+            language_code=language_code,
+            theme_preference=None,
+        )
+        await user_repository.grant_role(conn, user_id, ROLE_WORKER)
+        await profile_repository.ensure_worker_profile(conn, user_id)
+        await profile_repository.update_worker_profile(
+            conn,
+            user_id,
+            address_text=worker.address_text.strip(),
+            locality=resolve_locality(worker.address_text, worker.locality),
+            latitude=worker.latitude,
+            longitude=worker.longitude,
+            age=worker.age,
+        )
+        profile = await profile_repository.get_worker_profile_by_user(conn, user_id)
+        await profile_repository.replace_worker_categories(conn, profile["id"], category_ids)
+        return ROLE_WORKER
+    assert business is not None
+    await user_repository.update_user_fields(
+        conn,
+        user_id,
+        full_name=business.contact_name.strip() if is_first_role else None,
+        email_set=business.email is not None and is_first_role,
+        email=business.email,
+        language_code=language_code,
+        theme_preference=None,
+    )
+    await user_repository.grant_role(conn, user_id, ROLE_BUSINESS)
+    await profile_repository.ensure_business_profile(conn, user_id)
+    primary = await profile_repository.get_business_profile_by_user(conn, user_id)
+    await profile_repository.update_business_profile(
+        conn,
+        primary["id"],
+        business_name=business.business_name.strip(),
+        category_id=category_id,
+        address_text=business.address_text.strip(),
+        locality=resolve_locality(business.address_text, business.locality),
+        latitude=business.latitude,
+        longitude=business.longitude,
+        contact_name=business.contact_name.strip(),
+        email=business.email,
+    )
+    await profile_repository.replace_business_types(conn, primary["id"], business_type_ids)
+    return ROLE_BUSINESS
+
+
 async def signup(body: SignupRequest) -> OtpVerifyResponse:
     """Verify Firebase phone proof and create the account + role + profile."""
     async with get_pool().acquire() as conn:
@@ -214,19 +303,7 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
             conn, body.language_code
         ):
             raise bad_request("language_unknown", MSG_LANGUAGE_UNKNOWN)
-        if body.worker is not None:
-            category_ids = await catalog_service.resolve_category_ids(
-                conn, body.worker.work_type_slugs
-            )
-        if body.business is not None:
-            business_type_ids = await catalog_service.resolve_business_type_ids(
-                conn, body.business.chosen_business_type_slugs() or []
-            )
-            category_id = (
-                await catalog_service.resolve_category_id(conn, body.business.category_slug)
-                if body.business.category_slug
-                else None
-            )
+        catalog = await _resolve_catalog(conn, body.worker, body.business)
 
     if body.id_token is not None:
         phone = normalize_phone(await verify_firebase_phone_token(body.id_token))
@@ -250,66 +327,16 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
             await user_repository.set_password_if_missing(
                 conn, user_id, hash_password(body.password)
             )
-            # Adding a second role must not overwrite the name/email of the existing account.
             is_first_role = not existing_roles
-            if body.worker is not None:
-                worker = body.worker
-                await user_repository.update_user_fields(
-                    conn,
-                    user_id,
-                    full_name=worker.full_name.strip() if is_first_role else None,
-                    email_set=worker.email is not None and is_first_role,
-                    email=worker.email,
-                    language_code=body.language_code,
-                    theme_preference=None,
-                )
-                await user_repository.grant_role(conn, user_id, ROLE_WORKER)
-                await profile_repository.ensure_worker_profile(conn, user_id)
-                await profile_repository.update_worker_profile(
-                    conn,
-                    user_id,
-                    address_text=worker.address_text.strip(),
-                    locality=resolve_locality(worker.address_text, worker.locality),
-                    latitude=worker.latitude,
-                    longitude=worker.longitude,
-                    age=worker.age,
-                )
-                profile = await profile_repository.get_worker_profile_by_user(conn, user_id)
-                await profile_repository.replace_worker_categories(
-                    conn, profile["id"], category_ids
-                )
-                role = ROLE_WORKER
-            else:
-                business = body.business
-                assert business is not None
-                await user_repository.update_user_fields(
-                    conn,
-                    user_id,
-                    full_name=business.contact_name.strip() if is_first_role else None,
-                    email_set=business.email is not None and is_first_role,
-                    email=business.email,
-                    language_code=body.language_code,
-                    theme_preference=None,
-                )
-                await user_repository.grant_role(conn, user_id, ROLE_BUSINESS)
-                await profile_repository.ensure_business_profile(conn, user_id)
-                primary = await profile_repository.get_business_profile_by_user(conn, user_id)
-                await profile_repository.update_business_profile(
-                    conn,
-                    primary["id"],
-                    business_name=business.business_name.strip(),
-                    category_id=category_id,
-                    address_text=business.address_text.strip(),
-                    locality=resolve_locality(business.address_text, business.locality),
-                    latitude=business.latitude,
-                    longitude=business.longitude,
-                    contact_name=business.contact_name.strip(),
-                    email=business.email,
-                )
-                await profile_repository.replace_business_types(
-                    conn, primary["id"], business_type_ids
-                )
-                role = ROLE_BUSINESS
+            role = await _create_role_profile(
+                conn,
+                user_id,
+                worker=body.worker,
+                business=body.business,
+                language_code=body.language_code,
+                is_first_role=is_first_role,
+                catalog=catalog,
+            )
             await user_repository.set_active_role(conn, user_id, role)
             await user_repository.touch_last_login(conn, user_id, utc_now())
             tokens, _ = await issue_token_pair(conn, user_id=user_id, phone=phone)
@@ -317,6 +344,30 @@ async def signup(body: SignupRequest) -> OtpVerifyResponse:
     return OtpVerifyResponse(
         tokens=tokens, is_new_user=is_first_role, needs_role_selection=False, me=me
     )
+
+
+async def add_role(user: AuthenticatedUser, body: RoleAddRequest) -> OtpVerifyResponse:
+    """Signed-in user adds their other role; new tokens carry both roles."""
+    async with get_pool().acquire() as conn:
+        catalog = await _resolve_catalog(conn, body.worker, body.business)
+        async with conn.transaction():
+            await user_repository.lock_user(conn, user.user_id)
+            roles = await user_repository.list_active_roles(conn, user.user_id)
+            if body.role in roles:
+                raise conflict("role_registered", MSG_ROLE_REGISTERED.format(role=body.role))
+            role = await _create_role_profile(
+                conn,
+                user.user_id,
+                worker=body.worker,
+                business=body.business,
+                language_code=None,
+                is_first_role=not roles,
+                catalog=catalog,
+            )
+            await user_repository.set_active_role(conn, user.user_id, role)
+            tokens, _ = await issue_token_pair(conn, user_id=user.user_id, phone=user.phone)
+            me = await user_service.build_me(conn, user.user_id)
+    return OtpVerifyResponse(tokens=tokens, is_new_user=False, needs_role_selection=False, me=me)
 
 
 async def _sign_in(phone: str, role: str | None = None) -> OtpVerifyResponse:
@@ -423,14 +474,33 @@ async def confirm_password_reset(body: PasswordResetConfirmRequest) -> None:
 
 
 async def refresh_tokens(refresh_token: str) -> TokenPair:
-    """Rotate: old token is revoked and linked to its replacement. Reuse revokes the family."""
+    """Rotate: old token is revoked and linked to its replacement. Reuse revokes the family.
+
+    Reuse within the grace window right after rotation (concurrent or retried requests from
+    the same client) gets a fresh pair in the same family instead of revoking it.
+    """
+    settings = load_settings()
     now = utc_now()
     token_hash = hash_refresh_token(refresh_token)
+    grace = timedelta(seconds=settings.jwt_refresh_reuse_grace_seconds)
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             row = await auth_repository.lock_refresh_token(conn, token_hash)
             if row is None or row["expires_at"] <= now:
                 raise AuthenticationError(MSG_REFRESH_INVALID, code="refresh_invalid")
+            recently_rotated = (
+                row["revoked_at"] is not None
+                and row["replaced_by_id"] is not None
+                and utc_now() - row["revoked_at"] <= grace
+            )
+            if recently_rotated:
+                user = await user_repository.get_user(conn, row["user_id"])
+                if user is None or not user["is_active"]:
+                    raise forbidden("account_disabled", MSG_ACCOUNT_DISABLED)
+                tokens, _ = await issue_token_pair(
+                    conn, user_id=user["id"], phone=user["phone"], family_id=row["family_id"]
+                )
+                return tokens
             if row["revoked_at"] is not None:
                 await auth_repository.revoke_refresh_token_family(conn, row["family_id"], now)
                 reuse = row["replaced_by_id"] is not None

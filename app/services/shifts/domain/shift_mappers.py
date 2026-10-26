@@ -142,6 +142,9 @@ def roster_entry(row: asyncpg.Record) -> RosterEntry:
         late_cancellation=row["late_cancellation"],
         worker=worker_summary(row),
         attendance=attendance_summary(row),
+        check_in_code=row["check_in_code"],
+        extended_minutes=row["extended_minutes"],
+        ended_reason=row["ended_reason"],
     )
 
 
@@ -156,6 +159,7 @@ def applicant_item(row: asyncpg.Record) -> ApplicantItem:
         distance_km=round(row["distance_km"], 2) if row["distance_km"] is not None else None,
         cover_note=row["cover_note"],
         worker=worker_summary(row),
+        assignment_id=row["assignment_id"],
     )
 
 

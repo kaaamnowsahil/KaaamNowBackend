@@ -1,4 +1,6 @@
-"""Scheduled shifts: apply → Business / Work selects → worker confirms within the window."""
+"""Scheduled shifts: applying books the seat at once.
+
+``select`` / ``reject`` / ``confirm`` / ``decline`` remain for older clients only."""
 
 from __future__ import annotations
 
@@ -8,10 +10,10 @@ from uuid import UUID
 import asyncpg
 
 from app.config.settings import load_settings
+from app.constants.application.application_constants import ROLE_WORKER
 from app.constants.notifications.notification_route_strings import (
     KIND_APPLICATION_CONFIRMED,
     KIND_APPLICATION_DECLINED,
-    KIND_APPLICATION_RECEIVED,
     KIND_APPLICATION_REJECTED,
     KIND_APPLICATION_SELECTED,
     KIND_LIVE_FILLED,
@@ -29,6 +31,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_APPLICATION_EXISTS,
     MSG_APPLICATION_NOT_FOUND,
     MSG_APPLICATION_STATE,
+    MSG_APPLY_CLOSED,
     MSG_CONFIRM_EXPIRED,
     MSG_NOT_SCHEDULED_SHIFT,
     MSG_OVERLAPPING_SHIFT,
@@ -36,6 +39,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_FULL,
     MSG_SHIFT_NOT_FOUND,
     MSG_SHIFT_NOT_RECRUITING,
+    MSG_TOO_MANY_BOOKINGS,
     MSG_WORKER_UNAVAILABLE,
     SHIFT_FILLED,
     SHIFT_OPEN,
@@ -61,6 +65,7 @@ from app.services.profiles.profile_lookup import (
     worker_home_point,
 )
 from app.services.shifts.domain.shift_mappers import applicant_item, business_applicant_item
+from app.services.users import terms_service
 from app.utils.clock import utc_now
 from app.utils.geo import haversine_km
 
@@ -106,18 +111,42 @@ async def _open_scheduled_shift(conn: asyncpg.Connection, shift_id: UUID) -> asy
 async def apply(
     user: AuthenticatedUser, shift_id: UUID, body: ApplicationCreate
 ) -> ApplicationResponse:
+    """Applying books the seat straight away: no Business / Work selection, no confirm step."""
+    settings = load_settings()
+    now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             worker = await require_worker_profile(conn, user.user_id)
             ensure_worker_can_work(worker)
+            await terms_service.require_accepted(conn, user.user_id, ROLE_WORKER)
             shift = await _open_scheduled_shift(conn, shift_id)
             business = await profile_repository.get_business_profile(
                 conn, shift["business_profile_id"]
             )
             if business["user_id"] == user.user_id:
                 raise conflict("shift_not_recruiting", MSG_SHIFT_NOT_RECRUITING)
-            if await shift_repository.count_seats(conn, shift_id) >= shift["workers_required"]:
+            closes_hours = settings.apply_closes_hours_before
+            if shift["starts_at"] - timedelta(hours=closes_hours) <= now:
+                raise conflict("apply_closed", MSG_APPLY_CLOSED.format(hours=closes_hours))
+            seats = await shift_repository.count_seats(conn, shift_id)
+            if seats >= shift["workers_required"]:
                 raise conflict("shift_full", MSG_SHIFT_FULL)
+            if await shift_repository.worker_has_overlap(
+                conn,
+                worker["id"],
+                starts_at=shift["starts_at"],
+                ends_at=shift["ends_at"],
+                exclude_shift_id=shift["id"],
+            ):
+                raise conflict("overlapping_shift", MSG_OVERLAPPING_SHIFT)
+            max_bookings = settings.max_upcoming_bookings_per_worker
+            if (
+                await shift_repository.count_worker_upcoming_bookings(conn, worker["id"], now)
+                >= max_bookings
+            ):
+                raise conflict(
+                    "too_many_bookings", MSG_TOO_MANY_BOOKINGS.format(count=max_bookings)
+                )
             if body.latitude is not None and body.longitude is not None:
                 lat, lng = body.latitude, body.longitude
             else:
@@ -137,14 +166,7 @@ async def apply(
             )
             if row is None:
                 raise conflict("application_exists", MSG_APPLICATION_EXISTS)
-            await notify(
-                conn,
-                business["user_id"],
-                KIND_APPLICATION_RECEIVED,
-                f"New applicant for {shift['job_title']}",
-                worker["full_name"] or "",
-                {"shift_id": shift_id, "application_id": row["id"]},
-            )
+            await _book_selected(conn, worker, row["id"], shift, seats, now)
             return await _application_response(conn, row["id"])
 
 
@@ -304,7 +326,7 @@ async def _book_selected(
         conn,
         business["user_id"],
         KIND_APPLICATION_CONFIRMED,
-        f"{worker['full_name'] or 'A worker'} confirmed",
+        f"{worker['full_name'] or 'A worker'} booked",
         f"{shift['job_title']} · {seats + 1} of {shift['workers_required']} booked",
         {"shift_id": shift["id"], "assignment_id": assignment_id},
     )
@@ -332,7 +354,7 @@ async def _book_selected(
         business["user_id"],
         KIND_LIVE_FILLED,
         "Shift fully booked",
-        f"All workers confirmed for {shift['job_title']}.",
+        f"All workers booked for {shift['job_title']}.",
         {"shift_id": shift["id"]},
     )
 

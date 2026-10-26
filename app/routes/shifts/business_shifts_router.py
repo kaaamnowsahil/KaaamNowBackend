@@ -20,10 +20,12 @@ from app.constants.shifts.shift_route_strings import (
     PATH_APPLICATION_SELECT,
     PATH_BUSINESS_APPLICATIONS,
     PATH_BUSINESS_ASSIGNMENT_CANCEL,
+    PATH_BUSINESS_ASSIGNMENT_CANCEL_PREVIEW,
     PATH_DASHBOARD,
     PATH_SHIFT,
     PATH_SHIFT_APPLICATIONS,
     PATH_SHIFT_CANCEL,
+    PATH_SHIFT_CANCEL_PREVIEW,
     PATH_SHIFT_CONVERT,
     PATH_SHIFT_ESTIMATE,
     PATH_SHIFT_LIVE_SEARCH,
@@ -46,12 +48,14 @@ from app.schemas.shifts.assignment_schemas import (
     Roster,
 )
 from app.schemas.shifts.shift_schemas import (
+    CancellationQuote,
     ConvertToScheduledRequest,
     DashboardResponse,
     LiveSearchStatus,
     ShiftBulkCreate,
     ShiftBulkPublish,
     ShiftBulkResponse,
+    ShiftCancelPreview,
     ShiftCancelRequest,
     ShiftCostEstimate,
     ShiftCreate,
@@ -96,8 +100,8 @@ async def dashboard(
     response_model=ShiftCostEstimate,
     summary=swagger_summary("Estimate shift cost", SWAGGER_ROLE_BUSINESS),
 )
-async def estimate(body: ShiftEstimateRequest, _: RequireShiftsRead) -> ShiftCostEstimate:
-    return await shift_service.estimate(body)
+async def estimate(body: ShiftEstimateRequest, user: RequireShiftsRead) -> ShiftCostEstimate:
+    return await shift_service.estimate(user, body)
 
 
 @router.post(
@@ -186,6 +190,15 @@ async def update_shift(shift_id: UUID, body: ShiftPatch, user: RequireShiftsWrit
 )
 async def publish(shift_id: UUID, user: RequireShiftsWrite) -> ShiftResponse:
     return await shift_service.publish(user, shift_id)
+
+
+@router.get(
+    PATH_SHIFT_CANCEL_PREVIEW,
+    response_model=ShiftCancelPreview,
+    summary=swagger_summary("Cancellation fee preview for a shift", SWAGGER_ROLE_BUSINESS),
+)
+async def cancel_preview(shift_id: UUID, user: RequireShiftsRead) -> ShiftCancelPreview:
+    return await shift_service.cancel_preview(user, shift_id)
 
 
 @router.post(
@@ -289,6 +302,17 @@ async def select(application_id: UUID, user: RequireShiftsWrite) -> ApplicationR
 )
 async def reject(application_id: UUID, user: RequireShiftsWrite) -> ApplicationResponse:
     return await application_service.reject(user, application_id)
+
+
+@router.get(
+    PATH_BUSINESS_ASSIGNMENT_CANCEL_PREVIEW,
+    response_model=CancellationQuote,
+    summary=swagger_summary("Fee preview for removing a booked worker", SWAGGER_ROLE_BUSINESS),
+)
+async def cancel_assignment_preview(
+    assignment_id: UUID, user: RequireShiftsRead
+) -> CancellationQuote:
+    return await assignment_service.cancel_preview(user, assignment_id, as_party=PARTY_BUSINESS)
 
 
 @router.post(
