@@ -21,20 +21,34 @@ from app.repositories.profiles import profile_repository
 from app.repositories.promos import promo_repository
 from app.schemas.promos.promo_schemas import PromoList, PromoView, WorkerPromoStatus
 from app.security.authenticated_user import AuthenticatedUser
-from app.services.promos.promo_rules import Promo, promo_problem, worker_commission_discount
+from app.services.promos.promo_rules import (
+    BOOKING_LIVE,
+    BOOKING_SHIFT,
+    Promo,
+    promo_problem,
+    worker_commission_discount,
+)
+from app.services.shifts.domain.shift_rules import paid_minutes
 from app.utils.clock import utc_now
+from app.utils.money import pay_for_minutes
 
 
-def promo_view(row: asyncpg.Record) -> PromoView:
+def promo_view(row: asyncpg.Record, reason: str | None = None) -> PromoView:
     return PromoView(
         id=row["id"],
         code=row["code"],
+        title=row["title"],
         discount_type=row["discount_type"],
         discount_value=float(row["discount_value"]),
         applies_to=row["applies_to"],
         max_discount_minor=row["max_discount_minor"],
+        min_booking_minor=row["min_booking_minor"],
+        booking_types=row["booking_types"],
         valid_until=row["valid_until"],
         is_voucher=row["owner_user_id"] is not None,
+        eligible=reason is None,
+        ineligible_reason=reason,  # type: ignore[arg-type]
+        message=MSG_PROMO_INVALID[reason] if reason else None,
     )
 
 
@@ -50,12 +64,24 @@ async def usable(
     user_id: UUID,
     now: datetime,
     lock: bool = False,
+    booking_type: str | None = None,
+    amount_minor: int | None = None,
 ) -> asyncpg.Record:
+    """The coupon row when ``user_id`` may use it now; ``lock`` serialises redemptions so
+    concurrent bookings can't exceed ``max_uses`` / ``max_uses_per_user``."""
     row = await (promo_repository.lock_by_code if lock else promo_repository.get_by_code)(
         conn, code
     )
     uses = await promo_repository.count_user_uses(conn, row["id"], user_id) if row else 0
-    reason = promo_problem(row, role=role, user_id=user_id, now=now, user_uses=uses)
+    reason = promo_problem(
+        row,
+        role=role,
+        user_id=user_id,
+        now=now,
+        user_uses=uses,
+        booking_type=booking_type,
+        amount_minor=amount_minor,
+    )
     if reason:
         raise _invalid(reason)
     return row
@@ -64,12 +90,26 @@ async def usable(
 # --- business ---------------------------------------------------------------------------
 
 
+def shift_work_amount(shift: asyncpg.Record) -> int:
+    """Worker pay for every seat before fees — what a coupon's minimum is compared with."""
+    minutes = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
+    return pay_for_minutes(shift["hourly_rate_minor"], minutes) * shift["workers_required"]
+
+
 async def attach_business_code(
-    conn: asyncpg.Connection, shift_id: UUID, code: str, user_id: UUID
+    conn: asyncpg.Connection, shift: asyncpg.Record, code: str, user_id: UUID
 ) -> None:
     """Code typed on the post-shift form. It is reserved when the shift is published."""
-    row = await usable(conn, code, role=ROLE_BUSINESS, user_id=user_id, now=utc_now())
-    await promo_repository.attach_to_shift(conn, shift_id, row["id"])
+    row = await usable(
+        conn,
+        code,
+        role=ROLE_BUSINESS,
+        user_id=user_id,
+        now=utc_now(),
+        booking_type=BOOKING_SHIFT,
+        amount_minor=shift_work_amount(shift),
+    )
+    await promo_repository.attach_to_shift(conn, shift["id"], row["id"])
 
 
 async def reserve_for_shift(
@@ -80,8 +120,56 @@ async def reserve_for_shift(
     if await promo_repository.lock_shift_redemption(conn, shift["id"]):
         return
     promo = await promo_repository.get_by_id(conn, shift["promo_code_id"])
-    row = await usable(conn, promo["code"], role=ROLE_BUSINESS, user_id=user_id, now=now, lock=True)
+    row = await usable(
+        conn,
+        promo["code"],
+        role=ROLE_BUSINESS,
+        user_id=user_id,
+        now=now,
+        lock=True,
+        booking_type=BOOKING_SHIFT,
+        amount_minor=shift_work_amount(shift),
+    )
     await promo_repository.reserve(conn, row["id"], user_id, shift["id"])
+
+
+async def reserve_for_live(
+    conn: asyncpg.Connection,
+    code: str,
+    *,
+    user_id: UUID,
+    shift_id: UUID,
+    amount_minor: int,
+    now: datetime,
+) -> Promo:
+    """Live Work: the coupon is held from posting; applied when the booking is paid."""
+    row = await usable(
+        conn,
+        code,
+        role=ROLE_BUSINESS,
+        user_id=user_id,
+        now=now,
+        lock=True,
+        booking_type=BOOKING_LIVE,
+        amount_minor=amount_minor,
+    )
+    await promo_repository.reserve(conn, row["id"], user_id, shift_id)
+    return Promo.from_row(row)
+
+
+async def quote_live(
+    conn: asyncpg.Connection, code: str, *, user_id: UUID, amount_minor: int
+) -> Promo:
+    row = await usable(
+        conn,
+        code,
+        role=ROLE_BUSINESS,
+        user_id=user_id,
+        now=utc_now(),
+        booking_type=BOOKING_LIVE,
+        amount_minor=amount_minor,
+    )
+    return Promo.from_row(row)
 
 
 async def shift_promo(conn: asyncpg.Connection, shift: asyncpg.Record) -> Promo | None:
@@ -119,9 +207,61 @@ async def release_for_shift(conn: asyncpg.Connection, shift_id: UUID, now: datet
         await promo_repository.release(conn, redemption, now)
 
 
-async def validate(user: AuthenticatedUser, code: str, role: str) -> PromoView:
+async def restore_for_booking(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> None:
+    """Live Work ended with everything refunded (unpaid, cancelled before a Worker accepted,
+    or no Worker found): the use is given back, whether it was reserved or already applied."""
+    redemption = await promo_repository.lock_shift_redemption(conn, shift_id)
+    if redemption is not None:
+        await promo_repository.restore(conn, redemption, now)
+
+
+async def validate(
+    user: AuthenticatedUser,
+    code: str,
+    role: str,
+    *,
+    booking_type: str | None = None,
+    amount_minor: int | None = None,
+) -> PromoView:
     async with get_pool().acquire() as conn:
-        return promo_view(await usable(conn, code, role=role, user_id=user.user_id, now=utc_now()))
+        row = await usable(
+            conn,
+            code,
+            role=role,
+            user_id=user.user_id,
+            now=utc_now(),
+            booking_type=booking_type,
+            amount_minor=amount_minor,
+        )
+        return promo_view(row)
+
+
+async def list_business_coupons(
+    user: AuthenticatedUser, *, booking_type: str | None, amount_minor: int | None
+) -> PromoList:
+    """Coupons assigned to this Business plus general coupons the admin chose to list, each
+    with whether it can be used for this booking right now."""
+    now = utc_now()
+    async with get_pool().acquire() as conn:
+        rows = await promo_repository.list_business_offers(conn, user.user_id, now)
+        uses = await promo_repository.count_user_uses_many(
+            conn, user.user_id, [r["id"] for r in rows]
+        )
+    items = []
+    for row in rows:
+        reason = promo_problem(
+            row,
+            role=ROLE_BUSINESS,
+            user_id=user.user_id,
+            now=now,
+            user_uses=uses.get(row["id"], 0),
+            booking_type=booking_type,
+            amount_minor=amount_minor,
+        )
+        if reason in ("used_up", "already_used") and row["owner_user_id"] is None:
+            continue
+        items.append(promo_view(row, reason))
+    return PromoList(items=items)
 
 
 async def list_business_vouchers(user: AuthenticatedUser) -> PromoList:

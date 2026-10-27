@@ -18,7 +18,10 @@ from tests.integration.conftest import pay_deposit
 
 API = "/api/v1"
 BOOKING = 54000
-SEAT_TOTAL = 57283
+COMMISSION = 2160  # 4% of BOOKING
+GATEWAY = 1123  # 2% of BOOKING + COMMISSION
+TAX = 1123  # default 2% tax on BOOKING + COMMISSION (tax base "subtotal")
+SEAT_TOTAL = BOOKING + COMMISSION + GATEWAY + TAX
 
 
 async def _booked_shift(  # type: ignore[no-untyped-def]
@@ -135,7 +138,8 @@ async def test_business_cancel_pays_fee_and_compensates_worker(  # type: ignore[
         app_client, db, business, [worker], starts_in=timedelta(hours=4)
     )
     fee = BOOKING * 70 // 100
-    retained = fee + 1512 + 1123
+    # Commission and tax are kept on the fee's share (70%); the gateway charge is kept.
+    retained = fee + 1512 + 786 + GATEWAY
     preview = (
         await app_client.get(
             f"{API}/business/shifts/{shift_id}/cancel-preview", headers=business.headers
@@ -175,7 +179,7 @@ async def test_free_business_cancel_keeps_only_gateway(  # type: ignore[no-untyp
         )
     ).json()
     assert preview["fee_minor"] == 0
-    assert preview["business_refund_minor"] == SEAT_TOTAL - 1123
+    assert preview["business_refund_minor"] == SEAT_TOTAL - GATEWAY
 
 
 async def test_no_show_fee_strikes_and_ban(  # type: ignore[no-untyped-def]

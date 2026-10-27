@@ -1796,6 +1796,278 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/support-tickets/{ticket_id}/status:
+    post:
+      tags:
+      - admin - support
+      summary: Start or close a support ticket · Admin
+      operationId: update_ticket_status_api_v1_admin_support_tickets__ticket_id__status_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Ticket Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupportTicketStatusUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/live-work/pricing:
+    get:
+      tags:
+      - Admin — Live Work
+      summary: Live Work Pricing & Charges · Admin
+      operationId: get_pricing_api_v1_admin_live_work_pricing_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivePricingSettingsView'
+      security:
+      - HTTPBearer: []
+    put:
+      tags:
+      - Admin — Live Work
+      summary: Update Live Work Pricing & Charges · Admin
+      operationId: update_pricing_api_v1_admin_live_work_pricing_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LivePricingSettingsUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivePricingSettingsView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/live-work/pricing/audit:
+    get:
+      tags:
+      - Admin — Live Work
+      summary: Live Work pricing change history · Admin
+      operationId: pricing_audit_api_v1_admin_live_work_pricing_audit_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivePricingAuditPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/live-work/bookings:
+    get:
+      tags:
+      - Admin — Live Work
+      summary: Live Work bookings · Admin
+      operationId: list_bookings_api_v1_admin_live_work_bookings_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 32
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLiveBookingPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/live-work/bookings/{booking_id}:
+    get:
+      tags:
+      - Admin — Live Work
+      summary: Live Work booking detail · Admin
+      operationId: booking_detail_api_v1_admin_live_work_bookings__booking_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLiveBookingDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/live-work/refunds:
+    get:
+      tags:
+      - Admin — Live Work
+      summary: Live Work refunds · Admin
+      operationId: list_refunds_api_v1_admin_live_work_refunds_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - pending
+            - processed
+            - failed
+            type: string
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLiveRefundPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/live-work/refunds/{refund_id}/retry:
+    post:
+      tags:
+      - Admin — Live Work
+      summary: Retry a Live Work refund · Admin
+      operationId: retry_refund_api_v1_admin_live_work_refunds__refund_id__retry_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: refund_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Refund Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLiveRefund'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/admin/resources:
     get:
       tags:
@@ -1824,6 +2096,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminMetricsOverview'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/settings/search-radius:
+    get:
+      tags:
+      - admin - data
+      summary: Search distances in effect · Admin
+      description: Edit them through the audited `search_radius_settings` resource.
+      operationId: search_radius_api_v1_admin_settings_search_radius_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSearchRadius'
       security:
       - HTTPBearer: []
   /api/v1/admin/{resource}/export.csv:
@@ -2181,6 +2469,801 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnreadCountResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/quote:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Price a Live Work request · Business / Work
+      operationId: quote_api_v1_business_live_work_quote_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveWorkQuoteRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivePriceBreakdown'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/business/live-work/available-workers:
+    get:
+      tags:
+      - Business / Work — Live Work
+      summary: Available Workers nearby · Business / Work
+      operationId: available_workers_api_v1_business_live_work_available_workers_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: lat
+        in: query
+        required: true
+        schema:
+          type: number
+          maximum: 90
+          minimum: -90
+          title: Lat
+      - name: lng
+        in: query
+        required: true
+        schema:
+          type: number
+          maximum: 180
+          minimum: -180
+          title: Lng
+      - name: category
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Category
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveAvailableWorkers'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Post Live Work · Business / Work
+      operationId: create_api_v1_business_live_work_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveWorkCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Business / Work — Live Work
+      summary: My Live Work · Business / Work
+      operationId: list_bookings_api_v1_business_live_work_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: active
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Active
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBookingPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}:
+    get:
+      tags:
+      - Business / Work — Live Work
+      summary: Live Work status · Business / Work
+      operationId: get_booking_api_v1_business_live_work__booking_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/cancel-preview:
+    get:
+      tags:
+      - Business / Work — Live Work
+      summary: Preview cancelling Live Work · Business / Work
+      operationId: cancel_preview_api_v1_business_live_work__booking_id__cancel_preview_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveCancelPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/cancel:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Cancel Live Work · Business / Work
+      operationId: cancel_api_v1_business_live_work__booking_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveCancelRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/extension-quote:
+    get:
+      tags:
+      - Business / Work — Live Work
+      summary: Price extra time · Business / Work
+      operationId: extension_quote_api_v1_business_live_work__booking_id__extension_quote_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      - name: minutes
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Minutes
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveExtensionQuote'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/extensions:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Request extra time · Business / Work
+      operationId: request_extension_api_v1_business_live_work__booking_id__extensions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveExtensionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/extensions/{extension_id}/cancel:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Withdraw an extra-time request · Business / Work
+      operationId: cancel_extension_api_v1_business_live_work__booking_id__extensions__extension_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      - name: extension_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Extension Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/end:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: End Work now (reserved time is billed) · Business / Work
+      operationId: end_work_api_v1_business_live_work__booking_id__end_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/arrival-code/reissue:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: New arrival code · Business / Work
+      operationId: reissue_arrival_code_api_v1_business_live_work__booking_id__arrival_code_reissue_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/requests:
+    get:
+      tags:
+      - Worker — Live Work
+      summary: Live Work requests for me · Worker
+      operationId: list_requests_api_v1_worker_live_work_requests_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/WorkerLiveRequest'
+                type: array
+                title: Response List Requests Api V1 Worker Live Work Requests Get
+      security:
+      - HTTPBearer: []
+  /api/v1/worker/live-work/requests/{booking_id}/accept:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Accept Live Work · Worker
+      operationId: accept_api_v1_worker_live_work_requests__booking_id__accept_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/requests/{booking_id}/decline:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Decline Live Work · Worker
+      operationId: decline_api_v1_worker_live_work_requests__booking_id__decline_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/active:
+    get:
+      tags:
+      - Worker — Live Work
+      summary: My current Live Work · Worker
+      operationId: active_api_v1_worker_live_work_active_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerActiveLiveWork'
+      security:
+      - HTTPBearer: []
+  /api/v1/worker/live-work/bookings:
+    get:
+      tags:
+      - Worker — Live Work
+      summary: My Live Work history · Worker
+      operationId: history_api_v1_worker_live_work_bookings_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkerLiveBooking'
+                title: Response History Api V1 Worker Live Work Bookings Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}:
+    get:
+      tags:
+      - Worker — Live Work
+      summary: Live Work status · Worker
+      operationId: get_booking_api_v1_worker_live_work_bookings__assignment_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/start-travel:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: On my way · Worker
+      operationId: start_travel_api_v1_worker_live_work_bookings__assignment_id__start_travel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/location:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Share my location · Worker
+      operationId: update_location_api_v1_worker_live_work_bookings__assignment_id__location_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveLocationUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/start:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Start Work with the arrival code · Worker
+      operationId: start_work_api_v1_worker_live_work_bookings__assignment_id__start_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveStartWork'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/complete:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Complete Work · Worker
+      operationId: complete_api_v1_worker_live_work_bookings__assignment_id__complete_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/cancel-preview:
+    get:
+      tags:
+      - Worker — Live Work
+      summary: Preview cancelling · Worker
+      operationId: cancel_preview_api_v1_worker_live_work_bookings__assignment_id__cancel_preview_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveCancelPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/cancel:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Cancel Live Work · Worker
+      operationId: cancel_api_v1_worker_live_work_bookings__assignment_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveCancelRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/live-work/bookings/{assignment_id}/extensions/{extension_id}:
+    post:
+      tags:
+      - Worker — Live Work
+      summary: Accept or decline extra time · Worker
+      operationId: answer_extension_api_v1_worker_live_work_bookings__assignment_id__extensions__extension_id__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      - name: extension_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Extension Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveExtensionAnswer'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLiveBooking'
         '422':
           description: Validation Error
           content:
@@ -4970,6 +6053,48 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - HTTPBearer: []
+  /api/v1/business/promo-codes/available:
+    get:
+      tags:
+      - promo codes
+      summary: Coupons I can use at checkout · Business / Work
+      operationId: list_available_api_v1_business_promo_codes_available_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - shift
+            - live
+            type: string
+          - type: 'null'
+          title: Booking Type
+      - name: amount_minor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+          title: Amount Minor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoList'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/business/promo-codes:
     get:
       tags:
@@ -5551,6 +6676,276 @@ components:
       additionalProperties: false
       type: object
       title: AdminFaqUpdate
+    AdminLiveBookingDetail:
+      properties:
+        booking:
+          $ref: '#/components/schemas/AdminLiveBookingItem'
+        pricing:
+          $ref: '#/components/schemas/LivePriceBreakdown'
+        work_address:
+          type: string
+          title: Work Address
+        assignment_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignment Status
+        extensions:
+          items:
+            $ref: '#/components/schemas/LiveExtensionView'
+          type: array
+          title: Extensions
+        invoices:
+          items:
+            $ref: '#/components/schemas/LiveInvoiceSummary'
+          type: array
+          title: Invoices
+        refunds:
+          items:
+            $ref: '#/components/schemas/AdminLiveRefund'
+          type: array
+          title: Refunds
+        cancellations:
+          items:
+            $ref: '#/components/schemas/AdminLiveCancellation'
+          type: array
+          title: Cancellations
+      type: object
+      required:
+      - booking
+      - pricing
+      - work_address
+      - assignment_status
+      - extensions
+      - invoices
+      - refunds
+      - cancellations
+      title: AdminLiveBookingDetail
+      description: 'Admin view: no arrival code and no precise Worker location.'
+    AdminLiveBookingItem:
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        shift_status:
+          type: string
+          title: Shift Status
+        job_title:
+          type: string
+          title: Job Title
+        category_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Name
+        business_name:
+          type: string
+          title: Business Name
+        worker_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Worker Name
+        assignment_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignment Status
+        reserved_minutes:
+          type: integer
+          title: Reserved Minutes
+        total_minor:
+          type: integer
+          title: Total Minor
+        commission_minor:
+          type: integer
+          title: Commission Minor
+        tax_minor:
+          type: integer
+          title: Tax Minor
+        refunded_minor:
+          type: integer
+          title: Refunded Minor
+        open_refunds:
+          type: integer
+          title: Open Refunds
+        currency:
+          type: string
+          title: Currency
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - booking_id
+      - shift_status
+      - job_title
+      - category_name
+      - business_name
+      - worker_name
+      - assignment_status
+      - reserved_minutes
+      - total_minor
+      - commission_minor
+      - tax_minor
+      - refunded_minor
+      - open_refunds
+      - currency
+      - created_at
+      title: AdminLiveBookingItem
+    AdminLiveBookingPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AdminLiveBookingItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: AdminLiveBookingPage
+    AdminLiveCancellation:
+      properties:
+        party:
+          type: string
+          title: Party
+        event:
+          type: string
+          title: Event
+        fee_minor:
+          type: integer
+          title: Fee Minor
+        worker_compensation_minor:
+          type: integer
+          title: Worker Compensation Minor
+        business_refund_minor:
+          type: integer
+          title: Business Refund Minor
+        business_retained_minor:
+          type: integer
+          title: Business Retained Minor
+        strike_weight:
+          type: number
+          title: Strike Weight
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - party
+      - event
+      - fee_minor
+      - worker_compensation_minor
+      - business_refund_minor
+      - business_retained_minor
+      - strike_weight
+      - created_at
+      title: AdminLiveCancellation
+    AdminLiveRefund:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        job_title:
+          type: string
+          title: Job Title
+        amount_minor:
+          type: integer
+          title: Amount Minor
+        currency:
+          type: string
+          title: Currency
+        reason:
+          type: string
+          title: Reason
+        status:
+          type: string
+          title: Status
+        provider:
+          type: string
+          title: Provider
+        provider_refund_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Provider Refund Id
+        failure_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Reason
+        attempts:
+          type: integer
+          title: Attempts
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        processed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Processed At
+      type: object
+      required:
+      - id
+      - booking_id
+      - job_title
+      - amount_minor
+      - currency
+      - reason
+      - status
+      - provider
+      - provider_refund_id
+      - failure_reason
+      - attempts
+      - created_at
+      - processed_at
+      title: AdminLiveRefund
+    AdminLiveRefundPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AdminLiveRefund'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: AdminLiveRefundPage
     AdminLoginRequest:
       properties:
         email:
@@ -5729,6 +7124,40 @@ components:
       required:
       - items
       title: AdminResourceList
+    AdminSearchRadius:
+      properties:
+        live_initial_radius_km:
+          type: number
+          title: Live Initial Radius Km
+        live_max_radius_km:
+          type: number
+          title: Live Max Radius Km
+        scheduled_notify_radius_km:
+          type: number
+          title: Scheduled Notify Radius Km
+        feed_radius_km:
+          type: number
+          title: Feed Radius Km
+        worker_max_shift_distance_km:
+          type: number
+          title: Worker Max Shift Distance Km
+        source:
+          type: string
+          enum:
+          - admin
+          - default
+          title: Source
+      type: object
+      required:
+      - live_initial_radius_km
+      - live_max_radius_km
+      - scheduled_notify_radius_km
+      - feed_radius_km
+      - worker_max_shift_distance_km
+      - source
+      title: AdminSearchRadius
+      description: Search distances in effect now; ``source`` = ``default`` until
+        an admin saves them.
     AdminTerms:
       properties:
         id:
@@ -6688,6 +8117,152 @@ components:
       title: BusinessEntityPatch
       description: Edit one of my Business / Work entities. Omitted fields keep their
         value.
+    BusinessLiveActions:
+      properties:
+        can_pay:
+          type: boolean
+          title: Can Pay
+        can_cancel:
+          type: boolean
+          title: Can Cancel
+        can_extend:
+          type: boolean
+          title: Can Extend
+        can_end_work:
+          type: boolean
+          title: Can End Work
+        can_reissue_code:
+          type: boolean
+          title: Can Reissue Code
+        can_repost:
+          type: boolean
+          title: Can Repost
+      type: object
+      required:
+      - can_pay
+      - can_cancel
+      - can_extend
+      - can_end_work
+      - can_reissue_code
+      - can_repost
+      title: BusinessLiveActions
+    BusinessLiveBooking:
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        status:
+          type: string
+          enum:
+          - awaiting_payment
+          - searching
+          - no_workers
+          - assigned
+          - en_route
+          - in_progress
+          - completed
+          - cancelled
+          title: Status
+        shift_status:
+          type: string
+          title: Shift Status
+        server_time:
+          type: string
+          format: date-time
+          title: Server Time
+        version:
+          type: string
+          title: Version
+          description: Changes whenever anything visible changes.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        work:
+          $ref: '#/components/schemas/LiveWorkDetails'
+        pricing:
+          $ref: '#/components/schemas/LivePriceBreakdown'
+        search:
+          anyOf:
+          - $ref: '#/components/schemas/LiveSearchView'
+          - type: 'null'
+        deposit_invoice:
+          anyOf:
+          - $ref: '#/components/schemas/LiveInvoiceSummary'
+          - type: 'null'
+        assignment:
+          anyOf:
+          - $ref: '#/components/schemas/LiveAssignmentView'
+          - type: 'null'
+        arrival_code:
+          anyOf:
+          - $ref: '#/components/schemas/LiveArrivalCodeView'
+          - type: 'null'
+        timer:
+          anyOf:
+          - $ref: '#/components/schemas/LiveTimerView'
+          - type: 'null'
+        extensions:
+          items:
+            $ref: '#/components/schemas/LiveExtensionView'
+          type: array
+          title: Extensions
+        final_invoice:
+          anyOf:
+          - $ref: '#/components/schemas/LiveInvoiceSummary'
+          - type: 'null'
+        refunds:
+          items:
+            $ref: '#/components/schemas/LiveRefundView'
+          type: array
+          title: Refunds
+        cancellation:
+          anyOf:
+          - $ref: '#/components/schemas/LiveCancellationView'
+          - type: 'null'
+        actions:
+          $ref: '#/components/schemas/BusinessLiveActions'
+      type: object
+      required:
+      - booking_id
+      - status
+      - shift_status
+      - server_time
+      - version
+      - created_at
+      - work
+      - pricing
+      - search
+      - deposit_invoice
+      - assignment
+      - arrival_code
+      - timer
+      - extensions
+      - final_invoice
+      - refunds
+      - cancellation
+      - actions
+      title: BusinessLiveBooking
+    BusinessLiveBookingPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/BusinessLiveBooking'
+          type: array
+          title: Items
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - limit
+      - offset
+      title: BusinessLiveBookingPage
     BusinessProfilePatch:
       properties:
         full_name:
@@ -7941,6 +9516,7 @@ components:
           - worker_pay
           - platform_fee
           - gateway_fee
+          - tax
           title: Line Kind
         description:
           type: string
@@ -7988,9 +9564,10 @@ components:
           enum:
           - deposit
           - final
+          - live_extension
           title: Invoice Kind
           description: 'deposit: paid at posting. final: after the shift; the deposit
-            is applied.'
+            is applied. live_extension: approved extra Live Work time.'
         status:
           type: string
           enum:
@@ -8018,6 +9595,25 @@ components:
         gateway_fee_minor:
           type: integer
           title: Gateway Fee Minor
+        tax_minor:
+          type: integer
+          title: Tax Minor
+          description: Live Work tax; separate from commission.
+          default: 0
+        tax_percentage:
+          type: number
+          title: Tax Percentage
+          default: 0
+        tax_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tax Label
+        tax_base:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tax Base
         total_minor:
           type: integer
           title: Total Minor
@@ -8184,6 +9780,808 @@ components:
       - limit
       - offset
       title: LedgerPage
+    LiveArrivalCodeView:
+      properties:
+        code:
+          type: string
+          title: Code
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        attempts_left:
+          type: integer
+          title: Attempts Left
+        locked:
+          type: boolean
+          title: Locked
+        expired:
+          type: boolean
+          title: Expired
+        verified:
+          type: boolean
+          title: Verified
+      type: object
+      required:
+      - code
+      - expires_at
+      - attempts_left
+      - locked
+      - expired
+      - verified
+      title: LiveArrivalCodeView
+    LiveAssignmentView:
+      properties:
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        status:
+          type: string
+          title: Status
+        accepted_at:
+          type: string
+          format: date-time
+          title: Accepted At
+        travel_started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Travel Started At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        ended_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ended Reason
+          description: '''worker_left'' when the Worker stopped before the booked
+            time.'
+        worker:
+          $ref: '#/components/schemas/LiveWorkerView'
+        location:
+          anyOf:
+          - $ref: '#/components/schemas/LiveWorkerLocation'
+          - type: 'null'
+          description: Only while the Worker is assigned and the booking is active.
+        location_status:
+          type: string
+          enum:
+          - live
+          - stale
+          - unavailable
+          - not_shared
+          title: Location Status
+      type: object
+      required:
+      - assignment_id
+      - status
+      - accepted_at
+      - travel_started_at
+      - started_at
+      - completed_at
+      - worker
+      - location_status
+      title: LiveAssignmentView
+    LiveAvailableWorkers:
+      properties:
+        count:
+          type: integer
+          title: Count
+        radius_km:
+          type: number
+          title: Radius Km
+        category_slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Slug
+        fresh_within_seconds:
+          type: integer
+          title: Fresh Within Seconds
+        checked_at:
+          type: string
+          format: date-time
+          title: Checked At
+        workers:
+          items:
+            $ref: '#/components/schemas/LiveWorkerDot'
+          type: array
+          title: Workers
+          description: Nearest available workers (max 50), for the map.
+      type: object
+      required:
+      - count
+      - radius_km
+      - category_slug
+      - fresh_within_seconds
+      - checked_at
+      title: LiveAvailableWorkers
+    LiveCancelPreview:
+      properties:
+        party:
+          type: string
+          enum:
+          - business
+          - worker
+          title: Party
+        stage:
+          type: string
+          enum:
+          - before_payment
+          - before_acceptance
+          - before_start
+          - during_work
+          title: Stage
+        fee_minor:
+          type: integer
+          title: Fee Minor
+        worker_compensation_minor:
+          type: integer
+          title: Worker Compensation Minor
+        business_refund_minor:
+          type: integer
+          title: Business Refund Minor
+        business_retained_minor:
+          type: integer
+          title: Business Retained Minor
+        strike_weight:
+          type: number
+          title: Strike Weight
+        business_voucher:
+          type: boolean
+          title: Business Voucher
+        rule:
+          type: string
+          title: Rule
+          description: Which documented rule applies.
+        effect:
+          type: string
+          title: Effect
+        currency:
+          type: string
+          title: Currency
+      type: object
+      required:
+      - party
+      - stage
+      - fee_minor
+      - worker_compensation_minor
+      - business_refund_minor
+      - business_retained_minor
+      - strike_weight
+      - business_voucher
+      - rule
+      - effect
+      - currency
+      title: LiveCancelPreview
+    LiveCancelRequest:
+      properties:
+        reason:
+          type: string
+          maxLength: 300
+          title: Reason
+          default: ''
+        expected_refund_minor:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Expected Refund Minor
+          description: Refund shown in the preview; a different value → 409.
+      additionalProperties: false
+      type: object
+      title: LiveCancelRequest
+    LiveCancellationView:
+      properties:
+        cancelled_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Cancelled At
+        cancelled_by:
+          anyOf:
+          - type: string
+            enum:
+            - business
+            - worker
+            - system
+          - type: 'null'
+          title: Cancelled By
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        fee_minor:
+          type: integer
+          title: Fee Minor
+        refund_minor:
+          type: integer
+          title: Refund Minor
+      type: object
+      required:
+      - cancelled_at
+      - cancelled_by
+      - reason
+      - fee_minor
+      - refund_minor
+      title: LiveCancellationView
+    LiveExtensionAnswer:
+      properties:
+        accept:
+          type: boolean
+          title: Accept
+      additionalProperties: false
+      type: object
+      required:
+      - accept
+      title: LiveExtensionAnswer
+    LiveExtensionCreate:
+      properties:
+        extra_minutes:
+          type: integer
+          title: Extra Minutes
+        expected_total_minor:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Expected Total Minor
+      additionalProperties: false
+      type: object
+      required:
+      - extra_minutes
+      title: LiveExtensionCreate
+    LiveExtensionQuote:
+      properties:
+        original_minutes:
+          type: integer
+          title: Original Minutes
+        original_total_minor:
+          type: integer
+          title: Original Total Minor
+        current_minutes:
+          type: integer
+          title: Current Minutes
+          description: Reserved + already applied extensions.
+        additional_minutes:
+          type: integer
+          title: Additional Minutes
+        base_rate_minor:
+          type: integer
+          title: Base Rate Minor
+        surcharge_pct:
+          type: number
+          title: Surcharge Pct
+        extension_rate_minor:
+          type: integer
+          title: Extension Rate Minor
+        additional_base_minor:
+          type: integer
+          title: Additional Base Minor
+        commission_pct:
+          type: number
+          title: Commission Pct
+        commission_minor:
+          type: integer
+          title: Commission Minor
+        tax_label:
+          type: string
+          title: Tax Label
+        tax_pct:
+          type: number
+          title: Tax Pct
+        tax_minor:
+          type: integer
+          title: Tax Minor
+        additional_total_minor:
+          type: integer
+          title: Additional Total Minor
+          description: Payment required for this extension.
+        revised_minutes:
+          type: integer
+          title: Revised Minutes
+        revised_total_minor:
+          type: integer
+          title: Revised Total Minor
+        currency:
+          type: string
+          title: Currency
+      type: object
+      required:
+      - original_minutes
+      - original_total_minor
+      - current_minutes
+      - additional_minutes
+      - base_rate_minor
+      - surcharge_pct
+      - extension_rate_minor
+      - additional_base_minor
+      - commission_pct
+      - commission_minor
+      - tax_label
+      - tax_pct
+      - tax_minor
+      - additional_total_minor
+      - revised_minutes
+      - revised_total_minor
+      - currency
+      title: LiveExtensionQuote
+    LiveExtensionView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - requested
+          - awaiting_payment
+          - applied
+          - declined
+          - cancelled
+          - expired
+          title: Status
+        extra_minutes:
+          type: integer
+          title: Extra Minutes
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+        surcharge_pct:
+          type: number
+          title: Surcharge Pct
+        extension_rate_minor:
+          type: integer
+          title: Extension Rate Minor
+        base_amount_minor:
+          type: integer
+          title: Base Amount Minor
+        commission_pct:
+          type: number
+          title: Commission Pct
+        commission_minor:
+          type: integer
+          title: Commission Minor
+        tax_pct:
+          type: number
+          title: Tax Pct
+        tax_minor:
+          type: integer
+          title: Tax Minor
+        total_minor:
+          type: integer
+          title: Total Minor
+        worker_net_minor:
+          type: integer
+          title: Worker Net Minor
+        invoice_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Invoice Id
+        requested_at:
+          type: string
+          format: date-time
+          title: Requested At
+        responded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Responded At
+        applied_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Applied At
+      type: object
+      required:
+      - id
+      - status
+      - extra_minutes
+      - hourly_rate_minor
+      - surcharge_pct
+      - extension_rate_minor
+      - base_amount_minor
+      - commission_pct
+      - commission_minor
+      - tax_pct
+      - tax_minor
+      - total_minor
+      - worker_net_minor
+      - invoice_id
+      - requested_at
+      - responded_at
+      - applied_at
+      title: LiveExtensionView
+    LiveInvoiceSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        invoice_kind:
+          type: string
+          title: Invoice Kind
+        status:
+          type: string
+          title: Status
+        total_minor:
+          type: integer
+          title: Total Minor
+        amount_due_minor:
+          type: integer
+          title: Amount Due Minor
+        refund_due_minor:
+          type: integer
+          title: Refund Due Minor
+        paid_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Paid At
+      type: object
+      required:
+      - id
+      - invoice_kind
+      - status
+      - total_minor
+      - amount_due_minor
+      - refund_due_minor
+      - paid_at
+      title: LiveInvoiceSummary
+    LiveLocationUpdate:
+      properties:
+        latitude:
+          type: number
+          maximum: 90.0
+          minimum: -90.0
+          title: Latitude
+        longitude:
+          type: number
+          maximum: 180.0
+          minimum: -180.0
+          title: Longitude
+        accuracy_m:
+          anyOf:
+          - type: integer
+            maximum: 100000.0
+            minimum: 0.0
+          - type: 'null'
+          title: Accuracy M
+      additionalProperties: false
+      type: object
+      required:
+      - latitude
+      - longitude
+      title: LiveLocationUpdate
+    LivePriceBreakdown:
+      properties:
+        currency:
+          type: string
+          title: Currency
+        settings_version:
+          type: integer
+          title: Settings Version
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+        reserved_minutes:
+          type: integer
+          title: Reserved Minutes
+        base_amount_minor:
+          type: integer
+          title: Base Amount Minor
+          description: Rate × reserved duration.
+        commission_pct:
+          type: number
+          title: Commission Pct
+        commission_minor:
+          type: integer
+          title: Commission Minor
+          description: Platform commission (separate from tax).
+        promo_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Promo Code
+        promo_discount_minor:
+          type: integer
+          title: Promo Discount Minor
+          description: Coupon discount; only reduces commission.
+          default: 0
+        tax_label:
+          type: string
+          title: Tax Label
+        tax_pct:
+          type: number
+          title: Tax Pct
+        tax_base:
+          type: string
+          enum:
+          - subtotal
+          - base_amount
+          - commission
+          title: Tax Base
+        tax_base_description:
+          type: string
+          title: Tax Base Description
+        taxable_minor:
+          type: integer
+          title: Taxable Minor
+        tax_minor:
+          type: integer
+          title: Tax Minor
+        total_minor:
+          type: integer
+          title: Total Minor
+          description: 'Business pays: base + commission − coupon + tax.'
+        worker_commission_minor:
+          type: integer
+          title: Worker Commission Minor
+        worker_net_minor:
+          type: integer
+          title: Worker Net Minor
+          description: 'Worker receives: base − commission.'
+        extension_surcharge_pct:
+          type: number
+          title: Extension Surcharge Pct
+        extension_rate_minor:
+          type: integer
+          title: Extension Rate Minor
+          description: Hourly rate for extra time (incl. surcharge).
+      type: object
+      required:
+      - currency
+      - settings_version
+      - hourly_rate_minor
+      - reserved_minutes
+      - base_amount_minor
+      - commission_pct
+      - commission_minor
+      - tax_label
+      - tax_pct
+      - tax_base
+      - tax_base_description
+      - taxable_minor
+      - tax_minor
+      - total_minor
+      - worker_commission_minor
+      - worker_net_minor
+      - extension_surcharge_pct
+      - extension_rate_minor
+      title: LivePriceBreakdown
+    LivePricingAuditItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        settings_version:
+          type: integer
+          title: Settings Version
+        field:
+          type: string
+          title: Field
+        old_value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Old Value
+        new_value:
+          type: string
+          title: New Value
+        changed_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Changed By User Id
+        changed_by_label:
+          type: string
+          title: Changed By Label
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+        changed_at:
+          type: string
+          format: date-time
+          title: Changed At
+      type: object
+      required:
+      - id
+      - settings_version
+      - field
+      - old_value
+      - new_value
+      - changed_by_user_id
+      - changed_by_label
+      - request_id
+      - changed_at
+      title: LivePricingAuditItem
+    LivePricingAuditPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/LivePricingAuditItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: LivePricingAuditPage
+    LivePricingSettingsUpdate:
+      properties:
+        commission_pct:
+          anyOf:
+          - type: string
+          - type: number
+          - type: integer
+          title: Commission Pct
+        tax_pct:
+          anyOf:
+          - type: string
+          - type: number
+          - type: integer
+          title: Tax Pct
+        tax_label:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Tax Label
+        tax_base:
+          type: string
+          enum:
+          - subtotal
+          - base_amount
+          - commission
+          title: Tax Base
+        extension_surcharge_pct:
+          anyOf:
+          - type: string
+          - type: number
+          - type: integer
+          title: Extension Surcharge Pct
+        notes:
+          type: string
+          maxLength: 300
+          title: Notes
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - commission_pct
+      - tax_pct
+      - tax_label
+      - tax_base
+      - extension_surcharge_pct
+      title: LivePricingSettingsUpdate
+      description: Numbers arrive as strings or numbers; each is validated to 0–100
+        with ≤2 decimals.
+    LivePricingSettingsView:
+      properties:
+        version:
+          type: integer
+          title: Version
+        commission_pct:
+          type: number
+          title: Commission Pct
+        tax_pct:
+          type: number
+          title: Tax Pct
+        tax_label:
+          type: string
+          title: Tax Label
+        tax_base:
+          type: string
+          enum:
+          - subtotal
+          - base_amount
+          - commission
+          title: Tax Base
+        tax_base_description:
+          type: string
+          title: Tax Base Description
+        extension_surcharge_pct:
+          type: number
+          title: Extension Surcharge Pct
+        effective_from:
+          type: string
+          format: date-time
+          title: Effective From
+        changed_by_label:
+          type: string
+          title: Changed By Label
+        notes:
+          type: string
+          title: Notes
+        example:
+          $ref: '#/components/schemas/LivePriceBreakdown'
+          description: ₹500/h × 2h priced with these settings.
+      type: object
+      required:
+      - version
+      - commission_pct
+      - tax_pct
+      - tax_label
+      - tax_base
+      - tax_base_description
+      - extension_surcharge_pct
+      - effective_from
+      - changed_by_label
+      - notes
+      - example
+      title: LivePricingSettingsView
+    LiveRefundView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        amount_minor:
+          type: integer
+          title: Amount Minor
+        status:
+          type: string
+          enum:
+          - pending
+          - processed
+          - failed
+          title: Status
+        reason:
+          type: string
+          title: Reason
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        processed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Processed At
+      type: object
+      required:
+      - id
+      - amount_minor
+      - status
+      - reason
+      - created_at
+      - processed_at
+      title: LiveRefundView
     LiveRequestItem:
       properties:
         dispatch_id:
@@ -8289,6 +10687,415 @@ components:
       - can_retry
       title: LiveSearchStatus
       description: Figma "Finding workers nearby" screen.
+    LiveSearchView:
+      properties:
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+        seconds_left:
+          type: integer
+          title: Seconds Left
+        radius_km:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Radius Km
+        notified_workers:
+          type: integer
+          title: Notified Workers
+        available_workers:
+          type: integer
+          title: Available Workers
+      type: object
+      required:
+      - started_at
+      - expires_at
+      - seconds_left
+      - radius_km
+      - notified_workers
+      - available_workers
+      title: LiveSearchView
+    LiveStartWork:
+      properties:
+        arrival_code:
+          type: string
+          maxLength: 12
+          minLength: 4
+          title: Arrival Code
+        latitude:
+          type: number
+          maximum: 90.0
+          minimum: -90.0
+          title: Latitude
+        longitude:
+          type: number
+          maximum: 180.0
+          minimum: -180.0
+          title: Longitude
+        accuracy_m:
+          anyOf:
+          - type: integer
+            maximum: 100000.0
+            minimum: 0.0
+          - type: 'null'
+          title: Accuracy M
+      additionalProperties: false
+      type: object
+      required:
+      - arrival_code
+      - latitude
+      - longitude
+      title: LiveStartWork
+    LiveTimerView:
+      properties:
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        ends_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Ends At
+        reserved_minutes:
+          type: integer
+          title: Reserved Minutes
+        extended_minutes:
+          type: integer
+          title: Extended Minutes
+        remaining_seconds:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Remaining Seconds
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+      type: object
+      required:
+      - started_at
+      - ends_at
+      - reserved_minutes
+      - extended_minutes
+      - remaining_seconds
+      - completed_at
+      title: LiveTimerView
+    LiveWorkCreate:
+      properties:
+        business_profile_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Business Profile Id
+        category_slug:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Category Slug
+        job_title:
+          type: string
+          maxLength: 120
+          minLength: 2
+          title: Job Title
+        description:
+          type: string
+          maxLength: 4000
+          title: Description
+          default: ''
+        address_text:
+          type: string
+          maxLength: 500
+          minLength: 3
+          title: Address Text
+          description: Work Location.
+        latitude:
+          type: number
+          maximum: 90.0
+          minimum: -90.0
+          title: Latitude
+        longitude:
+          type: number
+          maximum: 180.0
+          minimum: -180.0
+          title: Longitude
+        arrival_instructions:
+          type: string
+          maxLength: 2000
+          title: Arrival Instructions
+          default: ''
+        site_contact_name:
+          type: string
+          maxLength: 120
+          title: Site Contact Name
+          default: ''
+        duration_minutes:
+          type: integer
+          title: Duration Minutes
+        hourly_rate_minor:
+          type: integer
+          maximum: 10000000.0
+          exclusiveMinimum: 0.0
+          title: Hourly Rate Minor
+        accept_terms:
+          type: boolean
+          title: Accept Terms
+          description: Business accepted the Live Work booking terms.
+        expected_total_minor:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Expected Total Minor
+          description: Total shown on the review screen; a different server total
+            → 409.
+        idempotency_key:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 8
+          - type: 'null'
+          title: Idempotency Key
+        promo_code:
+          anyOf:
+          - type: string
+            maxLength: 40
+            minLength: 3
+          - type: 'null'
+          title: Promo Code
+          description: Coupon chosen on Apply Coupon; validated and reserved by the
+            server.
+      additionalProperties: false
+      type: object
+      required:
+      - category_slug
+      - job_title
+      - address_text
+      - latitude
+      - longitude
+      - duration_minutes
+      - hourly_rate_minor
+      - accept_terms
+      title: LiveWorkCreate
+    LiveWorkDetails:
+      properties:
+        category_slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Slug
+        category_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Name
+        job_title:
+          type: string
+          title: Job Title
+        description:
+          type: string
+          title: Description
+        address_text:
+          type: string
+          title: Address Text
+        latitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Longitude
+        arrival_instructions:
+          type: string
+          title: Arrival Instructions
+        site_contact_name:
+          type: string
+          title: Site Contact Name
+        business_name:
+          type: string
+          title: Business Name
+        reserved_minutes:
+          type: integer
+          title: Reserved Minutes
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+      type: object
+      required:
+      - category_slug
+      - category_name
+      - job_title
+      - description
+      - address_text
+      - arrival_instructions
+      - site_contact_name
+      - business_name
+      - reserved_minutes
+      - hourly_rate_minor
+      title: LiveWorkDetails
+    LiveWorkQuoteRequest:
+      properties:
+        category_slug:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Category Slug
+        hourly_rate_minor:
+          type: integer
+          maximum: 10000000.0
+          exclusiveMinimum: 0.0
+          title: Hourly Rate Minor
+          description: Base rate per hour (paise).
+        duration_minutes:
+          type: integer
+          title: Duration Minutes
+          description: 'Work Duration: 60–720, in 30-minute steps.'
+        promo_code:
+          anyOf:
+          - type: string
+            maxLength: 40
+            minLength: 3
+          - type: 'null'
+          title: Promo Code
+      additionalProperties: false
+      type: object
+      required:
+      - hourly_rate_minor
+      - duration_minutes
+      title: LiveWorkQuoteRequest
+    LiveWorkerArrivalView:
+      properties:
+        verified:
+          type: boolean
+          title: Verified
+        attempts_left:
+          type: integer
+          title: Attempts Left
+        locked:
+          type: boolean
+          title: Locked
+        expired:
+          type: boolean
+          title: Expired
+      type: object
+      required:
+      - verified
+      - attempts_left
+      - locked
+      - expired
+      title: LiveWorkerArrivalView
+    LiveWorkerDot:
+      properties:
+        latitude:
+          type: number
+          title: Latitude
+        longitude:
+          type: number
+          title: Longitude
+      type: object
+      required:
+      - latitude
+      - longitude
+      title: LiveWorkerDot
+      description: Approximate (~110 m) position of an available worker; never identifies
+        the worker.
+    LiveWorkerLocation:
+      properties:
+        latitude:
+          type: number
+          title: Latitude
+        longitude:
+          type: number
+          title: Longitude
+        accuracy_m:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Accuracy M
+        recorded_at:
+          type: string
+          format: date-time
+          title: Recorded At
+        age_seconds:
+          type: integer
+          title: Age Seconds
+        is_stale:
+          type: boolean
+          title: Is Stale
+          description: No update within the freshness window.
+        distance_km:
+          type: number
+          title: Distance Km
+          description: Straight-line distance to the Work Location.
+      type: object
+      required:
+      - latitude
+      - longitude
+      - accuracy_m
+      - recorded_at
+      - age_seconds
+      - is_stale
+      - distance_km
+      title: LiveWorkerLocation
+    LiveWorkerView:
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+          title: Worker Id
+        full_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Full Name
+        photo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Photo Url
+        rating_avg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rating Avg
+        rating_count:
+          type: integer
+          title: Rating Count
+        completed_shift_count:
+          type: integer
+          title: Completed Shift Count
+        verification_status:
+          type: string
+          title: Verification Status
+      type: object
+      required:
+      - worker_id
+      - full_name
+      - photo_url
+      - rating_avg
+      - rating_count
+      - completed_shift_count
+      - verification_status
+      title: LiveWorkerView
     LocationRequest:
       properties:
         latitude:
@@ -9410,6 +12217,22 @@ components:
           maxLength: 32
           minLength: 2
           title: Code
+        booking_type:
+          anyOf:
+          - type: string
+            enum:
+            - shift
+            - live
+          - type: 'null'
+          title: Booking Type
+          description: Check the coupon against this kind of booking.
+        amount_minor:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Amount Minor
+          description: Work amount (worker pay before fees) in paise.
       additionalProperties: false
       type: object
       required:
@@ -9435,6 +12258,10 @@ components:
         code:
           type: string
           title: Code
+        title:
+          type: string
+          title: Title
+          default: ''
         discount_type:
           type: string
           enum:
@@ -9458,6 +12285,19 @@ components:
           - type: integer
           - type: 'null'
           title: Max Discount Minor
+        min_booking_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Min Booking Minor
+        booking_types:
+          type: string
+          enum:
+          - all
+          - shift
+          - live
+          title: Booking Types
+          default: all
         valid_until:
           anyOf:
           - type: string
@@ -9467,7 +12307,32 @@ components:
         is_voucher:
           type: boolean
           title: Is Voucher
-          description: Free-fees voucher issued to this business.
+          description: Assigned to this Business only.
+        eligible:
+          type: boolean
+          title: Eligible
+          default: true
+        ineligible_reason:
+          anyOf:
+          - type: string
+            enum:
+            - not_found
+            - wrong_role
+            - not_started
+            - expired
+            - used_up
+            - already_used
+            - wrong_booking_type
+            - below_minimum
+            - not_applicable
+          - type: 'null'
+          title: Ineligible Reason
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+          description: Why it can't be used, when it can't.
       type: object
       required:
       - id
@@ -10012,18 +12877,45 @@ components:
         platform_fee_minor:
           type: integer
           title: Platform Fee Minor
-          description: Business commission amount.
+          description: Business commission before any coupon.
         gateway_fee_percentage:
           type: number
           title: Gateway Fee Percentage
         gateway_fee_minor:
           type: integer
           title: Gateway Fee Minor
+        tax_percentage:
+          type: number
+          title: Tax Percentage
+          description: 0 for shifts published before tax.
+          default: 0
+        tax_label:
+          type: string
+          title: Tax Label
+          default: Tax
+        tax_base:
+          type: string
+          enum:
+          - subtotal
+          - base_amount
+          - commission
+          title: Tax Base
+          description: subtotal = worker pay + net commission; base_amount = worker
+            pay; commission = net commission. The gateway charge is never taxed.
+          default: subtotal
+        taxable_minor:
+          type: integer
+          title: Taxable Minor
+          default: 0
+        tax_minor:
+          type: integer
+          title: Tax Minor
+          default: 0
         total_minor:
           type: integer
           title: Total Minor
-          description: 'What the business pays: pay + commission + gateway − promo
-            discount.'
+          description: 'What the business pays: pay + commission + gateway + tax −
+            promo discount.'
         promo_code:
           anyOf:
           - type: string
@@ -11088,6 +13980,106 @@ components:
       - support_email
       - support_emails
       title: SupportTicketResponse
+    SupportTicketStatusUpdate:
+      properties:
+        status:
+          type: string
+          enum:
+          - in_progress
+          - closed
+          title: Status
+        resolution_note:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Resolution Note
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: SupportTicketStatusUpdate
+      description: Admin moves a ticket forward; closing stamps the server time and
+        the acting admin.
+    SupportTicketView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        topic:
+          type: string
+          title: Topic
+        subject:
+          type: string
+          title: Subject
+        message:
+          type: string
+          title: Message
+        shift_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Shift Id
+        assignment_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
+        status:
+          type: string
+          title: Status
+        priority:
+          type: string
+          title: Priority
+        resolution_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resolution Note
+        resolved_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Resolved By User Id
+        resolved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Resolved At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - user_id
+      - topic
+      - subject
+      - message
+      - shift_id
+      - assignment_id
+      - status
+      - priority
+      - resolution_note
+      - resolved_by_user_id
+      - resolved_at
+      - created_at
+      - updated_at
+      title: SupportTicketView
     TermsAcceptRequest:
       properties:
         audience:
@@ -11398,6 +14390,203 @@ components:
       - payout_display
       - initiated_at
       title: WithdrawalResponse
+    WorkerActiveLiveWork:
+      properties:
+        booking:
+          anyOf:
+          - $ref: '#/components/schemas/WorkerLiveBooking'
+          - type: 'null'
+      type: object
+      required:
+      - booking
+      title: WorkerActiveLiveWork
+    WorkerLiveActions:
+      properties:
+        can_start_travel:
+          type: boolean
+          title: Can Start Travel
+        can_start_work:
+          type: boolean
+          title: Can Start Work
+        can_complete:
+          type: boolean
+          title: Can Complete
+        can_cancel:
+          type: boolean
+          title: Can Cancel
+        can_answer_extension:
+          type: boolean
+          title: Can Answer Extension
+      type: object
+      required:
+      - can_start_travel
+      - can_start_work
+      - can_complete
+      - can_cancel
+      - can_answer_extension
+      title: WorkerLiveActions
+    WorkerLiveBooking:
+      properties:
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        status:
+          type: string
+          enum:
+          - assigned
+          - en_route
+          - in_progress
+          - completed
+          - cancelled
+          - reassigned
+          title: Status
+        server_time:
+          type: string
+          format: date-time
+          title: Server Time
+        version:
+          type: string
+          title: Version
+        work:
+          $ref: '#/components/schemas/LiveWorkDetails'
+        earnings:
+          $ref: '#/components/schemas/WorkerLiveEarnings'
+        arrival:
+          anyOf:
+          - $ref: '#/components/schemas/LiveWorkerArrivalView'
+          - type: 'null'
+        timer:
+          anyOf:
+          - $ref: '#/components/schemas/LiveTimerView'
+          - type: 'null'
+        extensions:
+          items:
+            $ref: '#/components/schemas/LiveExtensionView'
+          type: array
+          title: Extensions
+        cancellation:
+          anyOf:
+          - $ref: '#/components/schemas/LiveCancellationView'
+          - type: 'null'
+        actions:
+          $ref: '#/components/schemas/WorkerLiveActions'
+      type: object
+      required:
+      - assignment_id
+      - booking_id
+      - status
+      - server_time
+      - version
+      - work
+      - earnings
+      - arrival
+      - timer
+      - extensions
+      - cancellation
+      - actions
+      title: WorkerLiveBooking
+    WorkerLiveEarnings:
+      properties:
+        reserved_minutes:
+          type: integer
+          title: Reserved Minutes
+        base_amount_minor:
+          type: integer
+          title: Base Amount Minor
+        commission_pct:
+          type: number
+          title: Commission Pct
+        worker_commission_minor:
+          type: integer
+          title: Worker Commission Minor
+        worker_net_minor:
+          type: integer
+          title: Worker Net Minor
+        extension_net_minor:
+          type: integer
+          title: Extension Net Minor
+        total_net_minor:
+          type: integer
+          title: Total Net Minor
+      type: object
+      required:
+      - reserved_minutes
+      - base_amount_minor
+      - commission_pct
+      - worker_commission_minor
+      - worker_net_minor
+      - extension_net_minor
+      - total_net_minor
+      title: WorkerLiveEarnings
+    WorkerLiveRequest:
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        job_title:
+          type: string
+          title: Job Title
+        category_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category Name
+        business_name:
+          type: string
+          title: Business Name
+        address_text:
+          type: string
+          title: Address Text
+        distance_km:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Distance Km
+        reserved_minutes:
+          type: integer
+          title: Reserved Minutes
+        hourly_rate_minor:
+          type: integer
+          title: Hourly Rate Minor
+        worker_net_minor:
+          type: integer
+          title: Worker Net Minor
+        currency:
+          type: string
+          title: Currency
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        seconds_left:
+          type: integer
+          title: Seconds Left
+      type: object
+      required:
+      - booking_id
+      - dispatch_id
+      - job_title
+      - category_name
+      - business_name
+      - address_text
+      - distance_km
+      - reserved_minutes
+      - hourly_rate_minor
+      - worker_net_minor
+      - currency
+      - expires_at
+      - seconds_left
+      title: WorkerLiveRequest
     WorkerProfilePatch:
       properties:
         full_name:

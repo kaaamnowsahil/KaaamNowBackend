@@ -42,6 +42,7 @@ PAYMENT_CANCELLED: Final[str] = "cancelled"
 LINE_WORKER_PAY: Final[str] = "worker_pay"
 LINE_PLATFORM_FEE: Final[str] = "platform_fee"
 LINE_GATEWAY_FEE: Final[str] = "gateway_fee"
+LINE_TAX: Final[str] = "tax"
 
 MSG_INVOICE_NOT_FOUND: Final[str] = "Invoice not found."
 MSG_INVOICE_NOT_READY: Final[str] = "Finish attendance before generating the final cost."

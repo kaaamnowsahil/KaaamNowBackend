@@ -4,6 +4,8 @@
 ``checkout_key`` + ``provider_order_id``, then calls verify / confirm; webhooks also settle.
 ``fake`` simulates a gateway in dev/test: orders are created locally and ``fetch_status``
 reports success, so the full pay → settle → earnings flow can be exercised end to end.
+In production no money moves through ``fake``, so it reports every payment and refund as
+still pending instead.
 """
 
 from __future__ import annotations
@@ -34,6 +36,13 @@ class ProviderStatus:
     failure_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class ProviderRefund:
+    refund_id: str
+    status: str  # pending | processed | failed
+    failure_reason: str | None = None
+
+
 class PaymentProvider(Protocol):
     name: str
 
@@ -42,6 +51,12 @@ class PaymentProvider(Protocol):
     ) -> ProviderOrder: ...
 
     async def fetch_status(self, order_id: str) -> ProviderStatus: ...
+
+    async def refund(
+        self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
+    ) -> ProviderRefund: ...
+
+    async def fetch_refund(self, provider_payment_id: str, refund_id: str) -> ProviderRefund: ...
 
 
 def upi_intent(*, vpa: str, payee: str, amount_minor: int, reference: str, currency: str) -> str:
@@ -71,12 +86,30 @@ class FakePaymentProvider:
         )
         return ProviderOrder(order_id, payload, None)
 
+    @staticmethod
+    def _simulates_success() -> bool:
+        return not load_settings().is_production
+
     async def fetch_status(self, order_id: str) -> ProviderStatus:
+        if not self._simulates_success():
+            return ProviderStatus("pending")
         return ProviderStatus("succeeded", f"fake_pay_{secrets.token_hex(8)}")
+
+    async def refund(
+        self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
+    ) -> ProviderRefund:
+        status = "processed" if self._simulates_success() else "pending"
+        return ProviderRefund(f"fake_rfnd_{secrets.token_hex(8)}", status)
+
+    async def fetch_refund(self, provider_payment_id: str, refund_id: str) -> ProviderRefund:
+        return ProviderRefund(refund_id, "processed" if self._simulates_success() else "pending")
 
 
 class PaymentProviderError(RuntimeError):
     pass
+
+
+_RAZORPAY_REFUND_STATUS = {"processed": "processed", "failed": "failed", "pending": "pending"}
 
 
 class RazorpayPaymentProvider:
@@ -142,6 +175,37 @@ class RazorpayPaymentProvider:
                 "failed", last["id"], (last.get("error_description") or "payment_failed")[:200]
             )
         return ProviderStatus("pending")
+
+    @staticmethod
+    def _refund(row: dict) -> ProviderRefund:
+        return ProviderRefund(
+            row["id"], _RAZORPAY_REFUND_STATUS.get(row.get("status", ""), "pending")
+        )
+
+    async def refund(
+        self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str
+    ) -> ProviderRefund:
+        """Reuses an earlier refund carrying the same key (a retry after a timeout must not
+        refund twice), otherwise creates one."""
+        existing = await self._request("GET", f"/payments/{provider_payment_id}/refunds")
+        for row in existing.get("items", []):
+            if (row.get("notes") or {}).get("kn_refund_key") == idempotency_key:
+                return self._refund(row)
+        created = await self._request(
+            "POST",
+            f"/payments/{provider_payment_id}/refund",
+            {
+                "amount": amount_minor,
+                "speed": "normal",
+                "notes": {"kn_refund_key": idempotency_key},
+            },
+        )
+        return self._refund(created)
+
+    async def fetch_refund(self, provider_payment_id: str, refund_id: str) -> ProviderRefund:
+        return self._refund(
+            await self._request("GET", f"/payments/{provider_payment_id}/refunds/{refund_id}")
+        )
 
     def checkout_signature_valid(self, order_id: str, payment_id: str, signature: str) -> bool:
         expected = hmac.new(

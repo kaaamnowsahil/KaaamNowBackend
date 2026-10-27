@@ -10,7 +10,7 @@ import asyncpg
 _PROMO_COLUMNS = """
 id, code, target_role, discount_type, discount_value, applies_to, max_discount_minor,
 valid_from, valid_until, max_uses, max_uses_per_user, used_count, owner_user_id, source,
-is_active
+is_active, booking_types, min_booking_minor, is_listed, title
 """
 
 LOCK_BY_CODE = f"SELECT {_PROMO_COLUMNS} FROM promo_codes WHERE upper(code) = upper($1) FOR UPDATE"
@@ -59,9 +59,27 @@ WHERE owner_user_id = $1 AND is_active AND used_count < coalesce(max_uses, 21474
 ORDER BY valid_until NULLS LAST
 """
 
-SET_SHIFT_PROMO = "UPDATE shifts SET promo_code_id = $2, updated_at = now() WHERE id = $1"
+LIST_BUSINESS_OFFERS = f"""
+SELECT {_PROMO_COLUMNS} FROM promo_codes
+WHERE target_role = 'business' AND is_active
+  AND (owner_user_id = $1 OR (owner_user_id IS NULL AND is_listed))
+  AND (valid_until IS NULL OR valid_until > $2)
+ORDER BY owner_user_id IS NULL, valid_until NULLS LAST, code
+LIMIT 50
+"""
 
-DEACTIVATE = "UPDATE promo_codes SET is_active = false, updated_at = now() WHERE id = $1"
+COUNT_USER_USES_MANY = """
+SELECT promo_code_id, count(*) AS uses FROM promo_redemptions
+WHERE user_id = $1 AND promo_code_id = ANY($2::uuid[]) AND status <> 'released'
+GROUP BY promo_code_id
+"""
+
+RESTORE_REDEMPTION = """
+UPDATE promo_redemptions SET status = 'released', released_at = $2
+WHERE id = $1 AND status <> 'released'
+"""
+
+SET_SHIFT_PROMO = "UPDATE shifts SET promo_code_id = $2, updated_at = now() WHERE id = $1"
 
 
 async def lock_by_code(conn: asyncpg.Connection, code: str) -> asyncpg.Record | None:
@@ -118,8 +136,23 @@ async def list_owned_vouchers(
     return await conn.fetch(LIST_OWNED_VOUCHERS, user_id, now)
 
 
-async def deactivate(conn: asyncpg.Connection, promo_id: UUID) -> None:
-    await conn.execute(DEACTIVATE, promo_id)
+async def list_business_offers(
+    conn: asyncpg.Connection, user_id: UUID, now: datetime
+) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_BUSINESS_OFFERS, user_id, now)
+
+
+async def count_user_uses_many(
+    conn: asyncpg.Connection, user_id: UUID, promo_ids: list[UUID]
+) -> dict[UUID, int]:
+    rows = await conn.fetch(COUNT_USER_USES_MANY, user_id, promo_ids)
+    return {r["promo_code_id"]: r["uses"] for r in rows}
+
+
+async def restore(conn: asyncpg.Connection, redemption: asyncpg.Record, now: datetime) -> None:
+    """Give a reserved or applied use back (booking ended with everything refunded)."""
+    if await conn.execute(RESTORE_REDEMPTION, redemption["id"], now) == "UPDATE 1":
+        await conn.execute(INCREMENT_USED, redemption["promo_code_id"], -1)
 
 
 async def attach_to_shift(conn: asyncpg.Connection, shift_id: UUID, promo_id: UUID) -> None:

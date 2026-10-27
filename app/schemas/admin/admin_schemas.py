@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -68,3 +68,14 @@ class AdminMetricsOverview(BaseModel):
     platform_fees_minor: int = Field(description="Platform fee revenue on paid invoices.")
     payments_succeeded_minor: int
     currency: str = "INR"
+
+
+class AdminSearchRadius(BaseModel):
+    """Search distances in effect now; ``source`` = ``default`` until an admin saves them."""
+
+    live_initial_radius_km: float
+    live_max_radius_km: float
+    scheduled_notify_radius_km: float
+    feed_radius_km: float
+    worker_max_shift_distance_km: float
+    source: Literal["admin", "default"]

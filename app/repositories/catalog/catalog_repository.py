@@ -10,6 +10,7 @@ from app.repositories.catalog.catalog_queries import (
     GET_BUSINESS_TYPE_IDS_BY_SLUGS,
     GET_CATEGORY_BY_SLUG,
     GET_CATEGORY_IDS_BY_SLUGS,
+    GET_SEARCH_RADIUS_SETTINGS,
 )
 
 
@@ -35,3 +36,7 @@ async def get_category_ids_by_slugs(
 
 async def get_active_fee_policy(conn: asyncpg.Connection) -> asyncpg.Record | None:
     return await conn.fetchrow(GET_ACTIVE_FEE_POLICY)
+
+
+async def get_search_radius_settings(conn: asyncpg.Connection) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_SEARCH_RADIUS_SETTINGS)

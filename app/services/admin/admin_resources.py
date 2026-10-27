@@ -14,8 +14,9 @@ from typing import Final
 from app.constants.admin.admin_route_strings import (
     ALL_WRITE_OPS,
     COLUMN_ID,
+    OP_CREATE,
+    OP_UPDATE,
     READ_ONLY_OPS,
-    READ_UPDATE_OPS,
 )
 
 
@@ -32,6 +33,8 @@ class AdminResource:
     hidden: frozenset[str] = field(default_factory=frozenset)
     soft_delete: bool = False
     default_sort: str | None = None
+    # Writes are recorded in admin_audit_log (pricing, coupons, cancellation rules).
+    audited: bool = False
 
 
 def _resource(table: str, **kwargs: object) -> AdminResource:
@@ -74,7 +77,15 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         default_sort="sort_order",
     ),
     _resource("business_types", searchable=("slug", "name"), soft_delete=True),
-    _resource("platform_fee_policies", searchable=("notes",), default_sort="-version"),
+    _resource(
+        "platform_fee_policies", searchable=("notes",), default_sort="-version", audited=True
+    ),
+    _resource(
+        "search_radius_settings",
+        operations=frozenset({OP_CREATE, OP_UPDATE}),
+        read_only=frozenset({"singleton"}),
+        audited=True,
+    ),
     # Profiles
     _resource(
         "worker_profiles",
@@ -107,9 +118,10 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
     # Billing
     _resource("shift_invoices", searchable=("reference", "status")),
     _resource("shift_invoice_lines", searchable=("description", "line_kind")),
+    # Payment status is set only by the verified provider webhook / reconciliation flow.
     _resource(
         "payments",
-        operations=READ_UPDATE_OPS,
+        operations=READ_ONLY_OPS,
         searchable=("reference", "provider_order_id", "provider_payment_id", "status"),
     ),
     _resource(
@@ -124,11 +136,11 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         searchable=("upi_id", "paytm_phone", "account_holder_name", "bank_ifsc"),
         soft_delete=True,
     ),
-    # Creating or deleting a withdrawal outside the earnings service would desync the
-    # append-only ledger balance, so the dashboard may only move its status.
+    # Withdrawals move only through the earnings service and payout-provider sweep, which
+    # keep the append-only ledger (and failure reversals) consistent with the status.
     _resource(
         "withdrawals",
-        operations=READ_UPDATE_OPS,
+        operations=READ_ONLY_OPS,
         searchable=("reference", "provider_payout_id", "status"),
     ),
     _resource(
@@ -154,10 +166,13 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         "support_tickets",
         searchable=("subject", "message", "status", "topic", "priority"),
         default_sort="-created_at",
+        # Status and resolution move only through POST /admin/support-tickets/{id}/status,
+        # which stamps the server time and the acting admin.
+        read_only=frozenset({"status", "resolution_note", "resolved_by_user_id", "resolved_at"}),
     ),
     # Marketplace rules: cancellations, strikes, promos, T&C, day-of-shift
-    _resource("cancellation_policies", default_sort="-version"),
-    _resource("cancellation_policy_tiers", searchable=("party", "event")),
+    _resource("cancellation_policies", default_sort="-version", audited=True),
+    _resource("cancellation_policy_tiers", searchable=("party", "event"), audited=True),
     _resource(
         "cancellation_charges",
         operations=READ_ONLY_OPS,
@@ -171,10 +186,39 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         searchable=("code", "target_role", "source"),
         read_only=frozenset({"used_count"}),
         default_sort="-created_at",
+        audited=True,
     ),
     _resource("promo_redemptions", operations=READ_ONLY_OPS, searchable=("status",)),
     _resource("terms_acceptances", operations=READ_ONLY_OPS, searchable=("audience",)),
     _resource("shift_extensions", operations=READ_ONLY_OPS, searchable=("status",)),
+    # Live Work: pricing changes only through /admin/live-work/pricing (audited); arrival
+    # codes are never exposed to admins.
+    _resource(
+        "live_booking_pricing",
+        primary_key=("shift_id",),
+        operations=READ_ONLY_OPS,
+        searchable=("tax_label",),
+        default_sort="-created_at",
+    ),
+    _resource(
+        "admin_audit_log",
+        operations=READ_ONLY_OPS,
+        searchable=("resource", "record_id", "action"),
+        default_sort="-created_at",
+    ),
+    _resource(
+        "live_pricing_audit",
+        operations=READ_ONLY_OPS,
+        searchable=("field", "changed_by_label"),
+        default_sort="-changed_at",
+    ),
+    _resource("live_extensions", operations=READ_ONLY_OPS, searchable=("status",)),
+    _resource(
+        "live_refunds",
+        operations=READ_ONLY_OPS,
+        searchable=("status", "reason"),
+        default_sort="-created_at",
+    ),
     _resource(
         "admin_overrides",
         operations=READ_ONLY_OPS,

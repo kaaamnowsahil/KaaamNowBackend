@@ -71,7 +71,8 @@ PUBLISH_LIVE_SHIFT = """
 UPDATE shifts SET status = 'searching', published_at = $2, fee_policy_version = $3,
     fee_percentage = $4, search_radius_km = $5, max_search_radius_km = $6,
     search_started_at = $2, search_expires_at = $7, radius_expanded_at = NULL,
-    worker_fee_percentage = $8, gateway_fee_percentage = $9, updated_at = now()
+    worker_fee_percentage = $8, gateway_fee_percentage = $9, tax_percentage = $10,
+    tax_label = $11, tax_base = $12, updated_at = now()
 WHERE id = $1
 """
 
@@ -79,7 +80,8 @@ PUBLISH_SCHEDULED_SHIFT = """
 UPDATE shifts SET status = 'awaiting_payment', shift_type = 'scheduled', published_at = $2,
     fee_policy_version = $3, fee_percentage = $4, search_radius_km = NULL,
     max_search_radius_km = NULL, search_started_at = NULL, search_expires_at = NULL,
-    worker_fee_percentage = $5, gateway_fee_percentage = $6, updated_at = now()
+    worker_fee_percentage = $5, gateway_fee_percentage = $6, tax_percentage = $7,
+    tax_label = $8, tax_base = $9, updated_at = now()
 WHERE id = $1
 """
 
@@ -205,7 +207,8 @@ WORKER_CARD_SELECT = f"""
 SELECT s.id, s.shift_type, s.status, s.job_title, wc.slug AS category_slug,
        wc.name AS category_name, s.workplace_name, s.address_text, s.latitude, s.longitude,
        s.starts_at, s.ends_at, s.break_minutes, s.hourly_rate_minor, s.currency,
-       s.worker_fee_percentage, s.workers_required, s.responsibilities, s.requirements, s.arrival_instructions,
+       s.worker_fee_percentage, s.workers_required, s.responsibilities, s.requirements,
+       s.arrival_instructions,
        s.site_contact_name, s.cancellation_cutoff_hours, s.business_profile_id,
        s.search_radius_km,
        bp.user_id AS business_user_id, bp.business_name, bp.logo_url,

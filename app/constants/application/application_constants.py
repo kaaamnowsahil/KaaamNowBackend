@@ -44,6 +44,7 @@ MSG_DATABASE_URL_SCHEME: Final[str] = (
 MSG_PROVIDER_NOT_ALLOWED_IN_PRODUCTION: Final[str] = (
     "{name}={value} is a development provider and is refused in production"
 )
+MSG_PROVIDER_SETTING_MISSING: Final[str] = "{provider} in production needs {names} to be set"
 MSG_JWT_SECRET_TOO_SHORT: Final[str] = "JWT_SECRET_KEY must be at least 32 characters"
 MSG_MEDIA_STORAGE_UNKNOWN: Final[str] = "MEDIA_STORAGE must be one of {allowed} (got {value!r})"
 

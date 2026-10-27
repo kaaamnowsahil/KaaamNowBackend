@@ -18,6 +18,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/shift_filter_options.sql",
     "tables/platform_fee_policies.sql",
     "tables/cancellation_policies.sql",
+    "tables/search_radius_settings.sql",
     # Identity
     "tables/users.sql",
     "tables/user_roles.sql",
@@ -50,6 +51,14 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/promo_codes.sql",
     "tables/promo_redemptions.sql",
     "tables/cancellation_charges.sql",
+    # Live Work
+    "tables/live_pricing_settings.sql",
+    "tables/live_pricing_audit.sql",
+    "tables/admin_audit_log.sql",
+    "tables/live_booking_pricing.sql",
+    "tables/live_arrival_codes.sql",
+    "tables/live_extensions.sql",
+    "tables/live_refunds.sql",
     # Earnings
     "tables/payout_accounts.sql",
     "tables/withdrawals.sql",
@@ -81,4 +90,5 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "relations/users__terms_acceptances.sql",
     "relations/cancellations.sql",
     "relations/shift_assignments__shift_extensions.sql",
+    "relations/live_work.sql",
 )

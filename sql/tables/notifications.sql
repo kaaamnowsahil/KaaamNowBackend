@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS notifications (
         CHECK (push_status IN ('pending', 'sent', 'skipped', 'failed'))
 );
 
+-- Transient provider failures (FCM 429/5xx, network) keep a push pending for a bounded retry.
+ALTER TABLE notifications
+    ADD COLUMN IF NOT EXISTS push_attempts SMALLINT NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS notifications_unread_idx ON notifications (user_id) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS notifications_push_pending_idx ON notifications (created_at)

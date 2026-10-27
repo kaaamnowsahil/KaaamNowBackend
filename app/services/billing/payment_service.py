@@ -69,6 +69,8 @@ from app.services.billing.sources.payment_provider_factory import (
     get_payment_provider,
 )
 from app.services.billing.validation.webhook_signature import signature_matches
+from app.services.live_work import live_work_hooks
+from app.services.live_work.live_work_billing import INVOICE_KIND_LIVE_EXTENSION
 from app.services.notifications.notification_service import notify
 from app.services.profiles.profile_lookup import business_scope
 from app.services.shifts import shift_service
@@ -194,7 +196,10 @@ async def settle_payment(
     )
     await billing_repository.mark_invoice_paid(conn, invoice["id"], now)
     if invoice["invoice_kind"] == INVOICE_KIND_DEPOSIT:
-        await shift_service.activate_paid_shift(conn, invoice["shift_id"], now)
+        if not await live_work_hooks.on_deposit_paid(conn, invoice, now):
+            await shift_service.activate_paid_shift(conn, invoice["shift_id"], now)
+    elif invoice["invoice_kind"] == INVOICE_KIND_LIVE_EXTENSION:
+        await live_work_hooks.on_extension_paid(conn, invoice, now)
     else:
         await release_invoice_earnings(conn, invoice["id"])
     business = await profile_repository.get_business_profile(conn, invoice["business_profile_id"])

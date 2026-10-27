@@ -33,6 +33,7 @@ from app.schemas.shifts.shift_schemas import (
     WorkerShiftDetail,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.catalog import catalog_service
 from app.services.profiles.profile_lookup import require_worker_profile, worker_home_point
 from app.services.shifts.domain.shift_mappers import worker_shift_card, worker_shift_detail
 from app.utils.clock import utc_now
@@ -91,7 +92,8 @@ async def feed(
             page_limit = max(min(page_limit, settings.limited_feed_size - offset), 0)
             if page_limit == 0:
                 return FeedPage(items=[], limit=0, offset=offset)
-        radius = min(radius_km or settings.feed_radius_km, settings.worker_max_shift_distance_km)
+        radii = await catalog_service.search_radii(conn)
+        radius = min(radius_km or radii.feed_km, radii.worker_max_shift_km)
         lat_delta, lng_delta = bounding_box_deltas(lat, radius)
         rows = await shift_repository.list_feed(
             conn,

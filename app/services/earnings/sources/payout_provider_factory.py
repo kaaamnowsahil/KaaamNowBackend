@@ -1,7 +1,8 @@
 """Payout rails (RazorpayX / Cashfree Payouts) are an OWNER DECISION.
 
 ``fake`` marks payouts paid on the next status poll; a UPI id starting with ``fail`` simulates
-a bank rejection so the reversal path can be exercised.
+a bank rejection so the reversal path can be exercised. In production no money moves through
+``fake``, so payouts stay ``processing`` until a real rail settles them.
 """
 
 from __future__ import annotations
@@ -43,6 +44,8 @@ class FakePayoutProvider:
     async def fetch_status(self, provider_payout_id: str) -> PayoutStatus:
         if provider_payout_id.startswith("fake_payout_fail_"):
             return PayoutStatus("failed", "Beneficiary account rejected the transfer")
+        if load_settings().is_production:
+            return PayoutStatus("processing")
         return PayoutStatus("paid")
 
 

@@ -12,10 +12,17 @@ from app.constants.support.support_route_strings import (
     OPENAPI_TAG_ADMIN_SUPPORT,
     PATH_BOOKING_LEDGER,
     PATH_BOOKING_OVERRIDES,
+    PATH_SUPPORT_TICKET_STATUS,
 )
 from app.dependencies import RequireVerificationRead, RequireVerificationWrite
-from app.schemas.support.support_schemas import BookingLedger, OverrideRequest, OverrideView
-from app.services.support import override_service
+from app.schemas.support.support_schemas import (
+    BookingLedger,
+    OverrideRequest,
+    OverrideView,
+    SupportTicketStatusUpdate,
+    SupportTicketView,
+)
+from app.services.support import override_service, ticket_service
 
 router = APIRouter(prefix=ADMIN_SUPPORT_ROUTE_PREFIX, tags=[OPENAPI_TAG_ADMIN_SUPPORT])
 
@@ -39,3 +46,14 @@ async def apply_override(
     assignment_id: UUID, body: OverrideRequest, admin: RequireVerificationWrite
 ) -> OverrideView:
     return await override_service.apply_override(admin, assignment_id, body)
+
+
+@router.post(
+    PATH_SUPPORT_TICKET_STATUS,
+    response_model=SupportTicketView,
+    summary=swagger_summary("Start or close a support ticket", SWAGGER_ROLE_ADMIN),
+)
+async def update_ticket_status(
+    ticket_id: UUID, body: SupportTicketStatusUpdate, admin: RequireVerificationWrite
+) -> SupportTicketView:
+    return await ticket_service.update_status(admin, ticket_id, body)

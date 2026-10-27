@@ -57,6 +57,7 @@ from app.schemas.shifts.application_schemas import (
     BusinessApplicantPage,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.catalog import catalog_service
 from app.services.notifications.notification_service import notify, notify_many
 from app.services.profiles.profile_lookup import (
     business_scope,
@@ -155,7 +156,7 @@ async def apply(
             if lat is None or lng is None:
                 raise bad_request("location_required", MSG_WORKER_LOCATION_REQUIRED)
             distance = haversine_km(lat, lng, shift["latitude"], shift["longitude"])
-            max_km = load_settings().worker_max_shift_distance_km
+            max_km = (await catalog_service.search_radii(conn)).worker_max_shift_km
             if distance > max_km:
                 raise bad_request("too_far", MSG_SHIFT_BEYOND_MAX_DISTANCE.format(km=max_km))
             row = await application_repository.upsert_application(

@@ -3,8 +3,10 @@
 Marketplace policy values (radii, timeouts, fee) are **owner decisions**: defaults
 below mirror the Figma copy and must be confirmed before production.
 
-Payments, payouts and push are out of scope for now, so their fake/console providers
-are allowed in production; only the console OTP provider is refused.
+The console OTP provider is refused in production. The fake payment and payout providers
+still start there, but never report money as moved (see their factories), so no booking,
+refund or withdrawal is marked done without a real provider. The console push provider
+likewise reports pushes as failed (not sent) in production.
 """
 
 from __future__ import annotations
@@ -26,10 +28,19 @@ from app.constants.application.application_constants import (
     MSG_JWT_SECRET_TOO_SHORT,
     MSG_MEDIA_STORAGE_UNKNOWN,
     MSG_PROVIDER_NOT_ALLOWED_IN_PRODUCTION,
+    MSG_PROVIDER_SETTING_MISSING,
 )
 
 _DEV_ONLY_PROVIDERS: dict[str, str] = {
     "otp_provider": "console",
+}
+
+_PRODUCTION_PROVIDER_SETTINGS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("payment_provider", "razorpay"): (
+        "razorpay_key_id",
+        "razorpay_key_secret",
+        "payment_webhook_secret",
+    ),
 }
 
 
@@ -101,11 +112,20 @@ class KaaamNowSettings(BaseSettings):
     require_verified_workers: bool = True
     location_freshness_seconds: int = 300
     live_initial_radius_km: float = 3.0
-    live_max_radius_km: float = 5.0
+    live_max_radius_km: float = 30.0
     live_radius_expand_after_seconds: int = 600
     live_search_timeout_seconds: int = 1800
     live_offer_timeout_seconds: int = 300
     live_dispatch_batch_size: int = 50
+    # Live Work (paid, single-worker live bookings)
+    live_work_payment_window_seconds: int = 1800
+    live_arrival_code_ttl_seconds: int = 4 * 3600
+    live_arrival_max_attempts: int = 5
+    live_arrival_max_reissues: int = 10
+    live_extension_response_seconds: int = 600
+    live_extension_payment_seconds: int = 1800
+    live_auto_complete_grace_seconds: int = 900
+    live_refund_max_attempts: int = 5
     scheduled_notify_radius_km: float = 30.0
     feed_radius_km: float = 15.0
     # Hard cap: workers never see or apply to shifts farther than this from their own location.
@@ -204,6 +224,15 @@ class KaaamNowSettings(BaseSettings):
                 raise ValueError(
                     MSG_PROVIDER_NOT_ALLOWED_IN_PRODUCTION.format(
                         name=field_name.upper(), value=dev_value
+                    )
+                )
+        for (field_name, provider), required in _PRODUCTION_PROVIDER_SETTINGS.items():
+            missing = [name for name in required if not str(getattr(self, name)).strip()]
+            if getattr(self, field_name) == provider and missing:
+                raise ValueError(
+                    MSG_PROVIDER_SETTING_MISSING.format(
+                        provider=f"{field_name.upper()}={provider}",
+                        names=", ".join(name.upper() for name in missing),
                     )
                 )
 

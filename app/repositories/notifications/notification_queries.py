@@ -33,7 +33,7 @@ UPDATE notifications SET read_at = $2 WHERE user_id = $1 AND read_at IS NULL
 """
 
 CLAIM_PENDING_PUSHES = """
-SELECT n.id, n.user_id, n.kind, n.title, n.body, n.data
+SELECT n.id, n.user_id, n.kind, n.title, n.body, n.data, n.push_attempts
 FROM notifications n
 WHERE n.push_status = 'pending'
 ORDER BY n.created_at
@@ -43,4 +43,8 @@ FOR UPDATE SKIP LOCKED
 
 SET_PUSH_STATUS = """
 UPDATE notifications SET push_status = $2, pushed_at = $3 WHERE id = ANY($1::uuid[])
+"""
+
+BUMP_PUSH_ATTEMPTS = """
+UPDATE notifications SET push_attempts = push_attempts + 1 WHERE id = ANY($1::uuid[])
 """

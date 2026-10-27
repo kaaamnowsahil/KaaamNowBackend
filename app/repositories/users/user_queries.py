@@ -138,6 +138,11 @@ UPDATE user_devices SET is_active = false, updated_at = now()
 WHERE id = $1 AND user_id = $2
 """
 
+DEACTIVATE_PUSH_TOKENS = """
+UPDATE user_devices SET is_active = false, updated_at = now()
+WHERE push_token = ANY($1::text[]) AND is_active
+"""
+
 LIST_ACTIVE_PUSH_TOKENS = """
 SELECT platform, push_token FROM user_devices WHERE user_id = $1 AND is_active
 """

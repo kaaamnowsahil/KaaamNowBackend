@@ -83,6 +83,7 @@ from app.services.cancellations.cancellation_rules import (
     SeatQuote,
 )
 from app.services.catalog import catalog_service
+from app.services.live_work import live_work_hooks
 from app.services.notifications.notification_service import notify_many
 from app.services.profiles.profile_lookup import (
     business_scope,
@@ -90,7 +91,7 @@ from app.services.profiles.profile_lookup import (
     require_postable_business,
 )
 from app.services.promos import promo_service
-from app.services.promos.promo_rules import Promo
+from app.services.promos.promo_rules import BOOKING_SHIFT, Promo
 from app.services.shifts import live_dispatch_service
 from app.services.shifts.domain.shift_mappers import (
     live_search_state,
@@ -107,7 +108,7 @@ from app.services.shifts.domain.shift_rules import (
 from app.services.users import terms_service
 from app.utils.clock import minutes_between, utc_now
 from app.utils.geo import bounding_box_deltas
-from app.utils.money import FeeRates
+from app.utils.money import FeeRates, pay_for_minutes
 from app.utils.references import new_numeric_code
 
 # --- helpers ---------------------------------------------------------------------------
@@ -189,7 +190,7 @@ def _merged_values(
 
 async def _notify_nearby_scheduled(conn: asyncpg.Connection, shift: asyncpg.Record) -> None:
     settings = load_settings()
-    radius = settings.scheduled_notify_radius_km
+    radius = (await catalog_service.search_radii(conn)).scheduled_notify_km
     lat_delta, lng_delta = bounding_box_deltas(shift["latitude"], radius)
     business = await profile_repository.get_business_profile(conn, shift["business_profile_id"])
     user_ids = await dispatch_repository.list_workers_near_scheduled(
@@ -235,14 +236,15 @@ async def _publish_locked(
     )
     policy = await catalog_service.require_active_fee_policy(conn)
     if shift["shift_type"] == SHIFT_LIVE:
+        radii = await catalog_service.search_radii(conn)
         await shift_repository.publish_live(
             conn,
             shift["id"],
             now=now,
             fee_policy_version=policy["version"],
             rates=catalog_service.policy_rates(policy),
-            radius_km=settings.live_initial_radius_km,
-            max_radius_km=settings.live_max_radius_km,
+            radius_km=radii.live_initial_km,
+            max_radius_km=radii.live_max_km,
             expires_at=now + timedelta(seconds=settings.live_search_timeout_seconds),
         )
         await shift_repository.record_history(
@@ -298,17 +300,25 @@ async def estimate(user: AuthenticatedUser, body: ShiftEstimateRequest) -> Shift
     )
     async with get_pool().acquire() as conn:
         policy = await catalog_service.require_active_fee_policy(conn)
+        minutes = paid_minutes(starts_at, ends_at, body.break_minutes)
         promo = None
         if body.promo_code:
             promo = Promo.from_row(
                 await promo_service.usable(
-                    conn, body.promo_code, role=ROLE_BUSINESS, user_id=user.user_id, now=now
+                    conn,
+                    body.promo_code,
+                    role=ROLE_BUSINESS,
+                    user_id=user.user_id,
+                    now=now,
+                    booking_type=BOOKING_SHIFT,
+                    amount_minor=pay_for_minutes(body.hourly_rate_minor, minutes)
+                    * body.workers_required,
                 )
             )
     return estimate_cost(
         hourly_rate_minor=body.hourly_rate_minor,
         workers_required=body.workers_required,
-        minutes_per_worker=paid_minutes(starts_at, ends_at, body.break_minutes),
+        minutes_per_worker=minutes,
         rates=catalog_service.policy_rates(policy),
         currency=load_settings().default_currency,
         promo=promo,
@@ -383,7 +393,10 @@ async def create_shift(user: AuthenticatedUser, body: ShiftCreate) -> ShiftRespo
             shift_id = await _insert_shift(conn, business, body, body.shift_type, now)
             if body.promo_code:
                 await promo_service.attach_business_code(
-                    conn, shift_id, body.promo_code, user.user_id
+                    conn,
+                    await shift_repository.lock_shift(conn, shift_id),
+                    body.promo_code,
+                    user.user_id,
                 )
             if body.publish:
                 await _publish_locked(
@@ -404,7 +417,10 @@ async def create_shifts_bulk(user: AuthenticatedUser, body: ShiftBulkCreate) -> 
                     shift_id = await _insert_shift(conn, business, item, SHIFT_SCHEDULED, now)
                     if body.promo_code:
                         await promo_service.attach_business_code(
-                            conn, shift_id, body.promo_code, user.user_id
+                            conn,
+                            await shift_repository.lock_shift(conn, shift_id),
+                            body.promo_code,
+                            user.user_id,
                         )
                     if body.publish:
                         await _publish_locked(
@@ -553,6 +569,7 @@ async def cancel(
         async with conn.transaction():
             scope = await business_scope(conn, user.user_id)
             shift = await _lock_owned(conn, scope, shift_id)
+            await live_work_hooks.reject_generic_action(conn, shift_id)
             if shift["status"] not in SHIFT_CANCELLABLE_STATUSES:
                 raise conflict("shift_not_cancellable", MSG_SHIFT_NOT_CANCELLABLE)
             if await assignment_repository.count_in(conn, shift_id, [ASG_CHECKED_IN]):
@@ -622,6 +639,7 @@ async def convert_to_scheduled(
         async with conn.transaction():
             scope = await business_scope(conn, user.user_id)
             shift = await _lock_owned(conn, scope, shift_id)
+            await live_work_hooks.reject_generic_action(conn, shift_id)
             seats = await shift_repository.count_seats(conn, shift_id)
             allowed = shift["shift_type"] == SHIFT_LIVE and (
                 shift["status"] == SHIFT_EXPIRED
@@ -663,11 +681,13 @@ async def retry_live(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
         async with conn.transaction():
             scope = await business_scope(conn, user.user_id)
             shift = await _lock_owned(conn, scope, shift_id)
+            await live_work_hooks.reject_generic_action(conn, shift_id)
             if shift["shift_type"] != SHIFT_LIVE or shift["status"] != SHIFT_EXPIRED:
                 raise conflict("retry_not_allowed", MSG_RETRY_NOT_ALLOWED)
             duration = shift["ends_at"] - shift["starts_at"]
             await shift_repository.set_window(conn, shift_id, starts_at=now, ends_at=now + duration)
             await dispatch_repository.delete_unanswered(conn, shift_id)
+            radii = await catalog_service.search_radii(conn)
             await shift_repository.publish_live(
                 conn,
                 shift_id,
@@ -675,8 +695,8 @@ async def retry_live(user: AuthenticatedUser, shift_id: UUID) -> ShiftResponse:
                 fee_policy_version=shift["fee_policy_version"],
                 rates=catalog_service.shift_rates(shift)
                 or await catalog_service.active_rates(conn),
-                radius_km=settings.live_initial_radius_km,
-                max_radius_km=settings.live_max_radius_km,
+                radius_km=radii.live_initial_km,
+                max_radius_km=radii.live_max_km,
                 expires_at=now + timedelta(seconds=settings.live_search_timeout_seconds),
             )
             await shift_repository.record_history(
@@ -796,7 +816,9 @@ async def live_search_status(user: AuthenticatedUser, shift_id: UUID) -> LiveSea
     async with get_pool().acquire() as conn:
         scope = await business_scope(conn, user.user_id)
         row = await _load_owned(conn, scope, shift_id)
-        radius = row["max_search_radius_km"] or settings.live_max_radius_km
+        radius = (
+            row["max_search_radius_km"] or (await catalog_service.search_radii(conn)).live_max_km
+        )
         lat_delta, lng_delta = bounding_box_deltas(row["latitude"], radius)
         nearby = await shift_repository.count_active_workers_near(
             conn,

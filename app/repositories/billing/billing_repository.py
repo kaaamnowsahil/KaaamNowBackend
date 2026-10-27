@@ -55,6 +55,9 @@ async def insert_invoice(
     refund_due_minor: int = 0,
     promo_discount_minor: int = 0,
     promo_code: str | None = None,
+    tax_percentage: Decimal = Decimal(0),
+    tax_label: str | None = None,
+    tax_base: str | None = None,
 ) -> UUID:
     return await conn.fetchval(
         INSERT_INVOICE,
@@ -78,6 +81,10 @@ async def insert_invoice(
         refund_due_minor,
         promo_discount_minor,
         promo_code,
+        charge.tax_minor,
+        tax_percentage,
+        tax_label,
+        tax_base,
     )
 
 

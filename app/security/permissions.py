@@ -25,6 +25,7 @@ RESOURCE_WORKER_PROFILE: Final[str] = "worker-profile"
 RESOURCE_WORK: Final[str] = "work"
 RESOURCE_EARNINGS: Final[str] = "earnings"
 RESOURCE_VERIFICATION: Final[str] = "verification"
+RESOURCE_LIVE_PRICING: Final[str] = "live-pricing"
 
 _READ_WRITE: Final[tuple[str, ...]] = (ACTION_READ, ACTION_WRITE)
 
@@ -43,6 +44,7 @@ _ROLE_PERMISSIONS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     },
     ROLE_ADMIN: {
         RESOURCE_VERIFICATION: _READ_WRITE,
+        RESOURCE_LIVE_PRICING: _READ_WRITE,
         RESOURCE_WORKER_PROFILE: (ACTION_READ,),
         RESOURCE_BUSINESS_PROFILE: (ACTION_READ,),
     },

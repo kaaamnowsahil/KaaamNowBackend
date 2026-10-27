@@ -54,7 +54,8 @@ async def _signup(client: httpx.AsyncClient, payload: dict[str, Any]) -> httpx.R
         json={"phone": phone, "intent": "sign_up", "role": payload["role"]},
     )
     return await client.post(
-        "/api/v1/auth/signup", json={"phone": phone, "code": TEST_OTP, **payload}
+        "/api/v1/auth/signup",
+        json={"phone": phone, "code": TEST_OTP, "password": "TestPassword123", **payload},
     )
 
 

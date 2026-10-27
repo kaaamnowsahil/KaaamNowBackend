@@ -18,3 +18,19 @@ ALTER TABLE platform_fee_policies
 
 CREATE UNIQUE INDEX IF NOT EXISTS platform_fee_policies_one_active_uid
     ON platform_fee_policies (is_active) WHERE is_active;
+
+-- Tax on Shift bookings (shared pricing with Live Work). Defaults let a version created without
+-- tax fields carry the standard 2% on worker pay + business commission. Not GST: the label is
+-- configurable and the rate is whatever the authorised admin sets.
+ALTER TABLE platform_fee_policies
+    ADD COLUMN IF NOT EXISTS tax_percentage NUMERIC(5, 2) NOT NULL DEFAULT 2.00,
+    ADD COLUMN IF NOT EXISTS tax_label VARCHAR(40) NOT NULL DEFAULT 'Tax',
+    ADD COLUMN IF NOT EXISTS tax_base VARCHAR(16) NOT NULL DEFAULT 'subtotal';
+ALTER TABLE platform_fee_policies DROP CONSTRAINT IF EXISTS platform_fee_policies_rates_chk;
+ALTER TABLE platform_fee_policies ADD CONSTRAINT platform_fee_policies_rates_chk CHECK (
+    worker_percentage BETWEEN 0 AND 100
+    AND gateway_percentage BETWEEN 0 AND 100
+    AND tax_percentage BETWEEN 0 AND 100
+    AND tax_base IN ('subtotal', 'base_amount', 'commission')
+    AND length(btrim(tax_label)) > 0
+);

@@ -9,6 +9,7 @@ from uuid import UUID
 import asyncpg
 
 from app.repositories.notifications.notification_queries import (
+    BUMP_PUSH_ATTEMPTS,
     CLAIM_PENDING_PUSHES,
     COUNT_UNREAD,
     INSERT_NOTIFICATION,
@@ -74,3 +75,9 @@ async def set_push_status(
 ) -> None:
     if ids:
         await conn.execute(SET_PUSH_STATUS, ids, status, now)
+
+
+async def bump_push_attempts(conn: asyncpg.Connection, ids: list[UUID]) -> None:
+    """Leave the rows pending for the next sweep, one attempt closer to ``failed``."""
+    if ids:
+        await conn.execute(BUMP_PUSH_ATTEMPTS, ids)

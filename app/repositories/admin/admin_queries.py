@@ -79,3 +79,8 @@ FROM business_profiles GROUP BY verification_status ORDER BY verification_status
 SHIFTS_BY_STATUS = """
 SELECT status AS key, count(*) AS count FROM shifts GROUP BY status ORDER BY status
 """
+
+INSERT_AUDIT = """
+INSERT INTO admin_audit_log (resource, record_id, action, actor_user_id, old_values, new_values)
+VALUES ($1, $2, $3, $4, $5, $6)
+"""

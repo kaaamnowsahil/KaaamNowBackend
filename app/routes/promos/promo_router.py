@@ -3,7 +3,9 @@ the wallet for the next payout."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 
 from app.constants.application.application_common import (
     SWAGGER_ROLE_BUSINESS,
@@ -14,6 +16,7 @@ from app.constants.application.application_constants import ROLE_BUSINESS
 from app.constants.promos.promo_route_strings import (
     BUSINESS_ROUTE_PREFIX,
     OPENAPI_TAG_PROMOS,
+    PATH_PROMO_AVAILABLE,
     PATH_PROMO_CODES,
     PATH_PROMO_REDEEM,
     PATH_PROMO_VALIDATE,
@@ -21,6 +24,7 @@ from app.constants.promos.promo_route_strings import (
 )
 from app.dependencies import RequireEarningsRead, RequireEarningsWrite, RequireShiftsRead
 from app.schemas.promos.promo_schemas import (
+    BookingType,
     PromoCodeRequest,
     PromoList,
     PromoView,
@@ -38,7 +42,28 @@ worker_router = APIRouter(prefix=WORKER_ROUTE_PREFIX, tags=[OPENAPI_TAG_PROMOS])
     summary=swagger_summary("Check a promo code", SWAGGER_ROLE_BUSINESS),
 )
 async def validate_business_code(body: PromoCodeRequest, user: RequireShiftsRead) -> PromoView:
-    return await promo_service.validate(user, body.code, ROLE_BUSINESS)
+    return await promo_service.validate(
+        user,
+        body.code,
+        ROLE_BUSINESS,
+        booking_type=body.booking_type,
+        amount_minor=body.amount_minor,
+    )
+
+
+@business_router.get(
+    PATH_PROMO_AVAILABLE,
+    response_model=PromoList,
+    summary=swagger_summary("Coupons I can use at checkout", SWAGGER_ROLE_BUSINESS),
+)
+async def list_available(
+    user: RequireShiftsRead,
+    booking_type: Annotated[BookingType | None, Query()] = None,
+    amount_minor: Annotated[int | None, Query(ge=0)] = None,
+) -> PromoList:
+    return await promo_service.list_business_coupons(
+        user, booking_type=booking_type, amount_minor=amount_minor
+    )
 
 
 @business_router.get(

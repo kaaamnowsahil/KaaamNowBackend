@@ -66,6 +66,7 @@ from app.schemas.shifts.shift_schemas import CancellationQuote
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.cancellations import cancellation_service
 from app.services.cancellations.cancellation_rules import EVENT_CANCEL, SeatQuote
+from app.services.live_work import live_work_hooks
 from app.services.notifications.notification_service import notify
 from app.services.profiles.profile_lookup import business_scope
 from app.services.shifts.domain.shift_mappers import (
@@ -415,6 +416,7 @@ async def cancel(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != as_party:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _ensure_cancellable(ctx)

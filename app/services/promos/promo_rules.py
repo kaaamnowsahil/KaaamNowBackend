@@ -1,4 +1,7 @@
-"""Pure promo maths (marketplace rules §3 promo codes, §9 free-fees voucher). No I/O."""
+"""Pure coupon maths (marketplace rules §3 promo codes, §9 free-fees voucher). No I/O.
+
+A coupon only ever reduces platform fees (commission and / or gateway charge), never worker pay.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from app.utils.money import BusinessCharge, round_half_up
+from app.services.pricing.pricing_engine import Discounter, FeeDiscount
+from app.utils.money import round_half_up
 
 DISCOUNT_FLAT = "flat"
 DISCOUNT_PERCENT = "percent"
@@ -14,6 +18,10 @@ DISCOUNT_WAIVE_FEES = "waive_fees"
 APPLIES_COMMISSION = "commission"
 APPLIES_GATEWAY = "gateway"
 APPLIES_ALL_FEES = "all_fees"
+
+BOOKING_SHIFT = "shift"
+BOOKING_LIVE = "live"
+BOOKING_ALL = "all"
 
 
 @dataclass(frozen=True)
@@ -37,8 +45,18 @@ class Promo:
         )
 
 
-def promo_problem(row, *, role: str, user_id, now: datetime, user_uses: int) -> str | None:  # type: ignore[no-untyped-def]
-    """Why ``row`` can't be used right now, or None when it can."""
+def promo_problem(  # type: ignore[no-untyped-def]
+    row,
+    *,
+    role: str,
+    user_id,
+    now: datetime,
+    user_uses: int,
+    booking_type: str | None = None,
+    amount_minor: int | None = None,
+) -> str | None:
+    """Why ``row`` can't be used right now, or None when it can. ``amount_minor`` is the work
+    amount (worker pay before fees) checked against the coupon's minimum booking value."""
     if row is None or not row["is_active"]:
         return "not_found"
     if row["target_role"] != role:
@@ -53,6 +71,13 @@ def promo_problem(row, *, role: str, user_id, now: datetime, user_uses: int) -> 
         return "used_up"
     if user_uses >= row["max_uses_per_user"]:
         return "already_used"
+    if booking_type is not None and row["booking_types"] not in (BOOKING_ALL, booking_type):
+        return "wrong_booking_type"
+    if booking_type == BOOKING_LIVE and row["applies_to"] == APPLIES_GATEWAY:
+        return "not_applicable"  # Live Work has no gateway charge to discount
+    minimum = row["min_booking_minor"]
+    if amount_minor is not None and minimum is not None and amount_minor < minimum:
+        return "below_minimum"
     return None
 
 
@@ -70,30 +95,23 @@ def _discount(promo: Promo, base_minor: int, scale: Decimal) -> int:
     return max(min(amount, base_minor), 0)
 
 
-def discount_charge(
-    charge: BusinessCharge, promo: Promo | None, *, scale: Decimal = Decimal(1)
-) -> tuple[BusinessCharge, int]:
-    """Take the promo off commission and / or gateway (never off worker pay). ``scale``
-    shares a flat amount / cap across seats (1 / seats for one seat's slice)."""
-    if promo is None:
-        return charge, 0
-    commission, gateway = charge.commission_minor, charge.gateway_fee_minor
+def fee_discount(
+    promo: Promo, commission_minor: int, gateway_minor: int, *, scale: Decimal = Decimal(1)
+) -> FeeDiscount:
+    """``scale`` shares a flat amount / cap across seats (1 / seats for one seat's slice)."""
     if promo.applies_to == APPLIES_COMMISSION:
-        off = _discount(promo, commission, scale)
-        return BusinessCharge(charge.worker_subtotal_minor, commission - off, gateway), off
+        return FeeDiscount(commission_minor=_discount(promo, commission_minor, scale))
     if promo.applies_to == APPLIES_GATEWAY:
-        off = _discount(promo, gateway, scale)
-        return BusinessCharge(charge.worker_subtotal_minor, commission, gateway - off), off
-    off = _discount(promo, commission + gateway, scale)
-    off_commission = min(off, commission)
-    return (
-        BusinessCharge(
-            charge.worker_subtotal_minor,
-            commission - off_commission,
-            gateway - (off - off_commission),
-        ),
-        off,
-    )
+        return FeeDiscount(gateway_minor=_discount(promo, gateway_minor, scale))
+    off = _discount(promo, commission_minor + gateway_minor, scale)
+    off_commission = min(off, commission_minor)
+    return FeeDiscount(commission_minor=off_commission, gateway_minor=off - off_commission)
+
+
+def discounter(promo: Promo | None, *, scale: Decimal = Decimal(1)) -> Discounter | None:
+    if promo is None:
+        return None
+    return lambda commission, gateway: fee_discount(promo, commission, gateway, scale=scale)
 
 
 def worker_commission_discount(promo: Promo, commission_minor: int) -> int:

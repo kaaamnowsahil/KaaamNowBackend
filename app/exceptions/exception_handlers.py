@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.db.pool import get_pool
 from app.exceptions.api_errors import ApiError
 from app.observability.logging import get_logger, log_extra
+from app.utils.request_context import get_request_id
 
 log = get_logger(__name__)
 
@@ -22,7 +23,12 @@ def error_response(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={"code": code, "message": message, "details": details},
+        content={
+            "code": code,
+            "message": message,
+            "details": details,
+            "request_id": get_request_id(),
+        },
     )
 
 
