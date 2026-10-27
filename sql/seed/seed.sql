@@ -222,6 +222,16 @@ INSERT INTO platform_fee_policies (version, percentage, worker_percentage, gatew
 SELECT 2, 4.00, 4.00, 2.00, true, 'Rules v1: 4% business + 4% worker commission, 2% gateway (business).'
 WHERE NOT EXISTS (SELECT 1 FROM platform_fee_policies WHERE version = 2);
 
+-- Live Work pricing v1: 4% platform commission, 2% tax on (base amount + commission), 30%
+-- extension surcharge. Applied once; later versions come from admin "Live Work Pricing & Charges".
+INSERT INTO live_pricing_settings (
+    version, commission_pct, tax_pct, tax_label, tax_base, extension_surcharge_pct, is_active,
+    changed_by_label, notes
+)
+SELECT 1, 4.00, 2.00, 'Tax', 'subtotal', 30.00, true, 'system seed',
+       'Live Work defaults: 4% commission, 2% tax on base + commission, 30% extension surcharge.'
+WHERE NOT EXISTS (SELECT 1 FROM live_pricing_settings);
+
 -- Cancellation rules v1 (docs/marketplace-rules.md §5, §6). Amounts in paise.
 INSERT INTO cancellation_policies (version, is_active, notes)
 VALUES (1, true, 'Rules v1')

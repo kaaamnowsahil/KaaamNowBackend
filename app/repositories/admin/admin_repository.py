@@ -18,6 +18,7 @@ from app.repositories.admin.admin_queries import (
     COUNT_ROWS,
     DELETE_ROW,
     EQUALS_PARAM,
+    INSERT_AUDIT,
     INSERT_DEFAULTS,
     INSERT_ROW,
     IS_NULL,
@@ -258,3 +259,18 @@ async def businesses_by_verification(conn: asyncpg.Connection) -> list[asyncpg.R
 
 async def shifts_by_status(conn: asyncpg.Connection) -> list[asyncpg.Record]:
     return await conn.fetch(SHIFTS_BY_STATUS)
+
+
+async def insert_audit(
+    conn: asyncpg.Connection,
+    *,
+    resource: str,
+    record_id: str,
+    action: str,
+    actor_user_id: Any,
+    old_values: str | None,
+    new_values: str | None,
+) -> None:
+    await conn.execute(
+        INSERT_AUDIT, resource, record_id, action, actor_user_id, old_values, new_values
+    )

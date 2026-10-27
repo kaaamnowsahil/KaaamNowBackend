@@ -43,6 +43,7 @@ from app.repositories.shifts import assignment_repository, dispatch_repository, 
 from app.schemas.shifts.assignment_schemas import AssignmentDetail
 from app.schemas.shifts.shift_schemas import LiveRequestItem
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.live_work import live_work_hooks
 from app.services.notifications.notification_service import notify, notify_many
 from app.services.profiles.profile_lookup import ensure_worker_can_work, require_worker_profile
 from app.services.shifts.domain.shift_mappers import worker_shift_card
@@ -144,14 +145,15 @@ async def finish_search(conn: asyncpg.Connection, shift_id: UUID, now: datetime)
             reason="search_timeout",
         )
         await dispatch_repository.withdraw_open_offers(conn, shift_id)
-        await notify(
-            conn,
-            business_user_id,
-            KIND_LIVE_EXPIRED,
-            "No workers available right now",
-            "Try again or post it as a scheduled shift.",
-            {"shift_id": shift_id},
-        )
+        if not await live_work_hooks.on_search_expired(conn, shift, business_user_id):
+            await notify(
+                conn,
+                business_user_id,
+                KIND_LIVE_EXPIRED,
+                "No workers available right now",
+                "Try again or post it as a scheduled shift.",
+                {"shift_id": shift_id},
+            )
     return True
 
 
@@ -268,6 +270,7 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
                     )
             except asyncpg.UniqueViolationError:
                 raise conflict("already_booked", MSG_ALREADY_BOOKED) from None
+            await live_work_hooks.on_accepted(conn, shift, assignment_id, now)
 
             business_user_id = await _business_user_id(conn, shift["business_profile_id"])
             worker_name = worker["full_name"] or "A worker"

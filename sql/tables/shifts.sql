@@ -73,3 +73,10 @@ CREATE INDEX IF NOT EXISTS shifts_geo_idx ON shifts (latitude, longitude)
 
 -- Promo code entered at posting; its discount applies to the deposit and final invoices.
 ALTER TABLE shifts ADD COLUMN IF NOT EXISTS promo_code_id UUID;
+
+-- Tax snapshotted at publish with the other rates. NULL on shifts published before tax existed
+-- (they are billed without tax, exactly as quoted).
+ALTER TABLE shifts
+    ADD COLUMN IF NOT EXISTS tax_percentage NUMERIC(5, 2),
+    ADD COLUMN IF NOT EXISTS tax_label VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS tax_base VARCHAR(16);

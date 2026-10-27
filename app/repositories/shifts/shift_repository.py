@@ -164,6 +164,9 @@ async def publish_live(
         expires_at,
         rates.worker_pct,
         rates.gateway_pct,
+        rates.tax_pct,
+        rates.tax_label,
+        rates.tax_base,
     )
 
 
@@ -183,6 +186,9 @@ async def publish_scheduled(
         rates.business_pct,
         rates.worker_pct,
         rates.gateway_pct,
+        rates.tax_pct,
+        rates.tax_label,
+        rates.tax_base,
     )
 
 

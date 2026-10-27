@@ -20,6 +20,7 @@ from app.services.background.background_sweep_loop import (
     start_background_sweep_loop,
     stop_background_sweep_loop,
 )
+from app.services.notifications.sources.push_sender_factory import push_delivery_status
 
 log = get_logger(__name__)
 
@@ -28,6 +29,12 @@ log = get_logger(__name__)
 async def api_lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = load_settings()
     settings.validate_production_config()
+    push_provider = push_delivery_status()
+    if push_provider != "fcm":
+        log.warning(
+            "push notifications are not delivered to devices",
+            extra=log_extra(push_provider=push_provider),
+        )
     if settings.db_auto_create:
         await ensure_database_exists(settings.database_url)
     pool = await create_pool()

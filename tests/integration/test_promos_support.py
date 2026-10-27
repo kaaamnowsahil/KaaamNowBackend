@@ -15,6 +15,8 @@ from tests.integration.test_day_of_shift import _check_in
 API = "/api/v1"
 COMMISSION = 2160
 GATEWAY = 1123
+# 2% tax on the subtotal after the half-commission coupon: (54000 + 1080) × 2% = 1101.6 → 1102.
+DISCOUNTED_TAX = 1102
 
 
 async def _promo(db: asyncpg.Connection, code: str, role: str, **fields) -> None:  # type: ignore[no-untyped-def]
@@ -83,7 +85,7 @@ async def test_business_promo_discounts_deposit_and_is_released_on_cancel(  # ty
     )
     assert estimate.status_code == 200, estimate.text
     assert estimate.json()["promo_discount_minor"] == COMMISSION // 2
-    assert estimate.json()["total_minor"] == BOOKING + COMMISSION // 2 + GATEWAY
+    assert estimate.json()["total_minor"] == BOOKING + COMMISSION // 2 + GATEWAY + DISCOUNTED_TAX
 
     posted = await app_client.post(
         f"{API}/business/shifts", json=_shift_body("Half50"), headers=business.headers
@@ -97,7 +99,7 @@ async def test_business_promo_discounts_deposit_and_is_released_on_cancel(  # ty
     ).json()
     assert deposit["promo_code"] == "half50"
     assert deposit["promo_discount_minor"] == COMMISSION // 2
-    assert deposit["total_minor"] == BOOKING + COMMISSION // 2 + GATEWAY
+    assert deposit["total_minor"] == BOOKING + COMMISSION // 2 + GATEWAY + DISCOUNTED_TAX
 
     again = await app_client.post(
         f"{API}/business/shifts", json=_shift_body("HALF50"), headers=business.headers

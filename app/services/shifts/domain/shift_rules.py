@@ -28,9 +28,10 @@ from app.constants.shifts.shift_route_strings import (
 )
 from app.exceptions.api_errors import bad_request
 from app.schemas.shifts.shift_schemas import ShiftCostEstimate
-from app.services.promos.promo_rules import Promo, discount_charge
+from app.services.pricing.shift_pricing import shift_charge
+from app.services.promos.promo_rules import Promo
 from app.utils.clock import minutes_between
-from app.utils.money import FeeRates, business_charge, pay_for_minutes, worker_commission
+from app.utils.money import FeeRates, pay_for_minutes, worker_commission
 
 
 def resolve_window(
@@ -98,23 +99,26 @@ def estimate_cost(
     promo: Promo | None = None,
 ) -> ShiftCostEstimate:
     pay_per_worker = pay_for_minutes(hourly_rate_minor, minutes_per_worker)
-    charge, discount = discount_charge(
-        business_charge(pay_per_worker * workers_required, rates), promo
-    )
+    charge = shift_charge(pay_per_worker * workers_required, rates, promo)
     worker_fee = worker_commission(pay_per_worker, rates)
     return ShiftCostEstimate(
         currency=currency,
         paid_minutes_per_worker=minutes_per_worker,
         pay_per_worker_minor=pay_per_worker,
         workers_required=workers_required,
-        worker_subtotal_minor=charge.worker_subtotal_minor,
+        worker_subtotal_minor=charge.base_amount_minor,
         fee_percentage=float(rates.business_pct),
         platform_fee_minor=charge.commission_minor,
         gateway_fee_percentage=float(rates.gateway_pct),
         gateway_fee_minor=charge.gateway_fee_minor,
+        tax_percentage=float(rates.tax_pct),
+        tax_label=rates.tax_label,
+        tax_base=rates.tax_base,
+        taxable_minor=charge.taxable_minor,
+        tax_minor=charge.tax_minor,
         total_minor=charge.total_minor,
         promo_code=promo.code if promo else None,
-        promo_discount_minor=discount,
+        promo_discount_minor=charge.discount_minor,
         worker_fee_percentage=float(rates.worker_pct),
         worker_fee_per_worker_minor=worker_fee,
         worker_net_per_worker_minor=pay_per_worker - worker_fee,

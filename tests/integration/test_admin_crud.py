@@ -50,7 +50,8 @@ async def test_resources_metadata(app_client: httpx.AsyncClient, db: asyncpg.Con
     by_name = {r["name"]: r for r in resp.json()["items"]}
     assert {"users", "faq_entries", "earning_ledger_entries", "otp_challenges"} <= set(by_name)
     assert by_name["earning_ledger_entries"]["operations"] == []
-    assert by_name["payments"]["operations"] == ["update"]
+    assert by_name["payments"]["operations"] == []
+    assert by_name["withdrawals"]["operations"] == []
     assert by_name["work_categories"]["delete_mode"] == "soft"
     assert by_name["shifts"]["delete_mode"] == "hard"
     otp_columns = {c["name"] for c in by_name["otp_challenges"]["columns"]}
@@ -158,6 +159,13 @@ async def test_read_only_resources_and_notifications(
     assert ledger.status_code == 403
     pay = await app_client.delete(f"{ADMIN}/payments/{uuid4()}", headers=admin.headers)
     assert pay.status_code == 403
+    for resource in ("payments", "withdrawals"):
+        forged = await app_client.patch(
+            f"{ADMIN}/{resource}/{uuid4()}",
+            json={"status": "succeeded" if resource == "payments" else "paid"},
+            headers=admin.headers,
+        )
+        assert forged.status_code == 403, forged.text
 
     sent = await app_client.post(
         f"{ADMIN}/notifications",
@@ -218,3 +226,69 @@ async def test_metrics_overview(app_client: httpx.AsyncClient, db: asyncpg.Conne
     assert body["users_total"] >= 1
     assert isinstance(body["workers_by_verification"], list)
     assert "platform_fees_minor" in body
+
+
+async def test_support_ticket_closure_is_server_authoritative(
+    app_client: httpx.AsyncClient, db: asyncpg.Connection
+) -> None:
+    admin = await _admin(app_client, db)
+    user = await login(app_client)
+    created = await app_client.post(
+        "/api/v1/support/tickets",
+        json={"topic": "payout", "subject": "Missing payout", "message": "Not received yet"},
+        headers=user.headers,
+    )
+    assert created.status_code == 201, created.text
+    ticket_id = created.json()["id"]
+    url = f"{ADMIN}/support-tickets/{ticket_id}/status"
+
+    # Non-admins and the generic CRUD cannot close or forge resolution fields.
+    denied = await app_client.post(url, json={"status": "closed"}, headers=user.headers)
+    assert denied.status_code == 403
+    forged = await app_client.patch(
+        f"{ADMIN}/support_tickets/{ticket_id}",
+        json={"status": "closed", "resolved_at": "2020-01-01T00:00:00Z"},
+        headers=admin.headers,
+    )
+    assert forged.status_code == 400, forged.text
+    extra = await app_client.post(
+        url, json={"status": "closed", "resolved_at": "2020-01-01T00:00:00Z"}, headers=admin.headers
+    )
+    assert extra.status_code == 422
+
+    started = await app_client.post(url, json={"status": "in_progress"}, headers=admin.headers)
+    assert started.status_code == 200 and started.json()["status"] == "in_progress"
+    assert started.json()["resolved_at"] is None
+
+    closed = await app_client.post(
+        url, json={"status": "closed", "resolution_note": " Paid manually "}, headers=admin.headers
+    )
+    assert closed.status_code == 200, closed.text
+    body = closed.json()
+    assert body["status"] == "closed"
+    assert body["resolved_by_user_id"] == str(admin.user_id)
+    assert body["resolution_note"] == "Paid manually"
+    db_now = await db.fetchval("SELECT now()")
+    resolved_at = await db.fetchval(
+        "SELECT resolved_at FROM support_tickets WHERE id = $1", UUID(ticket_id)
+    )
+    assert abs((db_now - resolved_at).total_seconds()) < 60
+
+    again = await app_client.post(url, json={"status": "closed"}, headers=admin.headers)
+    assert again.status_code == 200
+    assert again.json()["resolved_at"] == body["resolved_at"]
+    reopen = await app_client.post(url, json={"status": "in_progress"}, headers=admin.headers)
+    assert reopen.status_code == 409
+
+    audits = await db.fetchval(
+        "SELECT count(*) FROM admin_audit_log "
+        "WHERE resource = 'support_tickets' AND record_id = $1",
+        ticket_id,
+    )
+    assert audits == 2
+    missing = await app_client.post(
+        f"{ADMIN}/support-tickets/{uuid4()}/status",
+        json={"status": "closed"},
+        headers=admin.headers,
+    )
+    assert missing.status_code == 404

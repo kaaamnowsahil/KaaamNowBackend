@@ -22,6 +22,7 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
   "ruff>=0.6",
 ]
 
@@ -41,6 +42,29 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+
+# Coverage gate for money and coupon logic (make coverage). Every file listed here must stay at
+# or above fail_under for statements + branches combined; the report also lists each column.
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+include = [
+  "app/services/pricing/*.py",
+  "app/services/live_work/live_pricing.py",
+  "app/services/promos/promo_rules.py",
+  "app/services/promos/promo_service.py",
+  "app/repositories/promos/promo_repository.py",
+  "app/services/cancellations/cancellation_rules.py",
+  "app/services/shifts/domain/shift_rules.py",
+  "app/services/live_work/live_work_billing.py",
+  "app/utils/money.py",
+]
+fail_under = 95
+show_missing = true
+skip_covered = false
+precision = 1
 
 [tool.ruff]
 line-length = 100

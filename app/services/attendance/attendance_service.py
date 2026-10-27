@@ -83,6 +83,7 @@ from app.services.cancellations import cancellation_service
 from app.services.cancellations.cancellation_rules import EVENT_NO_SHOW, EVENT_WALK_OFF
 from app.services.cancellations.cancellation_service import LEDGER_ADJUSTMENT
 from app.services.catalog import catalog_service
+from app.services.live_work import live_work_hooks
 from app.services.notifications.notification_service import notify
 from app.services.shifts.assignment_service import (
     PARTY_BUSINESS,
@@ -130,6 +131,7 @@ async def check_in(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_WORKER:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             if ctx["status"] not in ASG_BOOKED_STATUSES:
@@ -281,6 +283,7 @@ async def check_out(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_WORKER:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
@@ -305,6 +308,7 @@ async def business_end(user: AuthenticatedUser, assignment_id: UUID) -> Assignme
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
@@ -323,6 +327,7 @@ async def request_early_end(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != as_party:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
@@ -355,6 +360,7 @@ async def end_early(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != as_party:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
@@ -379,6 +385,7 @@ async def stop_work(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
@@ -453,6 +460,7 @@ async def request_extension(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
@@ -489,6 +497,7 @@ async def respond_extension(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_WORKER:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             extension = await assignment_repository.lock_extension(conn, extension_id)
@@ -523,6 +532,7 @@ async def approve(
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             if ctx["status"] != ASG_CHECKED_OUT:
@@ -560,6 +570,7 @@ async def mark_no_show(user: AuthenticatedUser, assignment_id: UUID) -> Assignme
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             if ctx["status"] not in ASG_BOOKED_STATUSES:

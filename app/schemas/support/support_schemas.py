@@ -57,3 +57,29 @@ class BookingLedger(BaseModel):
     strikes: list[LedgerLine]
     vouchers: list[LedgerLine]
     overrides: list[OverrideView]
+
+
+class SupportTicketStatusUpdate(BaseModel):
+    """Admin moves a ticket forward; closing stamps the server time and the acting admin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["in_progress", "closed"]
+    resolution_note: str | None = Field(default=None, max_length=1000)
+
+
+class SupportTicketView(BaseModel):
+    id: UUID
+    user_id: UUID
+    topic: str
+    subject: str
+    message: str
+    shift_id: UUID | None
+    assignment_id: UUID | None
+    status: str
+    priority: str
+    resolution_note: str | None
+    resolved_by_user_id: UUID | None
+    resolved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

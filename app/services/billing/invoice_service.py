@@ -17,6 +17,7 @@ from app.constants.billing.billing_route_strings import (
     INVOICE_VOID,
     LINE_GATEWAY_FEE,
     LINE_PLATFORM_FEE,
+    LINE_TAX,
     LINE_WORKER_PAY,
     MSG_INVOICE_NOT_FOUND,
     MSG_INVOICE_NOT_READY,
@@ -36,23 +37,20 @@ from app.exceptions.api_errors import conflict, not_found
 from app.repositories.attendance import attendance_repository
 from app.repositories.billing import billing_repository
 from app.repositories.cancellations import cancellation_repository
+from app.repositories.live_work import live_work_repository
 from app.repositories.shifts import assignment_repository, shift_repository
 from app.schemas.billing.billing_schemas import InvoiceLine, InvoiceResponse
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.billing.settlement import release_invoice_earnings
 from app.services.catalog import catalog_service
+from app.services.pricing.pricing_engine import Charge
+from app.services.pricing.shift_pricing import as_business_charge, shift_charge
 from app.services.profiles.profile_lookup import business_scope
 from app.services.promos import promo_service
-from app.services.promos.promo_rules import Promo, discount_charge
+from app.services.promos.promo_rules import Promo
 from app.services.shifts.domain.shift_rules import paid_minutes
 from app.utils.clock import utc_now
-from app.utils.money import (
-    BusinessCharge,
-    FeeRates,
-    business_charge,
-    overtime_pay,
-    pay_for_minutes,
-)
+from app.utils.money import FeeRates, overtime_pay, pay_for_minutes
 from app.utils.references import INVOICE_REFERENCE_PREFIX, new_reference
 
 _INVOICEABLE_SHIFT_STATUSES = (SHIFT_FILLED, SHIFT_IN_PROGRESS, SHIFT_COMPLETED)
@@ -62,7 +60,12 @@ async def build_invoice_response(conn: asyncpg.Connection, invoice_id: UUID) -> 
     row = await billing_repository.get_invoice(conn, invoice_id)
     lines = await billing_repository.list_invoice_lines(conn, invoice_id)
     data = dict(row)
-    for key in ("fee_percentage", "gateway_fee_percentage", "worker_fee_percentage"):
+    for key in (
+        "fee_percentage",
+        "gateway_fee_percentage",
+        "worker_fee_percentage",
+        "tax_percentage",
+    ):
         data[key] = float(data[key])
     data["amount_due_minor"] = max(data["total_minor"] - data["deposit_applied_minor"], 0)
     data["lines"] = [InvoiceLine.model_validate(dict(line)) for line in lines]
@@ -83,7 +86,7 @@ async def _insert_invoice_with_lines(
     shift: asyncpg.Record,
     *,
     kind: str,
-    charge: BusinessCharge,
+    charge: Charge,
     rates: FeeRates,
     status: str,
     now: datetime,
@@ -91,10 +94,10 @@ async def _insert_invoice_with_lines(
     deposit_applied: int = 0,
     refund_due: int = 0,
     promo: Promo | None = None,
-    promo_discount: int = 0,
 ) -> UUID:
-    """``worker_lines``: (assignment_id, description, minutes, rate, amount). ``charge`` is
-    already net of ``promo_discount``."""
+    """``worker_lines``: (assignment_id, description, minutes, rate, amount). Fee lines are
+    net of the coupon; the discount is stored on the invoice."""
+    net = as_business_charge(charge)
     invoice_id = await billing_repository.insert_invoice(
         conn,
         shift_id=shift["id"],
@@ -103,7 +106,7 @@ async def _insert_invoice_with_lines(
         status=status,
         currency=shift["currency"],
         invoice_kind=kind,
-        charge=charge,
+        charge=net,
         fee_percentage=rates.business_pct,
         gateway_fee_percentage=rates.gateway_pct,
         worker_fee_percentage=rates.worker_pct,
@@ -111,8 +114,11 @@ async def _insert_invoice_with_lines(
         now=now,
         deposit_applied_minor=deposit_applied,
         refund_due_minor=refund_due,
-        promo_discount_minor=promo_discount,
+        promo_discount_minor=charge.discount_minor,
         promo_code=promo.code if promo else None,
+        tax_percentage=rates.tax_pct,
+        tax_label=rates.tax_label if rates.tax_pct else None,
+        tax_base=rates.tax_base if rates.tax_pct else None,
     )
     for index, (assignment_id, description, minutes, rate, amount) in enumerate(worker_lines):
         await billing_repository.insert_invoice_line(
@@ -126,17 +132,13 @@ async def _insert_invoice_with_lines(
             amount_minor=amount,
             sort_order=index,
         )
-    for offset, (kind_, label, pct, amount) in enumerate(
-        (
-            (LINE_PLATFORM_FEE, "Service fee", rates.business_pct, charge.commission_minor),
-            (
-                LINE_GATEWAY_FEE,
-                "Payment gateway charge",
-                rates.gateway_pct,
-                charge.gateway_fee_minor,
-            ),
-        )
-    ):
+    fee_lines = [
+        (LINE_PLATFORM_FEE, "Service fee", rates.business_pct, net.commission_minor),
+        (LINE_GATEWAY_FEE, "Payment gateway charge", rates.gateway_pct, net.gateway_fee_minor),
+    ]
+    if rates.tax_pct:
+        fee_lines.append((LINE_TAX, rates.tax_label, rates.tax_pct, net.tax_minor))
+    for offset, (kind_, label, pct, amount) in enumerate(fee_lines):
         await billing_repository.insert_invoice_line(
             conn,
             invoice_id,
@@ -178,14 +180,12 @@ async def create_deposit_invoice(
     pay = pay_for_minutes(shift["hourly_rate_minor"], minutes)
     seats = shift["workers_required"]
     promo = await promo_service.shift_promo(conn, shift)
-    charge, discount = discount_charge(business_charge(pay * seats, rates), promo)
     return await _insert_invoice_with_lines(
         conn,
         shift,
         kind=INVOICE_KIND_DEPOSIT,
-        charge=charge,
+        charge=shift_charge(pay * seats, rates, promo),
         promo=promo,
-        promo_discount=discount,
         rates=rates,
         status=INVOICE_PENDING,
         now=now,
@@ -229,6 +229,11 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
             existing = await billing_repository.get_invoice_by_shift(conn, shift_id)
             if existing is not None:
                 return await build_invoice_response(conn, existing["id"])
+            if await live_work_repository.is_live_work(conn, shift_id):
+                raise conflict(
+                    "live_work_action_required",
+                    "Live Work bills are issued automatically when the work is completed.",
+                )
             if shift["status"] not in _INVOICEABLE_SHIFT_STATUSES:
                 raise conflict("invoice_shift_state", MSG_INVOICE_SHIFT_STATE)
             unfinished = await assignment_repository.count_in(
@@ -252,10 +257,8 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
                 (a, a["approved_minutes"] or 0, worker_pay(a, booked)) for a in assignments
             ]
             promo = await promo_service.shift_promo(conn, shift)
-            charge, discount = discount_charge(
-                business_charge(sum(amount for _, _, amount in pay_lines), rates), promo
-            )
-            await promo_service.mark_shift_applied(conn, shift_id, discount, now)
+            charge = shift_charge(sum(amount for _, _, amount in pay_lines), rates, promo)
+            await promo_service.mark_shift_applied(conn, shift_id, charge.discount_minor, now)
             deposit = await billing_repository.get_invoice_by_shift(
                 conn, shift_id, INVOICE_KIND_DEPOSIT
             )
@@ -276,7 +279,6 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
                 kind=INVOICE_KIND_FINAL,
                 charge=charge,
                 promo=promo,
-                promo_discount=discount,
                 rates=rates,
                 status=INVOICE_PAID if settled else INVOICE_PENDING,
                 now=now,

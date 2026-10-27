@@ -7,10 +7,12 @@ INSERT INTO shift_invoices (
     shift_id, business_profile_id, reference, status, currency, worker_subtotal_minor,
     platform_fee_minor, total_minor, fee_percentage, fee_policy_version, issued_at, paid_at,
     invoice_kind, gateway_fee_minor, gateway_fee_percentage, worker_fee_percentage,
-    deposit_applied_minor, refund_due_minor, promo_discount_minor, promo_code
+    deposit_applied_minor, refund_due_minor, promo_discount_minor, promo_code, tax_minor,
+    tax_percentage, tax_label, tax_base
 )
 VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+    $21, $22, $23, $24
 )
 RETURNING id
 """

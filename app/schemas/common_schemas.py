@@ -9,6 +9,7 @@ class ErrorResponse(BaseModel):
     code: str = Field(examples=["shift_not_found"])
     message: str
     details: object | None = None
+    request_id: str | None = Field(default=None, description="Quote this when contacting support.")
 
 
 class OkResponse(BaseModel):

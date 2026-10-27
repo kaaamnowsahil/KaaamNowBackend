@@ -29,12 +29,15 @@ def platform_fee(subtotal_minor: int, percentage: Decimal) -> int:
 
 @dataclass(frozen=True)
 class FeeRates:
-    """Business commission + gateway charge are added for the business; worker commission is
-    deducted from worker pay."""
+    """Business commission, gateway charge and tax are added for the business; worker
+    commission is deducted from worker pay. Shifts published before tax existed have none."""
 
     business_pct: Decimal
     worker_pct: Decimal
     gateway_pct: Decimal
+    tax_pct: Decimal = Decimal(0)
+    tax_base: str = "subtotal"
+    tax_label: str = "Tax"
 
 
 @dataclass(frozen=True)
@@ -42,10 +45,16 @@ class BusinessCharge:
     worker_subtotal_minor: int
     commission_minor: int
     gateway_fee_minor: int
+    tax_minor: int = 0
 
     @property
     def total_minor(self) -> int:
-        return self.worker_subtotal_minor + self.commission_minor + self.gateway_fee_minor
+        return (
+            self.worker_subtotal_minor
+            + self.commission_minor
+            + self.gateway_fee_minor
+            + self.tax_minor
+        )
 
 
 def business_charge(worker_subtotal_minor: int, rates: FeeRates) -> BusinessCharge:

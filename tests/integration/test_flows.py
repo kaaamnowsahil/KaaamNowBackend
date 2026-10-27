@@ -180,7 +180,8 @@ async def test_account_deletion_request_review_holds_and_anonymization(
     assert requested.status_code == 202, requested.text
     request = requested.json()
     assert request["status"] == "pending"
-    assert "1 active shifts" in request["blockers"]
+    assert "1 active shift" in request["blockers"]
+    assert "1 pending verification review" in request["blockers"]
     assert await db.fetchval("SELECT is_active FROM users WHERE id = $1", business.user_id)
 
     # An approved request must be rechecked when the background processor runs.
@@ -192,12 +193,23 @@ async def test_account_deletion_request_review_holds_and_anonymization(
     assert await process_deletion_requests(get_pool()) == 0
     assert await db.fetchval("SELECT is_active FROM users WHERE id = $1", business.user_id)
 
+    # The shift starts now, inside the 12 h Business cancellation cutoff; move it a day out so
+    # the blocker can be cleared through the normal cancel endpoint.
+    await db.execute(
+        "UPDATE shifts SET starts_at = starts_at + interval '1 day', "
+        "ends_at = ends_at + interval '1 day' WHERE id = $1",
+        UUID(shift["id"]),
+    )
     cancelled = await app_client.post(
         f"{API}/business/shifts/{shift['id']}/cancel",
         json={},
         headers=business.headers,
     )
     assert cancelled.status_code == 200, cancelled.text
+    await db.execute(
+        "UPDATE business_profiles SET verification_status = 'verified' WHERE user_id = $1",
+        business.user_id,
+    )
     assert (
         await app_client.get(f"{API}/me/deletion-requests/current", headers=business.headers)
     ).json()["status"] == "approved"
@@ -418,7 +430,10 @@ async def test_scheduled_flow(app_client, make_business, make_worker) -> None:  
     assert resp.status_code == 201, resp.text
     shift = resp.json()
     assert shift["status"] == "awaiting_payment"
-    assert shift["estimate"]["total_minor"] == 57283  # Rs 540 + 4% + 2% gateway on Rs 561.60
+    # Rs 540 + 4% + 2% gateway + 2% tax on Rs 561.60
+    assert shift["estimate"]["total_minor"] == 58406
+    assert shift["estimate"]["tax_minor"] == 1123
+    assert shift["estimate"]["tax_base"] == "subtotal"
     shift = await pay_deposit(app_client, business, shift["id"])
 
     feed = (
@@ -746,7 +761,7 @@ async def test_deposit_covers_final_cost_and_refunds_excess(  # type: ignore[no-
     ).json()
     assert deposit["invoice_kind"] == "deposit"
     assert deposit["status"] == "paid"
-    assert deposit["total_minor"] == 57283
+    assert deposit["total_minor"] == 58406
 
     applied = await app_client.post(
         f"{API}/worker/shifts/{shift_id}/applications", json={}, headers=worker.headers
@@ -815,15 +830,17 @@ async def test_deposit_covers_final_cost_and_refunds_excess(  # type: ignore[no-
     invoice = final.json()
     # 3 h x Rs 120 = Rs 360; + 4% = Rs 374.40; + 2% gateway = Rs 7.49
     assert invoice["invoice_kind"] == "final"
-    assert invoice["total_minor"] == 36000 + 1440 + 749
+    assert invoice["total_minor"] == 36000 + 1440 + 749 + 749
+    assert invoice["tax_minor"] == 749
     assert invoice["status"] == "paid"
-    assert invoice["deposit_applied_minor"] == 57283
+    assert invoice["deposit_applied_minor"] == 58406
     assert invoice["amount_due_minor"] == 0
-    assert invoice["refund_due_minor"] == 57283 - 38189
+    assert invoice["refund_due_minor"] == 58406 - 38938  # final: Rs 360 + 4% + 2% gateway + 2% tax
     assert {line["line_kind"] for line in invoice["lines"]} == {
         "worker_pay",
         "platform_fee",
         "gateway_fee",
+        "tax",
     }
 
     summary = (await app_client.get(f"{API}/worker/earnings", headers=worker.headers)).json()

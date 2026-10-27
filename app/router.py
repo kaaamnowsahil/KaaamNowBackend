@@ -18,6 +18,9 @@ from app.routes.content.content_router import router as content_router
 from app.routes.content.content_router import support_router
 from app.routes.earnings.earnings_router import router as earnings_router
 from app.routes.health_router import router as health_router
+from app.routes.live_work.admin_live_work_router import router as admin_live_work_router
+from app.routes.live_work.business_live_work_router import router as business_live_work_router
+from app.routes.live_work.worker_live_work_router import router as worker_live_work_router
 from app.routes.lookups.lookup_router import LOOKUP_ROUTERS
 from app.routes.lookups.shift_filter_router import router as shift_filter_router
 from app.routes.notifications.notifications_router import router as notifications_router
@@ -45,8 +48,11 @@ _ROUTERS = (
     # Before admin_crud_router: its /admin/{resource} would swallow /admin/faqs and /admin/terms.
     content_admin_router,
     admin_override_router,
+    admin_live_work_router,
     admin_crud_router,
     notifications_router,
+    business_live_work_router,
+    worker_live_work_router,
     business_shifts_router,
     business_live_router,
     worker_shifts_router,

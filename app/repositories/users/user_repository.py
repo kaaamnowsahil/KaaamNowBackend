@@ -9,6 +9,7 @@ import asyncpg
 
 from app.repositories.users.user_queries import (
     DEACTIVATE_DEVICE,
+    DEACTIVATE_PUSH_TOKENS,
     DEACTIVATE_USER_ACCOUNT,
     DEACTIVATE_USER_DEVICES,
     GET_AUTH_CREDENTIALS,
@@ -136,6 +137,12 @@ async def upsert_device(
 async def deactivate_device(conn: asyncpg.Connection, device_id: UUID, user_id: UUID) -> bool:
     result = await conn.execute(DEACTIVATE_DEVICE, device_id, user_id)
     return result.endswith(" 1")
+
+
+async def deactivate_push_tokens(conn: asyncpg.Connection, push_tokens: list[str]) -> None:
+    """Provider said these tokens are dead (app uninstalled, token rotated, other project)."""
+    if push_tokens:
+        await conn.execute(DEACTIVATE_PUSH_TOKENS, push_tokens)
 
 
 async def list_active_push_tokens(conn: asyncpg.Connection, user_id: UUID) -> list[asyncpg.Record]:

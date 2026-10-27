@@ -35,3 +35,23 @@ CREATE TABLE IF NOT EXISTS promo_codes (
 
 CREATE INDEX IF NOT EXISTS promo_codes_owner_idx
     ON promo_codes (owner_user_id) WHERE owner_user_id IS NOT NULL;
+
+-- Coupon targeting (admin "Promo codes"; columns default so existing codes behave as before):
+-- booking_types limits a coupon to Shift or Live Work bookings; min_booking_minor is the minimum
+-- work amount (worker pay before fees); is_listed shows a general coupon on the Business
+-- Promotions screen (codes assigned to one Business through owner_user_id are always shown to
+-- that Business); title is the short text shown there.
+ALTER TABLE promo_codes
+    ADD COLUMN IF NOT EXISTS booking_types VARCHAR(16) NOT NULL DEFAULT 'all',
+    ADD COLUMN IF NOT EXISTS min_booking_minor BIGINT,
+    ADD COLUMN IF NOT EXISTS is_listed BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS title VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE promo_codes DROP CONSTRAINT IF EXISTS promo_codes_targeting_chk;
+ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_targeting_chk CHECK (
+    booking_types IN ('all', 'shift', 'live')
+    AND (min_booking_minor IS NULL OR min_booking_minor >= 0)
+    AND (max_discount_minor IS NULL OR max_discount_minor >= 0)
+    AND (valid_until IS NULL OR valid_until > valid_from)
+) NOT VALID;
+CREATE INDEX IF NOT EXISTS promo_codes_listed_idx
+    ON promo_codes (target_role) WHERE is_listed AND is_active AND owner_user_id IS NULL;

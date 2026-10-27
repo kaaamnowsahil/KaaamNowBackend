@@ -12,7 +12,7 @@ PaymentMethodCode = Literal["google_pay", "paytm", "apple_pay", "upi_qr", "card_
 
 
 class InvoiceLine(BaseModel):
-    line_kind: Literal["worker_pay", "platform_fee", "gateway_fee"]
+    line_kind: Literal["worker_pay", "platform_fee", "gateway_fee", "tax"]
     description: str
     assignment_id: UUID | None = None
     minutes: int | None = None
@@ -24,8 +24,11 @@ class InvoiceResponse(BaseModel):
     id: UUID
     shift_id: UUID
     reference: str
-    invoice_kind: Literal["deposit", "final"] = Field(
-        description="deposit: paid at posting. final: after the shift; the deposit is applied."
+    invoice_kind: Literal["deposit", "final", "live_extension"] = Field(
+        description=(
+            "deposit: paid at posting. final: after the shift; the deposit is applied. "
+            "live_extension: approved extra Live Work time."
+        )
     )
     status: Literal["pending", "paid", "void"]
     currency: str
@@ -34,6 +37,10 @@ class InvoiceResponse(BaseModel):
     worker_subtotal_minor: int
     platform_fee_minor: int = Field(description="Business service fee (commission).")
     gateway_fee_minor: int
+    tax_minor: int = Field(default=0, description="Live Work tax; separate from commission.")
+    tax_percentage: float = 0
+    tax_label: str | None = None
+    tax_base: str | None = None
     total_minor: int
     fee_percentage: float
     gateway_fee_percentage: float

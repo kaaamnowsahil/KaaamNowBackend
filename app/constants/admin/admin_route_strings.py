@@ -11,6 +11,7 @@ OPENAPI_TAG_ADMIN_DATA: Final[str] = "admin - data"
 
 PATH_ADMIN_RESOURCES: Final[str] = "/resources"
 PATH_ADMIN_METRICS_OVERVIEW: Final[str] = "/metrics/overview"
+PATH_ADMIN_SEARCH_RADIUS: Final[str] = "/settings/search-radius"
 PATH_ADMIN_RESOURCE: Final[str] = "/{resource}"
 PATH_ADMIN_RESOURCE_EXPORT: Final[str] = "/{resource}/export.csv"
 PATH_ADMIN_RECORD: Final[str] = "/{resource}/{record_id}"

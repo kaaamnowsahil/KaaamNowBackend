@@ -22,6 +22,7 @@ from app.constants.admin.admin_route_strings import (
     PATH_ADMIN_RESOURCE,
     PATH_ADMIN_RESOURCE_EXPORT,
     PATH_ADMIN_RESOURCES,
+    PATH_ADMIN_SEARCH_RADIUS,
     RESERVED_LIST_PARAMS,
     SEARCH_MAX_LENGTH,
 )
@@ -32,8 +33,10 @@ from app.schemas.admin.admin_schemas import (
     AdminRecord,
     AdminRecordPage,
     AdminResourceList,
+    AdminSearchRadius,
 )
 from app.services.admin import admin_crud_service, admin_metrics_service
+from app.services.catalog import catalog_service
 
 router = APIRouter(prefix=ADMIN_CRUD_ROUTE_PREFIX, tags=[OPENAPI_TAG_ADMIN_DATA])
 
@@ -60,6 +63,16 @@ async def list_resources(_: RequireVerificationRead) -> AdminResourceList:
 )
 async def metrics_overview(_: RequireVerificationRead) -> AdminMetricsOverview:
     return await admin_metrics_service.overview()
+
+
+@router.get(
+    PATH_ADMIN_SEARCH_RADIUS,
+    response_model=AdminSearchRadius,
+    summary=swagger_summary("Search distances in effect", SWAGGER_ROLE_ADMIN),
+    description="Edit them through the audited `search_radius_settings` resource.",
+)
+async def search_radius(_: RequireVerificationRead) -> AdminSearchRadius:
+    return await catalog_service.effective_search_radii()
 
 
 @router.get(
@@ -117,9 +130,9 @@ async def list_records(
     summary=swagger_summary("Create record", SWAGGER_ROLE_ADMIN),
 )
 async def create_record(
-    resource: str, body: RecordBody, _: RequireVerificationWrite
+    resource: str, body: RecordBody, admin: RequireVerificationWrite
 ) -> AdminRecord:
-    return await admin_crud_service.create_record(resource, body)
+    return await admin_crud_service.create_record(resource, body, actor_user_id=admin.user_id)
 
 
 @router.get(
@@ -137,9 +150,11 @@ async def get_record(resource: str, record_id: str, _: RequireVerificationRead) 
     summary=swagger_summary("Update record (partial)", SWAGGER_ROLE_ADMIN),
 )
 async def update_record(
-    resource: str, record_id: str, body: RecordBody, _: RequireVerificationWrite
+    resource: str, record_id: str, body: RecordBody, admin: RequireVerificationWrite
 ) -> AdminRecord:
-    return await admin_crud_service.update_record(resource, record_id, body)
+    return await admin_crud_service.update_record(
+        resource, record_id, body, actor_user_id=admin.user_id
+    )
 
 
 @router.delete(
@@ -147,6 +162,6 @@ async def update_record(
     status_code=status.HTTP_204_NO_CONTENT,
     summary=swagger_summary("Delete record (soft or hard per resource)", SWAGGER_ROLE_ADMIN),
 )
-async def delete_record(resource: str, record_id: str, _: RequireVerificationWrite) -> Response:
-    await admin_crud_service.delete_record(resource, record_id)
+async def delete_record(resource: str, record_id: str, admin: RequireVerificationWrite) -> Response:
+    await admin_crud_service.delete_record(resource, record_id, actor_user_id=admin.user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

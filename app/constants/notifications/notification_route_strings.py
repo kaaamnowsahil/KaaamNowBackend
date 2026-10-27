@@ -42,6 +42,8 @@ KIND_VERIFICATION_UPDATED: Final[str] = "verification_updated"
 KIND_SHIFT_REMINDER: Final[str] = "shift_reminder"
 
 PUSH_BATCH_SIZE: Final[int] = 200
+# A push still failing transiently after this many sweeps is marked ``failed``.
+PUSH_MAX_ATTEMPTS: Final[int] = 3
 
 MSG_NOTIFICATION_NOT_FOUND: Final[str] = "Notification not found."
 KIND_CANCELLATION_FEE: Final[str] = "cancellation_fee"

@@ -7,6 +7,7 @@ import io
 import json
 from collections.abc import Mapping
 from typing import Any
+from uuid import UUID
 
 from app.constants.admin.admin_route_strings import (
     COLUMN_IS_ACTIVE,
@@ -171,6 +172,48 @@ def _prepare_create(resolved: ResolvedResource, values: dict[str, Any]) -> dict[
     return values
 
 
+# --- Audit ---
+
+
+def _audit_json(row: Mapping[str, Any] | None) -> str | None:
+    return None if row is None else json.dumps(dict(row), default=str, sort_keys=True)
+
+
+def _row_id(resolved: ResolvedResource, row: Mapping[str, Any]) -> str:
+    return COMPOSITE_KEY_SEPARATOR.join(str(row[pk]) for pk in resolved.primary_key)
+
+
+async def _audit(
+    conn: Any,
+    resolved: ResolvedResource,
+    *,
+    action: str,
+    record_id: str,
+    actor_user_id: UUID | None,
+    old: Mapping[str, Any] | None,
+    new: Mapping[str, Any] | None,
+) -> None:
+    if not resolved.resource.audited:
+        return
+    await admin_repository.insert_audit(
+        conn,
+        resource=resolved.name,
+        record_id=record_id,
+        action=action,
+        actor_user_id=actor_user_id,
+        old_values=_audit_json(old),
+        new_values=_audit_json(new),
+    )
+
+
+async def _current_row(conn: Any, resolved: ResolvedResource, key: dict[str, Any]) -> Any:
+    if not resolved.resource.audited:
+        return None
+    return await admin_repository.get_row(
+        conn, table=resolved.table, columns=resolved.visible, key=key
+    )
+
+
 # --- Public API ---
 
 
@@ -296,19 +339,37 @@ async def get_record(name: str, record_id: str) -> AdminRecord:
     return _record(row)
 
 
-async def create_record(name: str, body: Mapping[str, Any]) -> AdminRecord:
+async def create_record(
+    name: str, body: Mapping[str, Any], *, actor_user_id: UUID | None = None
+) -> AdminRecord:
     resolved = await _resolve(name)
     _require_op(resolved, OP_CREATE)
     values = _prepare_create(resolved, _coerce_body(resolved, body, resolved.writable_on_create))
     async with get_pool().acquire() as conn:
         with translate_db_errors():
-            row = await admin_repository.insert_row(
-                conn, table=resolved.table, values=values, returning=resolved.visible
-            )
+            async with conn.transaction():
+                row = await admin_repository.insert_row(
+                    conn, table=resolved.table, values=values, returning=resolved.visible
+                )
+                await _audit(
+                    conn,
+                    resolved,
+                    action=OP_CREATE,
+                    record_id=_row_id(resolved, row),
+                    actor_user_id=actor_user_id,
+                    old=None,
+                    new=row,
+                )
     return _record(row)
 
 
-async def update_record(name: str, record_id: str, body: Mapping[str, Any]) -> AdminRecord:
+async def update_record(
+    name: str,
+    record_id: str,
+    body: Mapping[str, Any],
+    *,
+    actor_user_id: UUID | None = None,
+) -> AdminRecord:
     resolved = await _resolve(name)
     _require_op(resolved, OP_UPDATE)
     key = _parse_key(resolved, record_id)
@@ -317,34 +378,58 @@ async def update_record(name: str, record_id: str, body: Mapping[str, Any]) -> A
         raise bad_request(ERR_EMPTY_BODY, MSG_EMPTY_BODY)
     async with get_pool().acquire() as conn:
         with translate_db_errors():
-            row = await admin_repository.update_row(
-                conn,
-                table=resolved.table,
-                values=values,
-                touch_columns=resolved.touch_columns,
-                key=key,
-                returning=resolved.visible,
-            )
+            async with conn.transaction():
+                old = await _current_row(conn, resolved, key)
+                row = await admin_repository.update_row(
+                    conn,
+                    table=resolved.table,
+                    values=values,
+                    touch_columns=resolved.touch_columns,
+                    key=key,
+                    returning=resolved.visible,
+                )
+                if row is not None:
+                    await _audit(
+                        conn,
+                        resolved,
+                        action=OP_UPDATE,
+                        record_id=record_id,
+                        actor_user_id=actor_user_id,
+                        old=old,
+                        new=row,
+                    )
     if row is None:
         raise not_found(ERR_RECORD_NOT_FOUND, MSG_RECORD_NOT_FOUND)
     return _record(row)
 
 
-async def delete_record(name: str, record_id: str) -> None:
+async def delete_record(name: str, record_id: str, *, actor_user_id: UUID | None = None) -> None:
     resolved = await _resolve(name)
     _require_op(resolved, OP_DELETE)
     key = _parse_key(resolved, record_id)
     async with get_pool().acquire() as conn:
         with translate_db_errors():
-            if resolved.delete_mode == DELETE_MODE_SOFT:
-                found = await admin_repository.soft_delete_row(
-                    conn,
-                    table=resolved.table,
-                    flag_column=COLUMN_IS_ACTIVE,
-                    touch_columns=resolved.touch_columns,
-                    key=key,
-                )
-            else:
-                found = await admin_repository.delete_row(conn, table=resolved.table, key=key)
+            async with conn.transaction():
+                old = await _current_row(conn, resolved, key)
+                if resolved.delete_mode == DELETE_MODE_SOFT:
+                    found = await admin_repository.soft_delete_row(
+                        conn,
+                        table=resolved.table,
+                        flag_column=COLUMN_IS_ACTIVE,
+                        touch_columns=resolved.touch_columns,
+                        key=key,
+                    )
+                else:
+                    found = await admin_repository.delete_row(conn, table=resolved.table, key=key)
+                if found:
+                    await _audit(
+                        conn,
+                        resolved,
+                        action=OP_DELETE,
+                        record_id=record_id,
+                        actor_user_id=actor_user_id,
+                        old=old,
+                        new=None,
+                    )
     if not found:
         raise not_found(ERR_RECORD_NOT_FOUND, MSG_RECORD_NOT_FOUND)

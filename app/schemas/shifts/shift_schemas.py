@@ -143,11 +143,20 @@ class ShiftCostEstimate(BaseModel):
     workers_required: int
     worker_subtotal_minor: int
     fee_percentage: float = Field(description="Business commission %.")
-    platform_fee_minor: int = Field(description="Business commission amount.")
+    platform_fee_minor: int = Field(description="Business commission before any coupon.")
     gateway_fee_percentage: float
     gateway_fee_minor: int
+    tax_percentage: float = Field(default=0, description="0 for shifts published before tax.")
+    tax_label: str = "Tax"
+    tax_base: Literal["subtotal", "base_amount", "commission"] = Field(
+        default="subtotal",
+        description="subtotal = worker pay + net commission; base_amount = worker pay; "
+        "commission = net commission. The gateway charge is never taxed.",
+    )
+    taxable_minor: int = 0
+    tax_minor: int = 0
     total_minor: int = Field(
-        description="What the business pays: pay + commission + gateway − promo discount."
+        description="What the business pays: pay + commission + gateway + tax − promo discount."
     )
     promo_code: str | None = None
     promo_discount_minor: int = Field(

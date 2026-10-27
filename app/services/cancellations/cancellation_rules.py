@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from app.services.promos.promo_rules import Promo, discount_charge
-from app.utils.money import FeeRates, business_charge, platform_fee, round_half_up
+from app.services.pricing.shift_pricing import as_business_charge, shift_charge
+from app.services.promos.promo_rules import Promo
+from app.utils.money import FeeRates, platform_fee, round_half_up
 
 PARTY_WORKER = "worker"
 PARTY_BUSINESS = "business"
@@ -96,22 +97,20 @@ def quote_seat(
     seats: int = 1,
 ) -> SeatQuote:
     """Worker side: fee from the worker's wallet; the business gets the whole seat back.
-    Business side: fee is a share of the booking, commission on it and the seat's gateway
-    charge are kept, ``worker_share_pct`` of the booking goes to the worker."""
+    Business side: fee is a share of the booking; commission and tax on that share and the
+    seat's gateway charge are kept; ``worker_share_pct`` of the booking goes to the worker."""
     hours = hours_before(starts_at, now)
     tier = pick_tier(policy, party, event, hours)
     fee = _fee(tier, booking_minor)
-    seat, _ = discount_charge(
-        business_charge(booking_minor, rates), promo, scale=Decimal(1) / Decimal(max(seats, 1))
+    seat = as_business_charge(
+        shift_charge(booking_minor, rates, promo, scale=Decimal(1) / Decimal(max(seats, 1)))
     )
     if party == PARTY_BUSINESS:
         fee = min(fee, booking_minor)
-        commission_kept = (
-            round_half_up(Decimal(seat.commission_minor) * fee / booking_minor)
-            if booking_minor
-            else 0
-        )
-        retained = fee + commission_kept + seat.gateway_fee_minor
+        share = Decimal(fee) / booking_minor if booking_minor else Decimal(0)
+        commission_kept = round_half_up(Decimal(seat.commission_minor) * share)
+        tax_kept = round_half_up(Decimal(seat.tax_minor) * share)
+        retained = fee + commission_kept + tax_kept + seat.gateway_fee_minor
         compensation = platform_fee(booking_minor, tier.worker_share_pct) if tier else 0
         return SeatQuote(
             party=party,
@@ -158,7 +157,7 @@ def quote_unfilled(
         booking_minor=booking_minor * seats,
         fee_minor=0,
         worker_compensation_minor=0,
-        business_refund_minor=business_charge(booking_minor * seats, rates).total_minor,
+        business_refund_minor=shift_charge(booking_minor * seats, rates).total_minor,
         business_retained_minor=0,
         strike_weight=Decimal(0),
         business_voucher=True,

@@ -27,6 +27,7 @@ from app.security.permissions import (
     RESOURCE_BILLING,
     RESOURCE_BUSINESS_PROFILE,
     RESOURCE_EARNINGS,
+    RESOURCE_LIVE_PRICING,
     RESOURCE_SHIFTS,
     RESOURCE_VERIFICATION,
     RESOURCE_WORK,
@@ -141,4 +142,10 @@ RequireVerificationRead = Annotated[
 ]
 RequireVerificationWrite = Annotated[
     AuthenticatedUser, Depends(require_access(RESOURCE_VERIFICATION, ACTION_WRITE))
+]
+RequireLivePricingRead = Annotated[
+    AuthenticatedUser, Depends(require_access(RESOURCE_LIVE_PRICING, ACTION_READ))
+]
+RequireLivePricingWrite = Annotated[
+    AuthenticatedUser, Depends(require_access(RESOURCE_LIVE_PRICING, ACTION_WRITE))
 ]
