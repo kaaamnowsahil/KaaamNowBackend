@@ -41,6 +41,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/shift_applications.sql",
     "tables/shift_assignments.sql",
     "tables/attendance_records.sql",
+    "tables/assignment_completion_codes.sql",
     "tables/shift_extensions.sql",
     "tables/assignment_messages.sql",
     # Billing

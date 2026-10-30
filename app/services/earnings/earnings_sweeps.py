@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
 import asyncpg
+import httpx
 
 from app.constants.earnings.earnings_route_strings import (
     ENTRY_WITHDRAWAL_REVERSAL,
@@ -15,9 +18,14 @@ from app.constants.notifications.notification_route_strings import (
     KIND_WITHDRAWAL_PAID,
 )
 from app.repositories.earnings import earnings_repository
-from app.services.earnings.sources.payout_provider_factory import get_payout_provider
+from app.services.earnings.sources.payout_provider_factory import (
+    PayoutProviderError,
+    get_payout_provider,
+)
 from app.services.notifications.notification_service import notify
 from app.utils.clock import utc_now
+
+logger = logging.getLogger(__name__)
 
 
 async def advance_processing_withdrawals(pool: asyncpg.Pool) -> int:
@@ -32,9 +40,13 @@ async def advance_processing_withdrawals(pool: asyncpg.Pool) -> int:
                     continue
                 if not row["provider_payout_id"]:
                     continue
-                status = await get_payout_provider(row["provider"]).fetch_status(
-                    row["provider_payout_id"]
-                )
+                try:
+                    status = await get_payout_provider(row["provider"]).fetch_status(
+                        row["provider_payout_id"]
+                    )
+                except (PayoutProviderError, httpx.HTTPError) as exc:
+                    logger.warning("payout status check failed: %s", exc)
+                    continue
                 now = utc_now()
                 amount = row["amount_minor"]
                 label = f"₹{amount // 100:,}.{amount % 100:02d}"

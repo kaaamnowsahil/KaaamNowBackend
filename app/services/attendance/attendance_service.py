@@ -23,6 +23,7 @@ from app.constants.attendance.attendance_route_strings import (
     MSG_NO_SHOW_TOO_EARLY,
     MSG_NOT_CHECKED_IN,
     MSG_NOT_CHECKED_OUT,
+    MSG_TASK_NO_TIMING,
 )
 from app.constants.notifications.notification_route_strings import (
     KIND_ATTENDANCE_APPROVED,
@@ -42,6 +43,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_OUT,
     ASG_NO_SHOW,
     END_BUSINESS_STOPPED,
+    END_COMPLETED,
     END_MUTUAL,
     END_SCHEDULED,
     END_WORKER_LEFT,
@@ -58,7 +60,7 @@ from app.constants.shifts.shift_route_strings import (
     SHIFT_SEARCHING,
 )
 from app.db.pool import get_pool
-from app.exceptions.api_errors import bad_request, conflict, not_found
+from app.exceptions.api_errors import ApiError, bad_request, conflict, not_found
 from app.repositories.attendance import attendance_repository
 from app.repositories.cancellations import cancellation_repository
 from app.repositories.profiles import profile_repository
@@ -79,6 +81,7 @@ from app.schemas.attendance.attendance_schemas import (
 )
 from app.schemas.shifts.assignment_schemas import AssignmentDetail
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.cancellations.cancellation_rules import EVENT_NO_SHOW, EVENT_WALK_OFF
 from app.services.cancellations.cancellation_service import LEDGER_ADJUSTMENT
@@ -95,6 +98,7 @@ from app.services.shifts.assignment_service import (
     extension_view,
     load_context,
 )
+from app.services.shifts.domain.shift_rules import is_task
 from app.utils.clock import minutes_between, utc_now
 from app.utils.geo import haversine_km
 from app.utils.money import platform_fee, worker_commission
@@ -170,6 +174,7 @@ async def check_in(
                 distance_m=distance_m,
             )
             await assignment_repository.set_status(conn, assignment_id, ASG_CHECKED_IN)
+            await completion_codes.issue(conn, assignment_id, ctx["shift_id"])
             await profile_repository.upsert_worker_location(
                 conn,
                 ctx["worker_profile_id"],
@@ -275,11 +280,50 @@ def _require_checked_in(ctx: asyncpg.Record) -> None:
         raise conflict("not_checked_in", MSG_NOT_CHECKED_IN)
 
 
+async def _complete_task(
+    conn: asyncpg.Connection,
+    ctx: asyncpg.Record,
+    *,
+    party: str,
+    now: datetime,
+    actor_user_id: UUID,
+    note: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> None:
+    """Task done: the fixed price is due, so the booking is approved straight away."""
+    minutes = minutes_between(ctx["checked_in_at"], now)
+    await _finish(
+        conn,
+        ctx,
+        party=party,
+        reason=END_COMPLETED,
+        now=now,
+        note=note,
+        latitude=latitude,
+        longitude=longitude,
+        minutes=minutes,
+    )
+    await attendance_repository.approve(
+        conn,
+        ctx["id"],
+        approved_minutes=minutes,
+        note="Task completed",
+        now=now,
+        approver_user_id=actor_user_id,
+    )
+    await assignment_repository.set_status(conn, ctx["id"], ASG_APPROVED)
+
+
 async def check_out(
     user: AuthenticatedUser, assignment_id: UUID, body: CheckOutRequest
 ) -> AssignmentDetail:
-    """Worker ends at the booked end time. Earlier needs the business's PIN (end-early)."""
+    """Worker finishes with the Business's completion code. Hourly: at the booked end it is a
+    normal end; earlier, the code is the Business's consent (paid for time worked). Task: the
+    job is complete and the fixed price is due. Wrong codes are counted in a committed
+    transaction, then the error is raised."""
     now = utc_now()
+    failure: ApiError | None = None
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             ctx, party = await load_context(conn, assignment_id, user, lock=True)
@@ -287,23 +331,39 @@ async def check_out(
             if party != PARTY_WORKER:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
-            if not can_end_without_pin(ctx, now):
-                raise conflict("early_end_pin_required", MSG_EARLY_END_PIN_REQUIRED)
-            await _finish(
-                conn,
-                ctx,
-                party=party,
-                reason=END_SCHEDULED,
-                now=now,
-                note=body.note,
-                latitude=body.latitude,
-                longitude=body.longitude,
+            failure = await completion_codes.verify(
+                conn, assignment_id, ctx["shift_id"], body.completion_code, now
             )
-            return await build_assignment_detail(conn, assignment_id, user)
+            if failure is None and is_task(ctx):
+                await _complete_task(
+                    conn,
+                    ctx,
+                    party=party,
+                    now=now,
+                    actor_user_id=user.user_id,
+                    note=body.note,
+                    latitude=body.latitude,
+                    longitude=body.longitude,
+                )
+            elif failure is None:
+                await _finish(
+                    conn,
+                    ctx,
+                    party=party,
+                    reason=END_SCHEDULED if can_end_without_pin(ctx, now) else END_MUTUAL,
+                    now=now,
+                    note=body.note,
+                    latitude=body.latitude,
+                    longitude=body.longitude,
+                )
+        if failure is not None:
+            raise failure
+        return await build_assignment_detail(conn, assignment_id, user)
 
 
 async def business_end(user: AuthenticatedUser, assignment_id: UUID) -> AssignmentDetail:
-    """Business ends at the booked end time (same rule as the worker's check-out)."""
+    """Business ends at the booked end time (same rule as the worker's check-out). A task can
+    be confirmed as done at any time."""
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
@@ -312,10 +372,32 @@ async def business_end(user: AuthenticatedUser, assignment_id: UUID) -> Assignme
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
+            if is_task(ctx):
+                await completion_codes.mark_used(conn, assignment_id, now)
+                await _complete_task(conn, ctx, party=party, now=now, actor_user_id=user.user_id)
+                return await build_assignment_detail(conn, assignment_id, user)
             if not can_end_without_pin(ctx, now):
                 raise conflict("early_end_pin_required", MSG_EARLY_END_PIN_REQUIRED)
+            await completion_codes.mark_used(conn, assignment_id, now)
             await _finish(conn, ctx, party=party, reason=END_SCHEDULED, now=now)
             return await build_assignment_detail(conn, assignment_id, user)
+
+
+async def reissue_completion_code(user: AuthenticatedUser, assignment_id: UUID) -> AssignmentDetail:
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            ctx, party = await load_context(conn, assignment_id, user, lock=True)
+            await live_work_hooks.reject_generic_action(conn, ctx["shift_id"])
+            if party != PARTY_BUSINESS:
+                raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
+            _require_checked_in(ctx)
+            await completion_codes.reissue(conn, assignment_id, ctx["shift_id"])
+            return await build_assignment_detail(conn, assignment_id, user)
+
+
+def _reject_task_timing(ctx: asyncpg.Record) -> None:
+    if is_task(ctx):
+        raise conflict("task_no_timing", MSG_TASK_NO_TIMING)
 
 
 async def request_early_end(
@@ -331,6 +413,7 @@ async def request_early_end(
             if party != as_party:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
+            _reject_task_timing(ctx)
             pin = new_numeric_code(EARLY_END_PIN_LENGTH)
             await assignment_repository.set_early_end_pin(
                 conn,
@@ -364,6 +447,7 @@ async def end_early(
             if party != as_party:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
+            _reject_task_timing(ctx)
             valid = (
                 ctx["early_end_pin"] is not None
                 and ctx["early_end_requested_by"] == party
@@ -372,6 +456,7 @@ async def end_early(
             )
             if not valid:
                 raise bad_request("early_end_pin_invalid", MSG_EARLY_END_PIN_INVALID)
+            await completion_codes.mark_used(conn, assignment_id, now)
             await _finish(conn, ctx, party=party, reason=END_MUTUAL, now=now, note=body.note)
             return await build_assignment_detail(conn, assignment_id, user)
 
@@ -390,6 +475,7 @@ async def stop_work(
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
             shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
+            await completion_codes.mark_used(conn, assignment_id, now)
             if body.reason == END_BUSINESS_STOPPED:
                 full = payable_cap_minutes(ctx)
                 await _finish(
@@ -464,6 +550,7 @@ async def request_extension(
             if party != PARTY_BUSINESS:
                 raise not_found("assignment_not_found", MSG_ASSIGNMENT_NOT_FOUND)
             _require_checked_in(ctx)
+            _reject_task_timing(ctx)
             if await assignment_repository.lock_open_extension(conn, assignment_id):
                 raise conflict("extension_pending", MSG_EXTENSION_PENDING)
             extension_id = await assignment_repository.insert_extension(

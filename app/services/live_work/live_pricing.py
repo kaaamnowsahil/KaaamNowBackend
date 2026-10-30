@@ -22,13 +22,19 @@ only reduces the booking's commission (Live Work has no gateway charge) and neve
 extensions.
 
 Reserved time is always billed in full, even when work finishes early.
+
+Task pricing: ``base = task_price`` (fixed, no duration, no extensions); ``reserved_minutes`` is
+only the window the job must be done in. Commission, tax and coupons work exactly as above.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
+from app.constants.shifts.shift_route_strings import PRICING_HOURLY, PRICING_TASK
 from app.services.pricing.pricing_engine import (
     DEFAULT_COMMISSION_PCT,
     DEFAULT_TAX_PCT,
@@ -103,6 +109,48 @@ class LiveCharge:
         return self.base_amount_minor - self.worker_commission_minor
 
 
+@dataclass(frozen=True)
+class LiveTerms:
+    """What the Business books: rate × reserved time, or one fixed task price."""
+
+    pricing_mode: str
+    hourly_rate_minor: int
+    reserved_minutes: int
+    task_price_minor: int | None = None
+
+    @property
+    def is_task(self) -> bool:
+        return self.pricing_mode == PRICING_TASK
+
+    @property
+    def base_minor(self) -> int:
+        if self.is_task:
+            return self.task_price_minor or 0
+        return pay_for_minutes(self.hourly_rate_minor, self.reserved_minutes)
+
+
+def live_terms(
+    *,
+    pricing_mode: str,
+    hourly_rate_minor: int | None,
+    duration_minutes: int | None,
+    task_price_minor: int | None,
+    task_window_minutes: int,
+) -> LiveTerms:
+    if pricing_mode == PRICING_TASK:
+        return LiveTerms(PRICING_TASK, 0, task_window_minutes, task_price_minor)
+    return LiveTerms(PRICING_HOURLY, hourly_rate_minor or 0, duration_minutes or 0)
+
+
+def terms_from_pricing(pricing: Mapping[str, Any]) -> LiveTerms:
+    return LiveTerms(
+        pricing["pricing_mode"],
+        pricing["hourly_rate_minor"],
+        pricing["reserved_minutes"],
+        pricing["task_price_minor"],
+    )
+
+
 def charge_for_base(
     base_minor: int,
     *,
@@ -133,10 +181,21 @@ def charge_for_base(
 
 
 def booking_charge(
-    hourly_rate_minor: int, reserved_minutes: int, rates: LiveRates, promo: Promo | None = None
+    hourly_rate_minor: int,
+    reserved_minutes: int,
+    rates: LiveRates,
+    promo: Promo | None = None,
+    *,
+    task_price_minor: int | None = None,
 ) -> LiveCharge:
+    """``task_price_minor`` set: a task booking with that fixed base."""
+    base = (
+        task_price_minor
+        if task_price_minor is not None
+        else pay_for_minutes(hourly_rate_minor, reserved_minutes)
+    )
     return charge_for_base(
-        pay_for_minutes(hourly_rate_minor, reserved_minutes),
+        base,
         commission_pct=rates.commission_pct,
         tax_pct=rates.tax_pct,
         tax_base=rates.tax_base,

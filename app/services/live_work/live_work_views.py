@@ -17,6 +17,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_OUT,
     ASG_CONFIRMED,
     ASG_EN_ROUTE,
+    PRICING_TASK,
     SHIFT_AWAITING_PAYMENT,
     SHIFT_CANCELLED,
     SHIFT_COMPLETED,
@@ -47,6 +48,7 @@ from app.schemas.live_work.live_work_schemas import (
     WorkerLiveBooking,
     WorkerLiveEarnings,
 )
+from app.services.attendance import completion_codes
 from app.services.catalog import catalog_service
 from app.services.live_work import live_work_billing
 from app.services.live_work.live_pricing_settings_service import breakdown, rates_from_row
@@ -118,8 +120,10 @@ def work_details(booking: asyncpg.Record, *, include_coordinates: bool) -> LiveW
         arrival_instructions=booking["arrival_instructions"] or "",
         site_contact_name=booking["site_contact_name"] or "",
         business_name=booking["business_name"],
+        pricing_mode=booking["pricing_mode"],
         reserved_minutes=booking["reserved_minutes"],
         hourly_rate_minor=booking["hourly_rate_minor"],
+        task_price_minor=booking["task_price_minor"],
     )
 
 
@@ -131,6 +135,8 @@ def booking_breakdown(booking: asyncpg.Record):  # type: ignore[no-untyped-def]
         rates=rates_from_row(booking),
         charge=live_work_billing.snapshot_charge(booking),
         promo_code=booking["promo_code"],
+        pricing_mode=booking["pricing_mode"],
+        task_price_minor=booking["task_price_minor"],
     )
 
 
@@ -163,6 +169,16 @@ def _timer(
     if assignment is None or assignment["checked_in_at"] is None:
         return None
     running = assignment["status"] == ASG_CHECKED_IN
+    if booking["pricing_mode"] == PRICING_TASK:
+        # No countdown for a task: it ends when the job is done.
+        return LiveTimerView(
+            started_at=assignment["checked_in_at"],
+            ends_at=None,
+            reserved_minutes=0,
+            extended_minutes=0,
+            remaining_seconds=None,
+            completed_at=assignment["checked_out_at"],
+        )
     return LiveTimerView(
         started_at=assignment["checked_in_at"],
         ends_at=booking["ends_at"],
@@ -376,6 +392,12 @@ async def build_business_state(
             refund_minor=refund_total,
         )
 
+    completion = (
+        await completion_codes.load_view(conn, assignment["id"], for_business=True)
+        if assignment is not None and assignment["status"] == ASG_CHECKED_IN
+        else None
+    )
+    task = booking["pricing_mode"] == PRICING_TASK
     open_ext = next((e for e in extensions if e["status"] in OPEN_EXTENSION_STATUSES), None)
     actions = BusinessLiveActions(
         can_pay=(
@@ -383,10 +405,11 @@ async def build_business_state(
         )
         or (open_ext is not None and open_ext["status"] == "awaiting_payment"),
         can_cancel=status in ("awaiting_payment", "searching", "assigned", "en_route"),
-        can_extend=status == "in_progress" and open_ext is None,
+        can_extend=status == "in_progress" and open_ext is None and not task,
         can_end_work=status == "in_progress",
         can_reissue_code=arrival is not None,
         can_repost=status in ("no_workers", "cancelled"),
+        can_reissue_completion_code=completion is not None and completion.can_reissue,
     )
     version = _version(
         booking["updated_at"],
@@ -398,6 +421,8 @@ async def build_business_state(
         location_marker,
         arrival.attempts_left if arrival else None,
         arrival.code if arrival else None,
+        completion.code if completion else None,
+        completion.attempts_left if completion else None,
         search.available_workers if search else None,
         search.notified_workers if search else None,
     )
@@ -414,6 +439,7 @@ async def build_business_state(
         deposit_invoice=invoice_summary(deposit) if deposit else None,
         assignment=assignment_view,
         arrival_code=arrival,
+        completion_code=completion,
         timer=_timer(booking, assignment, now),
         extensions=[extension_view(e) for e in extensions],
         final_invoice=invoice_summary(final) if final else None,
@@ -463,6 +489,11 @@ async def build_worker_state(
         "extended_minutes": assignment["extended_minutes"],
     }
     pending_answer = any(e["status"] == "requested" for e in extensions)
+    completion = (
+        await completion_codes.load_view(conn, assignment["id"], for_business=False)
+        if assignment["status"] == ASG_CHECKED_IN
+        else None
+    )
     return WorkerLiveBooking(
         assignment_id=assignment["id"],
         booking_id=assignment["shift_id"],
@@ -475,6 +506,8 @@ async def build_worker_state(
             [(e["id"], e["status"]) for e in extensions],
             arrival.attempts_left if arrival else None,
             arrival.locked if arrival else None,
+            completion.attempts_left if completion else None,
+            completion.locked if completion else None,
         ),
         work=work_details(booking, include_coordinates=status != "cancelled"),
         earnings=WorkerLiveEarnings(
@@ -487,6 +520,7 @@ async def build_worker_state(
             total_net_minor=booking["worker_net_minor"] + applied_net,
         ),
         arrival=arrival,
+        completion=completion,
         timer=_timer(booking, timer_assignment, now),  # type: ignore[arg-type]
         extensions=[extension_view(e) for e in extensions],
         cancellation=cancellation,

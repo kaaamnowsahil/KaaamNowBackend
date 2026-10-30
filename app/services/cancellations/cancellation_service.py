@@ -34,8 +34,8 @@ from app.services.cancellations.cancellation_rules import (
 from app.services.catalog import catalog_service
 from app.services.notifications.notification_service import notify
 from app.services.promos import promo_service
-from app.services.shifts.domain.shift_rules import paid_minutes
-from app.utils.money import FeeRates, pay_for_minutes
+from app.services.shifts.domain.shift_rules import shift_seat_pay
+from app.utils.money import FeeRates
 
 LEDGER_CANCELLATION_FEE = "cancellation_fee"
 LEDGER_CANCELLATION_COMPENSATION = "cancellation_compensation"
@@ -69,8 +69,8 @@ async def _rates(conn: asyncpg.Connection, shift: asyncpg.Record) -> FeeRates:
 
 
 def seat_booking_minor(shift: asyncpg.Record, hourly_rate_minor: int) -> int:
-    minutes = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
-    return pay_for_minutes(hourly_rate_minor, minutes)
+    """Booked pay for one seat: rate × booked time, or the task price."""
+    return shift_seat_pay(shift, hourly_rate_minor)
 
 
 async def quote_assignment(

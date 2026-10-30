@@ -154,6 +154,10 @@ END_SCHEDULED: Final[str] = "scheduled_end"
 END_MUTUAL: Final[str] = "mutual"
 END_BUSINESS_STOPPED: Final[str] = "business_stopped"
 END_WORKER_LEFT: Final[str] = "worker_left"
+END_COMPLETED: Final[str] = "completed"
+
+PRICING_HOURLY: Final[str] = "hourly"
+PRICING_TASK: Final[str] = "task"
 
 MY_SHIFTS_TABS: Final[tuple[str, ...]] = ("upcoming", "active", "completed", "applications")
 DASHBOARD_TABS: Final[tuple[str, ...]] = ("live", "scheduled")

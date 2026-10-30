@@ -6,7 +6,11 @@ from __future__ import annotations
 import pytest
 
 from app.config.settings import KaaamNowSettings, load_settings
-from app.services.billing.sources.payment_provider_factory import FakePaymentProvider
+from app.services.billing.sources.payment_provider_factory import (
+    FakePaymentProvider,
+    PaymentProviderError,
+    RazorpayPaymentProvider,
+)
 from app.services.earnings.sources.payout_provider_factory import FakePayoutProvider
 from app.services.notifications.sources.push_sender_factory import ConsolePushSender
 
@@ -84,3 +88,36 @@ async def test_console_push_is_never_reported_sent_in_production(monkeypatch) ->
     monkeypatch.setattr(KaaamNowSettings, "is_production", property(lambda _self: True))
     result = await sender.send(["t"], title="T", body="B", data={"kind": "k"})
     assert result.delivered == 0 and not result.retryable
+
+
+def test_live_razorpay_key_is_refused_unless_allowed(production, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(production, "payment_provider", "razorpay")
+    monkeypatch.setattr(production, "razorpay_key_id", "rzp_live_unit")
+    monkeypatch.setattr(production, "razorpay_key_secret", "unit_secret")
+    monkeypatch.setattr(production, "payment_webhook_secret", "unit_webhook")
+    with pytest.raises(ValueError, match="rzp_test_"):
+        production.validate_production_config()
+    monkeypatch.setattr(production, "razorpay_allow_live_keys", True)
+    production.validate_production_config()
+
+
+def test_razorpay_provider_refuses_live_key_outside_production(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    settings = load_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_live_unit")
+    monkeypatch.setattr(settings, "razorpay_key_secret", "unit_secret")
+    monkeypatch.setattr(settings, "razorpay_allow_live_keys", False)
+    with pytest.raises(PaymentProviderError, match="rzp_test_"):
+        RazorpayPaymentProvider()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_unit")
+    RazorpayPaymentProvider()
+
+
+def test_razorpayx_in_production_boots_without_account_number(production, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(production, "payout_provider", "razorpayx")
+    monkeypatch.setattr(production, "razorpay_key_id", "rzp_test_unit")
+    monkeypatch.setattr(production, "razorpay_key_secret", "")
+    monkeypatch.setattr(production, "razorpayx_account_number", "")
+    with pytest.raises(ValueError, match="RAZORPAY_KEY_SECRET"):
+        production.validate_production_config()
+    monkeypatch.setattr(production, "razorpay_key_secret", "unit_secret")
+    production.validate_production_config()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -77,7 +78,9 @@ class ApplicantShiftSummary(BaseModel):
     starts_at: datetime
     ends_at: datetime
     workers_required: int
+    pricing_mode: Literal["hourly", "task"] = "hourly"
     hourly_rate_minor: int
+    task_price_minor: int | None = None
     currency: str
 
 

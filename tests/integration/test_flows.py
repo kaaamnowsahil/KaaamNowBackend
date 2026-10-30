@@ -15,7 +15,7 @@ from app.db.pool import get_pool
 from app.services.billing.validation.webhook_signature import sign_payload
 from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
 from app.services.users.deletion_service import process_deletion_requests
-from tests.integration.conftest import NEAR_LAT, NEAR_LNG, login, pay_deposit
+from tests.integration.conftest import NEAR_LAT, NEAR_LNG, completion_code, login, pay_deposit
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -58,8 +58,11 @@ async def _work_and_pay(client, db, business, worker, shift, assignment_id) -> d
         headers=worker.headers,
     )
     assert resp.status_code == 200, resp.text
+    code = await completion_code(client, business, assignment_id)
     resp = await client.post(
-        f"{API}/worker/assignments/{assignment_id}/check-out", json={}, headers=worker.headers
+        f"{API}/worker/assignments/{assignment_id}/check-out",
+        json={"completion_code": code},
+        headers=worker.headers,
     )
     assert resp.status_code == 200, resp.text
     resp = await client.post(
@@ -790,10 +793,24 @@ async def test_deposit_covers_final_cost_and_refunds_excess(  # type: ignore[no-
         headers=worker.headers,
     )
     assert checked_in.status_code == 200, checked_in.text
-    early = await app_client.post(
+    # Finishing always needs the Business's completion code; the worker never sees it.
+    no_code = await app_client.post(
         f"{API}/worker/assignments/{assignment_id}/check-out", json={}, headers=worker.headers
     )
-    assert early.status_code == 409 and early.json()["code"] == "early_end_pin_required"
+    assert no_code.status_code == 422, no_code.text
+    as_worker = (
+        await app_client.get(f"{API}/assignments/{assignment_id}", headers=worker.headers)
+    ).json()
+    assert as_worker["completion_code"]["code"] is None
+    assert as_worker["completion_code"]["attempts_left"] == 5
+    code = await completion_code(app_client, business, assignment_id)
+    wrong_code = await app_client.post(
+        f"{API}/worker/assignments/{assignment_id}/check-out",
+        json={"completion_code": "000000" if code != "000000" else "111111"},
+        headers=worker.headers,
+    )
+    assert wrong_code.status_code == 400 and wrong_code.json()["code"] == "completion_code_invalid"
+    assert wrong_code.json()["details"]["attempts_left"] == 4
     asked = await app_client.post(
         f"{API}/worker/assignments/{assignment_id}/early-end/request", headers=worker.headers
     )

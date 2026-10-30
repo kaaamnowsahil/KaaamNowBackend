@@ -37,5 +37,6 @@ MSG_PAYOUT_ACCOUNT_FIELDS: Final[str] = "Fill in the details for the selected pa
 MSG_PAYOUT_ACCOUNT_LIMIT: Final[str] = "You can save up to 5 payout accounts."
 MSG_WITHDRAWAL_NOT_FOUND: Final[str] = "Withdrawal not found."
 MSG_WITHDRAWAL_MIN: Final[str] = "Amount is below the minimum withdrawal."
+MSG_PAYOUT_PROVIDER_ERROR: Final[str] = "Payouts are unavailable right now. Please try again."
 MSG_INSUFFICIENT_BALANCE: Final[str] = "Amount is more than your available balance."
 MSG_IDEMPOTENCY_MISMATCH: Final[str] = "This idempotency key was used for a different withdrawal."

@@ -83,12 +83,16 @@ def breakdown(
     rates: LiveRates,
     charge: LiveCharge,
     promo_code: str | None = None,
+    pricing_mode: str = "hourly",
+    task_price_minor: int | None = None,
 ) -> LivePriceBreakdown:
     return LivePriceBreakdown(
         currency=currency,
         settings_version=rates.version,
+        pricing_mode=pricing_mode,  # type: ignore[arg-type]
         hourly_rate_minor=hourly_rate_minor,
         reserved_minutes=reserved_minutes,
+        task_price_minor=task_price_minor,
         base_amount_minor=charge.base_amount_minor,
         commission_pct=float(rates.commission_pct),
         commission_minor=charge.commission_minor,

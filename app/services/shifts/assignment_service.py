@@ -64,6 +64,7 @@ from app.schemas.shifts.assignment_schemas import (
 )
 from app.schemas.shifts.shift_schemas import CancellationQuote
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.cancellations.cancellation_rules import EVENT_CANCEL, SeatQuote
 from app.services.live_work import live_work_hooks
@@ -76,7 +77,7 @@ from app.services.shifts.domain.shift_mappers import (
     worker_shift_card,
     worker_summary,
 )
-from app.services.shifts.domain.shift_rules import is_late_cancellation
+from app.services.shifts.domain.shift_rules import is_late_cancellation, is_task
 from app.utils.clock import utc_now
 from app.utils.geo import eta_minutes, haversine_km
 
@@ -122,7 +123,7 @@ def effective_ends_at(ctx: asyncpg.Record) -> datetime:
 
 
 def can_end_without_pin(ctx: asyncpg.Record, now: datetime) -> bool:
-    if ctx["shift_type"] == SHIFT_LIVE:
+    if ctx["shift_type"] == SHIFT_LIVE or is_task(ctx):
         return True
     grace = timedelta(minutes=load_settings().end_shift_grace_minutes)
     return now >= effective_ends_at(ctx) - grace
@@ -201,6 +202,13 @@ async def build_assignment_detail(
         early_end_requested_by=ctx["early_end_requested_by"],
         early_end_pin=ctx["early_end_pin"] if pin_visible else None,
         pending_extension=extension_view(pending) if pending else None,
+        completion_code=(
+            await completion_codes.load_view(
+                conn, assignment_id, for_business=party == PARTY_BUSINESS
+            )
+            if ctx["status"] == ASG_CHECKED_IN
+            else None
+        ),
     )
 
 

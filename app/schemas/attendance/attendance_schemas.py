@@ -22,12 +22,34 @@ class CheckInRequest(BaseModel):
     )
 
 
+def completion_code_field():  # type: ignore[no-untyped-def]
+    return Field(
+        min_length=4,
+        max_length=8,
+        pattern=r"^\d+$",
+        description="Completion code shown in the Business app for this booking.",
+    )
+
+
+class CompletionCodeView(BaseModel):
+    """``code`` is shown to the Business only; the Worker sees attempts left / locked."""
+
+    code: str | None = None
+    attempts_left: int
+    locked: bool
+    can_reissue: bool = False
+
+
 class CheckOutRequest(BaseModel):
+    """Finish work: the Worker enters the Business's completion code (any time while checked
+    in). Hourly bookings ended before the booked end are paid for the time worked."""
+
     model_config = ConfigDict(extra="forbid")
 
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     note: str = Field(default="", max_length=500)
+    completion_code: str = completion_code_field()
 
 
 class AttendanceApproveRequest(BaseModel):
@@ -50,7 +72,8 @@ class EarlyEndRequest(BaseModel):
 
 class StopWorkRequest(BaseModel):
     """Business ends without the worker's PIN. ``business_stopped``: business pays the full
-    booking, worker gets 80%. ``worker_left``: actual hours, worker walk-off fee."""
+    booking, worker gets 80%. ``worker_left``: actual hours (nothing for a task-priced job),
+    worker walk-off fee."""
 
     model_config = ConfigDict(extra="forbid")
 

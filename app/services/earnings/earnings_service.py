@@ -6,10 +6,12 @@ a failed payout is credited back with a ``withdrawal_reversal`` entry.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
+import httpx
 
 from app.config.settings import load_settings
 from app.constants.earnings.earnings_route_strings import (
@@ -20,12 +22,13 @@ from app.constants.earnings.earnings_route_strings import (
     MSG_PAYOUT_ACCOUNT_FIELDS,
     MSG_PAYOUT_ACCOUNT_LIMIT,
     MSG_PAYOUT_ACCOUNT_NOT_FOUND,
+    MSG_PAYOUT_PROVIDER_ERROR,
     MSG_WITHDRAWAL_MIN,
     MSG_WITHDRAWAL_NOT_FOUND,
     RECENT_ENTRIES_LIMIT,
 )
 from app.db.pool import get_pool
-from app.exceptions.api_errors import bad_request, conflict, not_found
+from app.exceptions.api_errors import ApiError, bad_request, conflict, not_found
 from app.pagination import clamp_page_limit
 from app.repositories.cancellations import cancellation_repository
 from app.repositories.earnings import earnings_repository
@@ -42,10 +45,15 @@ from app.schemas.earnings.earnings_schemas import (
     WithdrawalResponse,
 )
 from app.security.authenticated_user import AuthenticatedUser
-from app.services.earnings.sources.payout_provider_factory import get_payout_provider
+from app.services.earnings.sources.payout_provider_factory import (
+    PayoutProviderError,
+    get_payout_provider,
+)
 from app.services.profiles.profile_lookup import require_worker_profile
 from app.utils.clock import utc_now
 from app.utils.references import WITHDRAWAL_REFERENCE_PREFIX, new_reference
+
+logger = logging.getLogger(__name__)
 
 _REQUIRED_FIELDS = {
     "upi": ("upi_id",),
@@ -243,7 +251,11 @@ async def remove_payout_account(user: AuthenticatedUser, account_id: UUID) -> No
 async def create_withdrawal(user: AuthenticatedUser, body: WithdrawalCreate) -> WithdrawalResponse:
     """Idempotent on ``idempotency_key``: a retried request returns the original withdrawal."""
     settings = load_settings()
-    provider = get_payout_provider()
+    try:
+        provider = get_payout_provider()
+    except PayoutProviderError as exc:
+        logger.warning("payout provider unavailable: %s", exc)
+        raise ApiError(502, "payout_provider_error", MSG_PAYOUT_PROVIDER_ERROR) from None
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             worker = await require_worker_profile(conn, user.user_id)
@@ -294,20 +306,25 @@ async def create_withdrawal(user: AuthenticatedUser, body: WithdrawalCreate) -> 
                 withdrawal_id=withdrawal_id,
                 description=f"Withdrawal {reference} to {payout_display(account)}",
             )
-            payout_id = await provider.create_payout(
-                reference=reference,
-                amount_minor=body.amount_minor,
-                account={
-                    k: account[k]
-                    for k in (
-                        "account_type",
-                        "upi_id",
-                        "paytm_phone",
-                        "bank_account_number",
-                        "bank_ifsc",
-                    )
-                },
-            )
+            try:
+                payout_id = await provider.create_payout(
+                    reference=reference,
+                    amount_minor=body.amount_minor,
+                    account={
+                        k: account[k]
+                        for k in (
+                            "account_type",
+                            "upi_id",
+                            "paytm_phone",
+                            "bank_account_number",
+                            "bank_ifsc",
+                            "account_holder_name",
+                        )
+                    },
+                )
+            except (PayoutProviderError, httpx.HTTPError) as exc:
+                logger.warning("payout create failed: %s", exc)
+                raise ApiError(502, "payout_provider_error", MSG_PAYOUT_PROVIDER_ERROR) from None
             await earnings_repository.set_withdrawal_processing(conn, withdrawal_id, payout_id)
             row = await earnings_repository.get_withdrawal(conn, withdrawal_id, worker["id"])
     return _withdrawal_response(row)

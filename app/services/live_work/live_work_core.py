@@ -33,8 +33,10 @@ from app.constants.notifications.notification_route_strings import (
 )
 from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_IN,
+    END_COMPLETED,
     END_SCHEDULED,
     END_WORKER_LEFT,
+    PRICING_TASK,
     SHIFT_COMPLETED,
     SHIFT_FILLED,
     SHIFT_IN_PROGRESS,
@@ -45,6 +47,7 @@ from app.repositories.attendance import attendance_repository
 from app.repositories.live_work import live_work_repository
 from app.repositories.profiles import profile_repository
 from app.repositories.shifts import assignment_repository, dispatch_repository, shift_repository
+from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.cancellations.cancellation_rules import (
     EVENT_CANCEL,
@@ -187,7 +190,14 @@ async def business_cancel_plan(
     )
 
 
+def _is_task(pricing: asyncpg.Record) -> bool:
+    return pricing["pricing_mode"] == PRICING_TASK
+
+
 def _worked_base(pricing: asyncpg.Record, worked_minutes: int) -> int:
+    """Hourly walk-off: worked time is paid. Task walk-off: the job isn't done, nothing is."""
+    if _is_task(pricing):
+        return 0
     reserved = pricing["reserved_minutes"]
     regular = min(worked_minutes, reserved)
     extra = max(worked_minutes - reserved, 0)
@@ -248,16 +258,21 @@ async def worker_cancel_plan(
         business_voucher=tier.business_voucher if tier else False,
         policy_version=policy.version,
     )
-    return (
-        CancelPlan(
-            PARTY_WORKER,
-            "during_work",
-            quote,
-            quote.business_refund_minor,
+    rule, effect = (
+        (
+            "Rules §8: Worker stops before the task is done (walk-off) — the Business is "
+            "refunded in full; the Worker pays the walk-off fee.",
+            "The task price is not paid; the Business gets its money back.",
+        )
+        if _is_task(pricing)
+        else (
             "Rules §8: Worker stops before the booked time ends (walk-off) — the Business pays "
             "worked time only; the Worker pays the walk-off fee.",
             "Your worked time is paid; the unworked amount is refunded to the Business.",
-        ),
+        )
+    )
+    return (
+        CancelPlan(PARTY_WORKER, "during_work", quote, quote.business_refund_minor, rule, effect),
         worked,
     )
 
@@ -313,9 +328,12 @@ async def complete_booking(
     actor_user_id: UUID | None,
     now: datetime,
 ) -> None:
-    """Complete Work: bill reserved + applied extensions (never less), credit the Worker."""
+    """Complete Work: bill reserved + applied extensions (never less), or the fixed task price,
+    and credit the Worker."""
     if assignment["status"] != ASG_CHECKED_IN or shift["status"] != SHIFT_IN_PROGRESS:
         raise state_error({"stage": assignment["status"]})
+    task = _is_task(pricing)
+    await completion_codes.mark_used(conn, assignment["id"], now)
     await close_open_extensions(conn, shift["id"], now)
     applied = [
         e
@@ -328,8 +346,8 @@ async def complete_booking(
         [live_work_billing.extension_snapshot_charge(e) for e in applied],
         Decimal(pricing["commission_pct"]),
     )
-    billed_minutes = pricing["reserved_minutes"] + ext_minutes
     worked = minutes_between(assignment["checked_in_at"], now)
+    billed_minutes = worked if task else pricing["reserved_minutes"] + ext_minutes
     await attendance_repository.set_check_out(
         conn,
         assignment["id"],
@@ -343,15 +361,20 @@ async def complete_booking(
         conn,
         assignment["id"],
         approved_minutes=billed_minutes,
-        note="Live Work: reserved time billed in full",
+        note="Live Work: task completed" if task else "Live Work: reserved time billed in full",
         now=now,
         approver_user_id=actor_user_id or assignment["worker_user_id"],
     )
-    await assignment_repository.set_ended(conn, assignment["id"], END_SCHEDULED)
+    await assignment_repository.set_ended(
+        conn, assignment["id"], END_COMPLETED if task else END_SCHEDULED
+    )
     await live_work_repository.set_assignment_approved(conn, assignment["id"])
-    description = f"Reserved {_duration(pricing['reserved_minutes'])}"
-    if ext_minutes:
-        description += f" + extensions {_duration(ext_minutes)}"
+    if task:
+        description = "Task completed (fixed price)"
+    else:
+        description = f"Reserved {_duration(pricing['reserved_minutes'])}"
+        if ext_minutes:
+            description += f" + extensions {_duration(ext_minutes)}"
     await live_work_billing.create_final_invoice(
         conn,
         pricing,
@@ -401,6 +424,7 @@ async def worker_walk_off(
     actor_user_id: UUID,
     now: datetime,
 ) -> list[UUID | None]:
+    await completion_codes.mark_used(conn, assignment["id"], now)
     await close_open_extensions(conn, shift["id"], now)
     base = _worked_base(pricing, worked)
     charge = _charge(pricing, base, with_coupon=True)
@@ -439,7 +463,11 @@ async def worker_walk_off(
         pricing,
         assignment_id=assignment["id"],
         charge=charge,
-        description=f"Worked {_duration(worked)} of {_duration(pricing['reserved_minutes'])}",
+        description=(
+            "Task not completed (Worker left)"
+            if _is_task(pricing)
+            else f"Worked {_duration(worked)} of {_duration(pricing['reserved_minutes'])}"
+        ),
         minutes=worked,
         paid_minor=paid,
         now=now,
@@ -465,7 +493,12 @@ async def worker_walk_off(
         await business_user_id(conn, shift),
         KIND_SHIFT_ENDED,
         "The Worker stopped work early",
-        f"{shift['job_title']} · you pay worked time only; the rest is refunded.",
+        f"{shift['job_title']} · "
+        + (
+            "the task wasn't done, so it is refunded in full."
+            if _is_task(pricing)
+            else "you pay worked time only; the rest is refunded."
+        ),
         {"shift_id": shift["id"], "assignment_id": assignment["id"], "live_work": True},
     )
     return refund_ids

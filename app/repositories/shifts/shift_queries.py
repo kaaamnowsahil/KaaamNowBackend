@@ -33,9 +33,12 @@ INSERT INTO shifts (
     business_profile_id, category_id, shift_type, job_title, responsibilities, requirements,
     workers_required, hourly_rate_minor, currency, starts_at, ends_at, break_minutes,
     workplace_name, address_text, latitude, longitude, arrival_instructions, site_contact_name,
-    check_in_code, cancellation_cutoff_hours
+    check_in_code, cancellation_cutoff_hours, pricing_mode, task_price_minor
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+    $21, $22
+)
 RETURNING id
 """
 
@@ -45,7 +48,8 @@ UPDATE shifts SET
     workers_required = $6, hourly_rate_minor = $7, starts_at = $8, ends_at = $9,
     break_minutes = $10, workplace_name = $11, address_text = $12, latitude = $13,
     longitude = $14, arrival_instructions = $15, site_contact_name = $16,
-    cancellation_cutoff_hours = $17, updated_at = now()
+    cancellation_cutoff_hours = $17, pricing_mode = $18, task_price_minor = $19,
+    updated_at = now()
 WHERE id = $1 AND status = 'draft'
 """
 
@@ -207,7 +211,8 @@ WORKER_CARD_SELECT = f"""
 SELECT s.id, s.shift_type, s.status, s.job_title, wc.slug AS category_slug,
        wc.name AS category_name, s.workplace_name, s.address_text, s.latitude, s.longitude,
        s.starts_at, s.ends_at, s.break_minutes, s.hourly_rate_minor, s.currency,
-       s.worker_fee_percentage, s.workers_required, s.responsibilities, s.requirements,
+       s.pricing_mode, s.task_price_minor, s.worker_fee_percentage, s.workers_required,
+       s.responsibilities, s.requirements,
        s.arrival_instructions,
        s.site_contact_name, s.cancellation_cutoff_hours, s.business_profile_id,
        s.search_radius_km,
@@ -276,7 +281,12 @@ LIMIT $14 OFFSET $15
 FEED_ORDER_BY: dict[str, str] = {
     "distance": "c.distance_km, c.starts_at",
     "starts_at": "c.starts_at, c.distance_km",
-    "pay": "c.hourly_rate_minor DESC, c.distance_km",
+    "pay": """
+        CASE WHEN c.pricing_mode = 'task' THEN c.task_price_minor
+             ELSE c.hourly_rate_minor
+                  * GREATEST(EXTRACT(EPOCH FROM c.ends_at - c.starts_at) / 60 - c.break_minutes, 0)
+                  / 60
+        END DESC, c.distance_km""",
 }
 
 # $4 assignment statuses, $5 limit, $6 offset

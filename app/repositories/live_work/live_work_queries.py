@@ -37,11 +37,12 @@ INSERT INTO live_booking_pricing (
     shift_id, business_profile_id, settings_version, currency, hourly_rate_minor,
     reserved_minutes, base_amount_minor, commission_pct, commission_minor, tax_pct, tax_label,
     tax_base, taxable_minor, tax_minor, total_minor, worker_commission_minor, worker_net_minor,
-    extension_surcharge_pct, idempotency_key, promo_code_id, promo_code, promo_discount_minor
+    extension_surcharge_pct, idempotency_key, promo_code_id, promo_code, promo_discount_minor,
+    pricing_mode, task_price_minor
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-    $21, $22
+    $21, $22, $23, $24
 )
 """
 GET_BOOKING_PRICING = "SELECT * FROM live_booking_pricing WHERE shift_id = $1"
@@ -76,7 +77,8 @@ SELECT s.id AS shift_id, s.status AS shift_status, s.job_title, s.responsibiliti
        p.settings_version, p.hourly_rate_minor, p.reserved_minutes, p.base_amount_minor,
        p.commission_pct, p.commission_minor, p.tax_pct, p.tax_label, p.tax_base,
        p.taxable_minor, p.tax_minor, p.total_minor, p.worker_commission_minor,
-       p.worker_net_minor, p.extension_surcharge_pct, p.promo_code, p.promo_discount_minor
+       p.worker_net_minor, p.extension_surcharge_pct, p.promo_code, p.promo_discount_minor,
+       p.pricing_mode, p.task_price_minor
 FROM live_booking_pricing p
 JOIN shifts s ON s.id = p.shift_id
 JOIN business_profiles bp ON bp.id = s.business_profile_id
@@ -310,7 +312,7 @@ WHERE s.status = 'awaiting_payment' AND s.published_at < $1
 """
 LIST_OVERDUE_ACTIVE_BOOKINGS = """
 SELECT s.id FROM live_booking_pricing p JOIN shifts s ON s.id = p.shift_id
-WHERE s.status = 'in_progress' AND s.ends_at < $1
+WHERE s.status = 'in_progress' AND s.ends_at < $1 AND p.pricing_mode = 'hourly'
 """
 
 # --- admin -----------------------------------------------------------------------------

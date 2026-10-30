@@ -28,6 +28,7 @@ from app.dependencies import RequireWorkRead, RequireWorkWrite
 from app.schemas.live_work.live_work_schemas import (
     LiveCancelPreview,
     LiveCancelRequest,
+    LiveCompleteWork,
     LiveExtensionAnswer,
     LiveLocationUpdate,
     LiveStartWork,
@@ -135,8 +136,10 @@ async def start_work(
     response_model=WorkerLiveBooking,
     summary=swagger_summary("Complete Work", SWAGGER_ROLE_WORKER),
 )
-async def complete(assignment_id: UUID, user: RequireWorkWrite) -> WorkerLiveBooking:
-    return await live_worker_service.complete(user, assignment_id)
+async def complete(
+    assignment_id: UUID, body: LiveCompleteWork, user: RequireWorkWrite
+) -> WorkerLiveBooking:
+    return await live_worker_service.complete(user, assignment_id, body)
 
 
 @router.get(

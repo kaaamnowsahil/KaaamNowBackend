@@ -1,9 +1,13 @@
-"""Pure shift rules: time window, payable minutes, cost estimate, late cancellation."""
+"""Pure shift rules: time window, payable minutes, seat pay (hourly or task), cost estimate,
+late cancellation."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta
+from typing import Any
 
+from app.config.settings import load_settings
 from app.constants.shifts.shift_route_strings import (
     DASHBOARD_GROUP_COMPLETED,
     DASHBOARD_GROUP_EXPIRED,
@@ -22,6 +26,8 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_TOO_SHORT,
     MSG_SHIFT_TOO_SOON,
     MSG_SHIFT_WINDOW_INVALID,
+    PRICING_HOURLY,
+    PRICING_TASK,
     SHIFT_COMPLETED,
     SHIFT_IN_PROGRESS,
     SHIFT_LIVE,
@@ -89,6 +95,36 @@ def paid_minutes(starts_at: datetime, ends_at: datetime, break_minutes: int) -> 
     return max(minutes_between(starts_at, ends_at) - break_minutes, 0)
 
 
+def is_task(row: Mapping[str, Any]) -> bool:
+    return row["pricing_mode"] == PRICING_TASK
+
+
+def seat_pay_minor(
+    *, pricing_mode: str, hourly_rate_minor: int, task_price_minor: int | None, minutes: int
+) -> int:
+    """Gross pay for one worker: the fixed task price, or rate × minutes."""
+    if pricing_mode == PRICING_TASK:
+        return task_price_minor or 0
+    return pay_for_minutes(hourly_rate_minor, minutes)
+
+
+def shift_seat_pay(row: Mapping[str, Any], hourly_rate_minor: int | None = None) -> int:
+    """Booked pay for one seat of a shift (``hourly_rate_minor`` overrides the shift rate)."""
+    return seat_pay_minor(
+        pricing_mode=row["pricing_mode"],
+        hourly_rate_minor=(
+            row["hourly_rate_minor"] if hourly_rate_minor is None else hourly_rate_minor
+        ),
+        task_price_minor=row["task_price_minor"],
+        minutes=paid_minutes(row["starts_at"], row["ends_at"], row["break_minutes"]),
+    )
+
+
+def task_window_end(starts_at: datetime) -> datetime:
+    """Task-priced work has no billed end; this only bounds the day of work."""
+    return starts_at + timedelta(minutes=load_settings().task_window_minutes)
+
+
 def estimate_cost(
     *,
     hourly_rate_minor: int,
@@ -97,12 +133,21 @@ def estimate_cost(
     rates: FeeRates,
     currency: str,
     promo: Promo | None = None,
+    pricing_mode: str = PRICING_HOURLY,
+    task_price_minor: int | None = None,
 ) -> ShiftCostEstimate:
-    pay_per_worker = pay_for_minutes(hourly_rate_minor, minutes_per_worker)
+    pay_per_worker = seat_pay_minor(
+        pricing_mode=pricing_mode,
+        hourly_rate_minor=hourly_rate_minor,
+        task_price_minor=task_price_minor,
+        minutes=minutes_per_worker,
+    )
     charge = shift_charge(pay_per_worker * workers_required, rates, promo)
     worker_fee = worker_commission(pay_per_worker, rates)
     return ShiftCostEstimate(
         currency=currency,
+        pricing_mode=pricing_mode,  # type: ignore[arg-type]
+        task_price_minor=task_price_minor if pricing_mode == PRICING_TASK else None,
         paid_minutes_per_worker=minutes_per_worker,
         pay_per_worker_minor=pay_per_worker,
         workers_required=workers_required,

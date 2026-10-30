@@ -3,8 +3,9 @@
 * deposit        — reserved amount (base + commission − coupon + tax), paid before Workers are
                    notified.
 * live_extension — one per approved extension, paid before the time is added.
-* final          — issued on completion: one worker-pay line (reserved + applied extensions, or
-                   worked time on a walk-off) so worker earnings are credited exactly once.
+* final          — issued on completion: one worker-pay line (reserved + applied extensions, the
+                   task price, or worked time on a walk-off — nothing for an unfinished task) so
+                   worker earnings are credited exactly once.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from app.constants.billing.billing_route_strings import (
     LINE_TAX,
     LINE_WORKER_PAY,
 )
+from app.constants.shifts.shift_route_strings import PRICING_TASK
 from app.repositories.billing import billing_repository
 from app.repositories.live_work import live_work_repository
 from app.services.billing.settlement import release_invoice_earnings
@@ -42,6 +44,10 @@ def _rupees(minor: int) -> str:
 def _duration(minutes: int) -> str:
     hours, mins = divmod(minutes, 60)
     return f"{hours}h {mins}m" if mins else f"{hours}h"
+
+
+def _is_task(pricing: asyncpg.Record) -> bool:
+    return pricing["pricing_mode"] == PRICING_TASK
 
 
 def _pct(value: Decimal) -> str:
@@ -168,11 +174,15 @@ async def create_deposit_invoice(
         status=INVOICE_PENDING,
         charge=snapshot_charge(pricing),
         worker_line=(
-            None,
-            f"Reserved {_duration(pricing['reserved_minutes'])} × "
-            f"{_rupees(pricing['hourly_rate_minor'])}/h",
-            pricing["reserved_minutes"],
-            pricing["hourly_rate_minor"],
+            (None, "Task (fixed price)", None, pricing["task_price_minor"])
+            if _is_task(pricing)
+            else (
+                None,
+                f"Reserved {_duration(pricing['reserved_minutes'])} × "
+                f"{_rupees(pricing['hourly_rate_minor'])}/h",
+                pricing["reserved_minutes"],
+                pricing["hourly_rate_minor"],
+            )
         ),
         now=now,
     )
@@ -241,7 +251,12 @@ async def create_final_invoice(
         kind=INVOICE_KIND_FINAL,
         status=INVOICE_PAID if settled else INVOICE_PENDING,
         charge=charge,
-        worker_line=(assignment_id, description, minutes, pricing["hourly_rate_minor"]),
+        worker_line=(
+            assignment_id,
+            description,
+            minutes,
+            pricing["task_price_minor"] if _is_task(pricing) else pricing["hourly_rate_minor"],
+        ),
         now=now,
         deposit_applied=paid_minor,
         refund_due=refund_due,

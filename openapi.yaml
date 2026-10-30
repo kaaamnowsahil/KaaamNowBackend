@@ -2824,7 +2824,7 @@ paths:
     post:
       tags:
       - Business / Work — Live Work
-      summary: End Work now (reserved time is billed) · Business / Work
+      summary: End Work now (reserved time or task price is billed) · Business / Work
       operationId: end_work_api_v1_business_live_work__booking_id__end_post
       security:
       - HTTPBearer: []
@@ -2855,6 +2855,35 @@ paths:
       - Business / Work — Live Work
       summary: New arrival code · Business / Work
       operationId: reissue_arrival_code_api_v1_business_live_work__booking_id__arrival_code_reissue_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/completion-code/reissue:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: New completion code · Business / Work
+      operationId: reissue_completion_code_api_v1_business_live_work__booking_id__completion_code_reissue_post
       security:
       - HTTPBearer: []
       parameters:
@@ -3151,6 +3180,12 @@ paths:
           type: string
           format: uuid
           title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveCompleteWork'
       responses:
         '200':
           description: Successful Response
@@ -5032,6 +5067,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/assignments/{assignment_id}/completion-code/reissue:
+    post:
+      tags:
+      - attendance
+      summary: Issue a new completion code · Business / Work
+      operationId: reissue_completion_code_api_v1_business_assignments__assignment_id__completion_code_reissue_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/business/assignments/{assignment_id}/early-end/request:
     post:
       tags:
@@ -6752,9 +6816,21 @@ components:
           - type: string
           - type: 'null'
           title: Assignment Status
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         reserved_minutes:
           type: integer
           title: Reserved Minutes
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         total_minor:
           type: integer
           title: Total Minor
@@ -7329,9 +7405,21 @@ components:
         workers_required:
           type: integer
           title: Workers Required
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         currency:
           type: string
           title: Currency
@@ -7588,6 +7676,12 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ExtensionView'
           - type: 'null'
+        completion_code:
+          anyOf:
+          - $ref: '#/components/schemas/CompletionCodeView'
+          - type: 'null'
+          description: 'While checked in. Business: the code to give the worker when
+            the work is done. Worker: attempts left / locked (no code).'
       type: object
       required:
       - id
@@ -8137,6 +8231,10 @@ components:
         can_repost:
           type: boolean
           title: Can Repost
+        can_reissue_completion_code:
+          type: boolean
+          title: Can Reissue Completion Code
+          default: false
       type: object
       required:
       - can_pay
@@ -8199,6 +8297,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/LiveArrivalCodeView'
           - type: 'null'
+        completion_code:
+          anyOf:
+          - $ref: '#/components/schemas/CompletionCodeView'
+          - type: 'null'
+          description: 'While working: give it to the Worker when the work is done.'
         timer:
           anyOf:
           - $ref: '#/components/schemas/LiveTimerView'
@@ -8565,9 +8668,21 @@ components:
           type: integer
           title: Withdrawn Count
           default: 0
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         currency:
           type: string
           title: Currency
@@ -8847,9 +8962,46 @@ components:
           maxLength: 500
           title: Note
           default: ''
+        completion_code:
+          type: string
+          maxLength: 8
+          minLength: 4
+          pattern: ^\d+$
+          title: Completion Code
+          description: Completion code shown in the Business app for this booking.
       additionalProperties: false
       type: object
+      required:
+      - completion_code
       title: CheckOutRequest
+      description: 'Finish work: the Worker enters the Business''s completion code
+        (any time while checked
+
+        in). Hourly bookings ended before the booked end are paid for the time worked.'
+    CompletionCodeView:
+      properties:
+        code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Code
+        attempts_left:
+          type: integer
+          title: Attempts Left
+        locked:
+          type: boolean
+          title: Locked
+        can_reissue:
+          type: boolean
+          title: Can Reissue
+          default: false
+      type: object
+      required:
+      - attempts_left
+      - locked
+      title: CompletionCodeView
+      description: '``code`` is shown to the Business only; the Worker sees attempts
+        left / locked.'
     ContactResponse:
       properties:
         name:
@@ -9054,9 +9206,21 @@ components:
           type: integer
           title: Withdrawn Count
           default: 0
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         currency:
           type: string
           title: Currency
@@ -10019,6 +10183,22 @@ components:
       - fee_minor
       - refund_minor
       title: LiveCancellationView
+    LiveCompleteWork:
+      properties:
+        completion_code:
+          type: string
+          maxLength: 8
+          minLength: 4
+          pattern: ^\d+$
+          title: Completion Code
+          description: Completion code shown in the Business app for this booking.
+      additionalProperties: false
+      type: object
+      required:
+      - completion_code
+      title: LiveCompleteWork
+      description: 'Complete Work: the Worker enters the completion code shown in
+        the Business app.'
     LiveExtensionAnswer:
       properties:
         accept:
@@ -10281,16 +10461,30 @@ components:
         settings_version:
           type: integer
           title: Settings Version
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+          description: 0 for task pricing.
         reserved_minutes:
           type: integer
           title: Reserved Minutes
+          description: 'Task pricing: the day-of-work window, not billed.'
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         base_amount_minor:
           type: integer
           title: Base Amount Minor
-          description: Rate × reserved duration.
+          description: Rate × reserved duration, or the task price.
         commission_pct:
           type: number
           title: Commission Pct
@@ -10797,6 +10991,37 @@ components:
       title: LiveTimerView
     LiveWorkCreate:
       properties:
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          description: 'hourly: rate × Work Duration. task: one fixed price for the
+            job, no duration, no extensions; finished with the completion code.'
+          default: hourly
+        hourly_rate_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Hourly Rate Minor
+          description: 'Hourly: base rate per hour (paise).'
+        duration_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Duration Minutes
+          description: 'Hourly: Work Duration, 60–720 in 30-minute steps.'
+        task_price_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task: fixed price for the job (paise).'
         business_profile_id:
           anyOf:
           - type: string
@@ -10844,14 +11069,6 @@ components:
           maxLength: 120
           title: Site Contact Name
           default: ''
-        duration_minutes:
-          type: integer
-          title: Duration Minutes
-        hourly_rate_minor:
-          type: integer
-          maximum: 10000000.0
-          exclusiveMinimum: 0.0
-          title: Hourly Rate Minor
         accept_terms:
           type: boolean
           title: Accept Terms
@@ -10888,8 +11105,6 @@ components:
       - address_text
       - latitude
       - longitude
-      - duration_minutes
-      - hourly_rate_minor
       - accept_terms
       title: LiveWorkCreate
     LiveWorkDetails:
@@ -10932,12 +11147,24 @@ components:
         business_name:
           type: string
           title: Business Name
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         reserved_minutes:
           type: integer
           title: Reserved Minutes
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
       type: object
       required:
       - category_slug
@@ -10953,22 +11180,43 @@ components:
       title: LiveWorkDetails
     LiveWorkQuoteRequest:
       properties:
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          description: 'hourly: rate × Work Duration. task: one fixed price for the
+            job, no duration, no extensions; finished with the completion code.'
+          default: hourly
+        hourly_rate_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Hourly Rate Minor
+          description: 'Hourly: base rate per hour (paise).'
+        duration_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Duration Minutes
+          description: 'Hourly: Work Duration, 60–720 in 30-minute steps.'
+        task_price_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task: fixed price for the job (paise).'
         category_slug:
           anyOf:
           - type: string
             maxLength: 64
           - type: 'null'
           title: Category Slug
-        hourly_rate_minor:
-          type: integer
-          maximum: 10000000.0
-          exclusiveMinimum: 0.0
-          title: Hourly Rate Minor
-          description: Base rate per hour (paise).
-        duration_minutes:
-          type: integer
-          title: Duration Minutes
-          description: 'Work Duration: 60–720, in 30-minute steps.'
         promo_code:
           anyOf:
           - type: string
@@ -10978,9 +11226,6 @@ components:
           title: Promo Code
       additionalProperties: false
       type: object
-      required:
-      - hourly_rate_minor
-      - duration_minutes
       title: LiveWorkQuoteRequest
     LiveWorkerArrivalView:
       properties:
@@ -12615,6 +12860,11 @@ components:
           - type: string
           - type: 'null'
           title: Ended Reason
+        completion_code:
+          anyOf:
+          - $ref: '#/components/schemas/CompletionCodeView'
+          - type: 'null'
+          description: Give it to this worker when the work is done.
       type: object
       required:
       - assignment_id
@@ -12689,13 +12939,33 @@ components:
           maximum: 100.0
           minimum: 1.0
           title: Workers Required
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
-          type: integer
-          maximum: 10000000.0
-          exclusiveMinimum: 0.0
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
           title: Hourly Rate Minor
+          description: Hourly pricing only.
           examples:
           - 15000
+        task_price_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay per worker for the whole job (paise).'
+          examples:
+          - 150000
         starts_at:
           type: string
           format: date-time
@@ -12772,7 +13042,6 @@ components:
       - category_slug
       - job_title
       - workers_required
-      - hourly_rate_minor
       - starts_at
       title: ShiftBulkItem
       description: One date in a multi-date posting; each date carries its own schedule
@@ -12858,9 +13127,23 @@ components:
         currency:
           type: string
           title: Currency
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay per worker (= pay_per_worker_minor).'
         paid_minutes_per_worker:
           type: integer
           title: Paid Minutes Per Worker
+          description: Booked paid minutes; 0 for task pricing.
         pay_per_worker_minor:
           type: integer
           title: Pay Per Worker Minor
@@ -12981,13 +13264,33 @@ components:
           maximum: 100.0
           minimum: 1.0
           title: Workers Required
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
-          type: integer
-          maximum: 10000000.0
-          exclusiveMinimum: 0.0
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
           title: Hourly Rate Minor
+          description: Hourly pricing only.
           examples:
           - 15000
+        task_price_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay per worker for the whole job (paise).'
+          examples:
+          - 150000
         starts_at:
           anyOf:
           - type: string
@@ -13094,16 +13397,34 @@ components:
       - category_slug
       - job_title
       - workers_required
-      - hourly_rate_minor
       - shift_type
       title: ShiftCreate
     ShiftEstimateRequest:
       properties:
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
-          type: integer
-          maximum: 10000000.0
-          exclusiveMinimum: 0.0
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay per worker for the whole job (paise).'
+          examples:
+          - 150000
         workers_required:
           type: integer
           maximum: 100.0
@@ -13143,7 +13464,6 @@ components:
       additionalProperties: false
       type: object
       required:
-      - hourly_rate_minor
       - workers_required
       title: ShiftEstimateRequest
     ShiftFilterOption:
@@ -13386,6 +13706,16 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Workers Required
+        pricing_mode:
+          anyOf:
+          - type: string
+            enum:
+            - hourly
+            - task
+          - type: 'null'
+          title: Pricing Mode
+          description: 'hourly: rate × booked time. task: fixed price per worker,
+            no timing rules (ends_at / duration / break are ignored).'
         hourly_rate_minor:
           anyOf:
           - type: integer
@@ -13393,6 +13723,16 @@ components:
             exclusiveMinimum: 0.0
           - type: 'null'
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+            maximum: 10000000.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay per worker for the whole job (paise).'
+          examples:
+          - 150000
         starts_at:
           anyOf:
           - type: string
@@ -13518,9 +13858,22 @@ components:
         workers_required:
           type: integer
           title: Workers Required
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+          description: 0 for task pricing.
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         currency:
           type: string
           title: Currency
@@ -13532,6 +13885,7 @@ components:
           type: string
           format: date-time
           title: Ends At
+          description: 'Task pricing: end of the day-of-work window only.'
         break_minutes:
           type: integer
           title: Break Minutes
@@ -13897,7 +14251,10 @@ components:
       description: 'Business ends without the worker''s PIN. ``business_stopped``:
         business pays the full
 
-        booking, worker gets 80%. ``worker_left``: actual hours, worker walk-off fee.'
+        booking, worker gets 80%. ``worker_left``: actual hours (nothing for a task-priced
+        job),
+
+        worker walk-off fee.'
     SupportTicketCreate:
       properties:
         topic:
@@ -14460,6 +14817,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/LiveWorkerArrivalView'
           - type: 'null'
+        completion:
+          anyOf:
+          - $ref: '#/components/schemas/CompletionCodeView'
+          - type: 'null'
+          description: 'While working: attempts left for the completion code.'
         timer:
           anyOf:
           - $ref: '#/components/schemas/LiveTimerView'
@@ -14552,12 +14914,24 @@ components:
           - type: number
           - type: 'null'
           title: Distance Km
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         reserved_minutes:
           type: integer
           title: Reserved Minutes
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
         worker_net_minor:
           type: integer
           title: Worker Net Minor
@@ -14924,20 +15298,34 @@ components:
         break_minutes:
           type: integer
           title: Break Minutes
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+          description: 0 for task pricing.
         worker_hourly_rate_minor:
           type: integer
           title: Worker Hourly Rate Minor
           description: Hourly rate after worker commission.
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay for the job before commission.'
         currency:
           type: string
           title: Currency
         estimated_pay_minor:
           type: integer
           title: Estimated Pay Minor
-          description: Paid minutes × rate, after worker commission.
+          description: Paid minutes × rate (or the task price), after worker commission.
         spots_left:
           type: integer
           title: Spots Left
@@ -15054,20 +15442,34 @@ components:
         break_minutes:
           type: integer
           title: Break Minutes
+        pricing_mode:
+          type: string
+          enum:
+          - hourly
+          - task
+          title: Pricing Mode
+          default: hourly
         hourly_rate_minor:
           type: integer
           title: Hourly Rate Minor
+          description: 0 for task pricing.
         worker_hourly_rate_minor:
           type: integer
           title: Worker Hourly Rate Minor
           description: Hourly rate after worker commission.
+        task_price_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Task Price Minor
+          description: 'Task pricing: fixed pay for the job before commission.'
         currency:
           type: string
           title: Currency
         estimated_pay_minor:
           type: integer
           title: Estimated Pay Minor
-          description: Paid minutes × rate, after worker commission.
+          description: Paid minutes × rate (or the task price), after worker commission.
         spots_left:
           type: integer
           title: Spots Left
