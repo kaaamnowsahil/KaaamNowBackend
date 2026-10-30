@@ -40,3 +40,15 @@ MSG_EARLY_END_PIN_REQUIRED: Final[str] = (
 MSG_EARLY_END_PIN_INVALID: Final[str] = "That PIN is wrong or expired. Ask for a new one."
 MSG_EXTENSION_PENDING: Final[str] = "An extension request is already waiting for the worker."
 MSG_EXTENSION_STATE: Final[str] = "This extension request is no longer open."
+MSG_COMPLETION_CODE_INVALID: Final[str] = "That completion code is incorrect."
+MSG_COMPLETION_CODE_LOCKED: Final[str] = (
+    "Too many wrong codes. Ask the Business to issue a new completion code."
+)
+MSG_COMPLETION_CODE_REISSUE_LIMIT: Final[str] = (
+    "New completion codes can't be issued any more for this booking. Contact support."
+)
+MSG_TASK_NO_TIMING: Final[str] = (
+    "Task-priced work has no time limit: finish it with the completion code instead."
+)
+
+PATH_COMPLETION_CODE_REISSUE: Final[str] = "/assignments/{assignment_id}/completion-code/reissue"

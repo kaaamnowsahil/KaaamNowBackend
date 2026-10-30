@@ -7,6 +7,8 @@ from decimal import Decimal
 
 import asyncpg
 
+from app.config.settings import load_settings
+from app.schemas.attendance.attendance_schemas import CompletionCodeView
 from app.schemas.shifts.application_schemas import (
     ApplicantItem,
     ApplicantShiftSummary,
@@ -22,8 +24,8 @@ from app.schemas.shifts.shift_schemas import (
     WorkerShiftCard,
     WorkerShiftDetail,
 )
-from app.services.shifts.domain.shift_rules import paid_minutes
-from app.utils.money import pay_for_minutes, platform_fee
+from app.services.shifts.domain.shift_rules import shift_seat_pay
+from app.utils.money import platform_fee
 
 
 def live_search_state(row: asyncpg.Record, now: datetime) -> LiveSearchState:
@@ -59,10 +61,9 @@ def business_card(row: asyncpg.Record) -> BusinessCard:
 
 
 def _card_fields(row: asyncpg.Record) -> dict:
-    minutes = paid_minutes(row["starts_at"], row["ends_at"], row["break_minutes"])
     worker_pct = Decimal(row["worker_fee_percentage"] or 0)
     hourly_rate = row["hourly_rate_minor"]
-    gross_pay = pay_for_minutes(hourly_rate, minutes)
+    gross_pay = shift_seat_pay(row)
     distance = row["distance_km"]
     return {
         "id": row["id"],
@@ -80,8 +81,10 @@ def _card_fields(row: asyncpg.Record) -> dict:
         "starts_at": row["starts_at"],
         "ends_at": row["ends_at"],
         "break_minutes": row["break_minutes"],
+        "pricing_mode": row["pricing_mode"],
         "hourly_rate_minor": hourly_rate,
         "worker_hourly_rate_minor": hourly_rate - platform_fee(hourly_rate, worker_pct),
+        "task_price_minor": row["task_price_minor"],
         "currency": row["currency"],
         "estimated_pay_minor": gross_pay - platform_fee(gross_pay, worker_pct),
         "spots_left": max(row["workers_required"] - row["booked_count"], 0),
@@ -149,6 +152,21 @@ def roster_entry(row: asyncpg.Record) -> RosterEntry:
         check_in_code=row["check_in_code"],
         extended_minutes=row["extended_minutes"],
         ended_reason=row["ended_reason"],
+        completion_code=_roster_completion_code(row),
+    )
+
+
+def _roster_completion_code(row: asyncpg.Record) -> CompletionCodeView | None:
+    if row["status"] != "checked_in" or row["completion_code"] is None:
+        return None
+    settings = load_settings()
+    return CompletionCodeView(
+        code=row["completion_code"],
+        attempts_left=max(
+            settings.completion_code_max_attempts - row["completion_failed_attempts"], 0
+        ),
+        locked=row["completion_locked_at"] is not None,
+        can_reissue=row["completion_issued_count"] < settings.completion_code_max_reissues,
     )
 
 
@@ -179,7 +197,9 @@ def business_applicant_item(row: asyncpg.Record) -> BusinessApplicantItem:
             starts_at=row["starts_at"],
             ends_at=row["ends_at"],
             workers_required=row["workers_required"],
+            pricing_mode=row["pricing_mode"],
             hourly_rate_minor=row["hourly_rate_minor"],
+            task_price_minor=row["task_price_minor"],
             currency=row["currency"],
         ),
     )

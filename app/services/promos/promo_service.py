@@ -28,9 +28,8 @@ from app.services.promos.promo_rules import (
     promo_problem,
     worker_commission_discount,
 )
-from app.services.shifts.domain.shift_rules import paid_minutes
+from app.services.shifts.domain.shift_rules import shift_seat_pay
 from app.utils.clock import utc_now
-from app.utils.money import pay_for_minutes
 
 
 def promo_view(row: asyncpg.Record, reason: str | None = None) -> PromoView:
@@ -92,8 +91,7 @@ async def usable(
 
 def shift_work_amount(shift: asyncpg.Record) -> int:
     """Worker pay for every seat before fees — what a coupon's minimum is compared with."""
-    minutes = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
-    return pay_for_minutes(shift["hourly_rate_minor"], minutes) * shift["workers_required"]
+    return shift_seat_pay(shift) * shift["workers_required"]
 
 
 async def attach_business_code(

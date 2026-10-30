@@ -31,6 +31,7 @@ from app.repositories.shifts import assignment_repository, shift_repository
 from app.schemas.live_work.live_work_schemas import (
     LiveCancelPreview,
     LiveCancelRequest,
+    LiveCompleteWork,
     LiveExtensionAnswer,
     LiveLocationUpdate,
     LiveStartWork,
@@ -39,6 +40,7 @@ from app.schemas.live_work.live_work_schemas import (
     WorkerLiveRequest,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.live_work import live_refund_service, live_work_billing, live_work_core
 from app.services.live_work.live_work_service import cancel_preview_view
@@ -94,8 +96,10 @@ async def list_requests(user: AuthenticatedUser) -> list[WorkerLiveRequest]:
                     distance_km=round(float(offer["distance_km"]), 1)
                     if offer["distance_km"] is not None
                     else None,
+                    pricing_mode=booking["pricing_mode"],
                     reserved_minutes=booking["reserved_minutes"],
                     hourly_rate_minor=booking["hourly_rate_minor"],
+                    task_price_minor=booking["task_price_minor"],
                     worker_net_minor=booking["worker_net_minor"],
                     currency=booking["currency"],
                     expires_at=offer["expires_at"],
@@ -272,6 +276,7 @@ async def start_work(
                     distance_m=distance_m,
                 )
                 await live_work_repository.set_assignment_started(conn, assignment_id)
+                await completion_codes.issue(conn, assignment_id, ctx["shift_id"])
                 await profile_repository.upsert_worker_location(
                     conn,
                     ctx["worker_profile_id"],
@@ -310,24 +315,37 @@ async def start_work(
         return await _state(conn, assignment_id)
 
 
-async def complete(user: AuthenticatedUser, assignment_id: UUID) -> WorkerLiveBooking:
+async def complete(
+    user: AuthenticatedUser, assignment_id: UUID, body: LiveCompleteWork
+) -> WorkerLiveBooking:
+    """Complete Work with the Business's completion code. Idempotent once completed. Wrong
+    codes are counted in a committed transaction, then the error is raised."""
     now = utc_now()
+    failure: ApiError | None = None
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             _, ctx = await _owned_assignment(conn, user, assignment_id, lock=True)
             if ctx["status"] in ("checked_out", "approved"):
                 return await build_worker_state(conn, ctx, now)
-            shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
-            pricing = await live_work_repository.get_booking_pricing(conn, ctx["shift_id"])
-            await live_work_core.complete_booking(
-                conn,
-                shift=shift,
-                pricing=pricing,
-                assignment=ctx,
-                ended_by="worker",
-                actor_user_id=user.user_id,
-                now=now,
+            if ctx["status"] != ASG_CHECKED_IN:
+                raise live_work_core.state_error({"stage": ctx["status"]})
+            failure = await completion_codes.verify(
+                conn, assignment_id, ctx["shift_id"], body.completion_code, now
             )
+            if failure is None:
+                shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
+                pricing = await live_work_repository.get_booking_pricing(conn, ctx["shift_id"])
+                await live_work_core.complete_booking(
+                    conn,
+                    shift=shift,
+                    pricing=pricing,
+                    assignment=ctx,
+                    ended_by="worker",
+                    actor_user_id=user.user_id,
+                    now=now,
+                )
+        if failure is not None:
+            raise failure
         return await _state(conn, assignment_id)
 
 

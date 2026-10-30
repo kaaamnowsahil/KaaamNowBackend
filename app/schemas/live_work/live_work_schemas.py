@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.attendance.attendance_schemas import CompletionCodeView, completion_code_field
 
 LiveWorkStatus = Literal[
     "awaiting_payment",
@@ -21,6 +23,7 @@ LiveWorkStatus = Literal[
 WorkerLiveStatus = Literal[
     "assigned", "en_route", "in_progress", "completed", "cancelled", "reassigned"
 ]
+PricingMode = Literal["hourly", "task"]
 ExtensionStatus = Literal[
     "requested", "awaiting_payment", "applied", "declined", "cancelled", "expired"
 ]
@@ -30,19 +33,51 @@ def _strip(value: str | None) -> str | None:
     return value.strip() if isinstance(value, str) else value
 
 
+def _check_live_pricing(
+    mode: str, hourly_rate_minor: int | None, duration_minutes: int | None, task: int | None
+) -> None:
+    if mode == "task":
+        if task is None:
+            raise ValueError("task_price_minor is required for task pricing.")
+    elif hourly_rate_minor is None or duration_minutes is None:
+        raise ValueError("hourly_rate_minor and duration_minutes are required for hourly pricing.")
+
+
+class _LivePricingFields(BaseModel):
+    pricing_mode: PricingMode = Field(
+        default="hourly",
+        description="hourly: rate × Work Duration. task: one fixed price for the job, no "
+        "duration, no extensions; finished with the completion code.",
+    )
+    hourly_rate_minor: int | None = Field(
+        default=None, gt=0, le=10_000_000, description="Hourly: base rate per hour (paise)."
+    )
+    duration_minutes: int | None = Field(
+        default=None, description="Hourly: Work Duration, 60–720 in 30-minute steps."
+    )
+    task_price_minor: int | None = Field(
+        default=None, gt=0, le=10_000_000, description="Task: fixed price for the job (paise)."
+    )
+
+    @model_validator(mode="after")
+    def _pricing(self):  # type: ignore[no-untyped-def]
+        _check_live_pricing(
+            self.pricing_mode, self.hourly_rate_minor, self.duration_minutes, self.task_price_minor
+        )
+        return self
+
+
 # --- requests --------------------------------------------------------------------------
 
 
-class LiveWorkQuoteRequest(BaseModel):
+class LiveWorkQuoteRequest(_LivePricingFields):
     model_config = ConfigDict(extra="forbid")
 
     category_slug: str | None = Field(default=None, max_length=64)
-    hourly_rate_minor: int = Field(gt=0, le=10_000_000, description="Base rate per hour (paise).")
-    duration_minutes: int = Field(description="Work Duration: 60–720, in 30-minute steps.")
     promo_code: str | None = Field(default=None, min_length=3, max_length=40)
 
 
-class LiveWorkCreate(BaseModel):
+class LiveWorkCreate(_LivePricingFields):
     model_config = ConfigDict(extra="forbid")
 
     business_profile_id: UUID | None = None
@@ -54,8 +89,6 @@ class LiveWorkCreate(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     arrival_instructions: str = Field(default="", max_length=2000)
     site_contact_name: str = Field(default="", max_length=120)
-    duration_minutes: int
-    hourly_rate_minor: int = Field(gt=0, le=10_000_000)
     accept_terms: bool = Field(description="Business accepted the Live Work booking terms.")
     expected_total_minor: int | None = Field(
         default=None,
@@ -97,6 +130,14 @@ class LiveStartWork(BaseModel):
     accuracy_m: int | None = Field(default=None, ge=0, le=100_000)
 
 
+class LiveCompleteWork(BaseModel):
+    """Complete Work: the Worker enters the completion code shown in the Business app."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    completion_code: str = completion_code_field()
+
+
 class LiveLocationUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -120,9 +161,11 @@ class LiveCancelRequest(BaseModel):
 class LivePriceBreakdown(BaseModel):
     currency: str
     settings_version: int
-    hourly_rate_minor: int
-    reserved_minutes: int
-    base_amount_minor: int = Field(description="Rate × reserved duration.")
+    pricing_mode: PricingMode = "hourly"
+    hourly_rate_minor: int = Field(description="0 for task pricing.")
+    reserved_minutes: int = Field(description="Task pricing: the day-of-work window, not billed.")
+    task_price_minor: int | None = None
+    base_amount_minor: int = Field(description="Rate × reserved duration, or the task price.")
     commission_pct: float
     commission_minor: int = Field(description="Platform commission (separate from tax).")
     promo_code: str | None = None
@@ -171,8 +214,10 @@ class LiveWorkDetails(BaseModel):
     arrival_instructions: str
     site_contact_name: str
     business_name: str
+    pricing_mode: PricingMode = "hourly"
     reserved_minutes: int
     hourly_rate_minor: int
+    task_price_minor: int | None = None
 
 
 class LiveSearchView(BaseModel):
@@ -334,6 +379,7 @@ class BusinessLiveActions(BaseModel):
     can_end_work: bool
     can_reissue_code: bool
     can_repost: bool
+    can_reissue_completion_code: bool = False
 
 
 class WorkerLiveActions(BaseModel):
@@ -357,6 +403,9 @@ class BusinessLiveBooking(BaseModel):
     deposit_invoice: LiveInvoiceSummary | None
     assignment: LiveAssignmentView | None
     arrival_code: LiveArrivalCodeView | None
+    completion_code: CompletionCodeView | None = Field(
+        default=None, description="While working: give it to the Worker when the work is done."
+    )
     timer: LiveTimerView | None
     extensions: list[LiveExtensionView]
     final_invoice: LiveInvoiceSummary | None
@@ -390,6 +439,9 @@ class WorkerLiveBooking(BaseModel):
     work: LiveWorkDetails
     earnings: WorkerLiveEarnings
     arrival: LiveWorkerArrivalView | None
+    completion: CompletionCodeView | None = Field(
+        default=None, description="While working: attempts left for the completion code."
+    )
     timer: LiveTimerView | None
     extensions: list[LiveExtensionView]
     cancellation: LiveCancellationView | None
@@ -404,8 +456,10 @@ class WorkerLiveRequest(BaseModel):
     business_name: str
     address_text: str
     distance_km: float | None
+    pricing_mode: PricingMode = "hourly"
     reserved_minutes: int
     hourly_rate_minor: int
+    task_price_minor: int | None = None
     worker_net_minor: int
     currency: str
     expires_at: datetime
@@ -475,7 +529,9 @@ class AdminLiveBookingItem(BaseModel):
     business_name: str
     worker_name: str | None
     assignment_status: str | None
+    pricing_mode: PricingMode = "hourly"
     reserved_minutes: int
+    task_price_minor: int | None = None
     total_minor: int
     commission_minor: int
     tax_minor: int

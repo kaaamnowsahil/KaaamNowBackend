@@ -19,7 +19,7 @@ import pytest
 
 from app.db.pool import get_pool
 from app.services.background.background_sweep_loop import run_sweep_once
-from tests.integration.conftest import Actor
+from tests.integration.conftest import Actor, live_completion_code
 from tests.integration.test_admin_crud import _admin
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -336,12 +336,28 @@ async def test_full_live_work_flow(app_client, make_business, make_worker, db) -
     assert state["extensions"][-1]["status"] == "applied"
     assert state["timer"]["extended_minutes"] == 60
 
-    done = await app_client.post(f"{WRK}/bookings/{assignment_id}/complete", headers=worker.headers)
+    no_code = await app_client.post(
+        f"{WRK}/bookings/{assignment_id}/complete", headers=worker.headers
+    )
+    assert no_code.status_code == 422, no_code.text
+    assert state["completion_code"]["code"]
+    worker_view = (
+        await app_client.get(f"{WRK}/bookings/{assignment_id}", headers=worker.headers)
+    ).json()
+    assert worker_view["completion"]["code"] is None
+    code = await live_completion_code(app_client, business, booking_id)
+    done = await app_client.post(
+        f"{WRK}/bookings/{assignment_id}/complete",
+        json={"completion_code": code},
+        headers=worker.headers,
+    )
     assert done.status_code == 200, done.text
     assert done.json()["status"] == "completed"
     assert done.json()["earnings"]["total_net_minor"] == WORKER_NET + 62400
     again = await app_client.post(
-        f"{WRK}/bookings/{assignment_id}/complete", headers=worker.headers
+        f"{WRK}/bookings/{assignment_id}/complete",
+        json={"completion_code": code},
+        headers=worker.headers,
     )
     assert again.status_code == 200
 

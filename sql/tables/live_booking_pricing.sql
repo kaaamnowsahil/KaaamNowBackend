@@ -44,6 +44,22 @@ ALTER TABLE live_booking_pricing
     ADD COLUMN IF NOT EXISTS promo_code           VARCHAR(40),
     ADD COLUMN IF NOT EXISTS promo_discount_minor BIGINT NOT NULL DEFAULT 0;
 
+-- Task-priced booking: a fixed base (task_price_minor) instead of rate × time. hourly_rate_minor
+-- is 0 and reserved_minutes is only the window the job must be done in (never billed by time).
+ALTER TABLE live_booking_pricing
+    ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(8) NOT NULL DEFAULT 'hourly',
+    ADD COLUMN IF NOT EXISTS task_price_minor BIGINT;
+ALTER TABLE live_booking_pricing DROP CONSTRAINT IF EXISTS live_booking_pricing_amounts_chk;
+ALTER TABLE live_booking_pricing ADD CONSTRAINT live_booking_pricing_amounts_chk CHECK (
+    base_amount_minor >= 0 AND commission_minor >= 0
+    AND taxable_minor >= 0 AND tax_minor >= 0 AND worker_commission_minor >= 0
+    AND (
+        (pricing_mode = 'hourly' AND hourly_rate_minor > 0 AND task_price_minor IS NULL)
+        OR (pricing_mode = 'task' AND hourly_rate_minor = 0 AND task_price_minor > 0
+            AND base_amount_minor = task_price_minor)
+    )
+);
+
 ALTER TABLE live_booking_pricing DROP CONSTRAINT IF EXISTS live_booking_pricing_total_chk;
 ALTER TABLE live_booking_pricing ADD CONSTRAINT live_booking_pricing_total_chk CHECK (
     promo_discount_minor >= 0 AND promo_discount_minor <= commission_minor

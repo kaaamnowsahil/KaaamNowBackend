@@ -108,6 +108,23 @@ async def pay_deposit(client: httpx.AsyncClient, business: Actor, shift_id: str)
     return shift.json()
 
 
+async def completion_code(client: httpx.AsyncClient, business: Actor, assignment_id: str) -> str:
+    """The code the Business reads out to the Worker when the work is done."""
+    detail = await client.get(f"/api/v1/assignments/{assignment_id}", headers=business.headers)
+    assert detail.status_code == 200, detail.text
+    code = detail.json()["completion_code"]
+    assert code is not None and code["code"], detail.text
+    return code["code"]
+
+
+async def live_completion_code(client: httpx.AsyncClient, business: Actor, booking_id: str) -> str:
+    booking = await client.get(f"/api/v1/business/live-work/{booking_id}", headers=business.headers)
+    assert booking.status_code == 200, booking.text
+    code = booking.json()["completion_code"]
+    assert code is not None and code["code"], booking.text
+    return code["code"]
+
+
 async def signup(
     client: httpx.AsyncClient,
     role: str,

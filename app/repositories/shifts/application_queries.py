@@ -69,7 +69,7 @@ SELECT ap.id AS application_id, ap.status, ap.applied_at, ap.decided_at, ap.resp
        wp.rating_avg, wp.rating_count, wp.completed_shift_count, wp.verification_status,
        s.id AS shift_id, s.shift_type, s.status AS shift_status, s.job_title,
        s.workplace_name, s.starts_at, s.ends_at, s.workers_required, s.hourly_rate_minor,
-       s.currency
+       s.pricing_mode, s.task_price_minor, s.currency
 FROM shift_applications ap
 JOIN shifts s ON s.id = ap.shift_id
 JOIN worker_profiles wp ON wp.id = ap.worker_profile_id

@@ -15,6 +15,7 @@ from app.constants.live_work.live_work_route_strings import (
     PATH_BOOKING_ARRIVAL_CODE,
     PATH_BOOKING_CANCEL,
     PATH_BOOKING_CANCEL_PREVIEW,
+    PATH_BOOKING_COMPLETION_CODE,
     PATH_BOOKING_END,
     PATH_BOOKING_EXTENSION_CANCEL,
     PATH_BOOKING_EXTENSION_QUOTE,
@@ -157,7 +158,9 @@ async def cancel_extension(
 @router.post(
     PATH_BOOKING_END,
     response_model=BusinessLiveBooking,
-    summary=swagger_summary("End Work now (reserved time is billed)", SWAGGER_ROLE_BUSINESS),
+    summary=swagger_summary(
+        "End Work now (reserved time or task price is billed)", SWAGGER_ROLE_BUSINESS
+    ),
 )
 async def end_work(booking_id: UUID, user: RequireShiftsWrite) -> BusinessLiveBooking:
     return await live_work_service.end_work(user, booking_id)
@@ -170,3 +173,14 @@ async def end_work(booking_id: UUID, user: RequireShiftsWrite) -> BusinessLiveBo
 )
 async def reissue_arrival_code(booking_id: UUID, user: RequireShiftsWrite) -> BusinessLiveBooking:
     return await live_work_service.reissue_arrival_code(user, booking_id)
+
+
+@router.post(
+    PATH_BOOKING_COMPLETION_CODE,
+    response_model=BusinessLiveBooking,
+    summary=swagger_summary("New completion code", SWAGGER_ROLE_BUSINESS),
+)
+async def reissue_completion_code(
+    booking_id: UUID, user: RequireShiftsWrite
+) -> BusinessLiveBooking:
+    return await live_work_service.reissue_completion_code(user, booking_id)

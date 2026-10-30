@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS shift_assignments (
 
 -- Day of shift: 4-char check-in code shown only to the business; early-end PIN shown to the
 -- side that did NOT request it; accepted extensions add extended_minutes after ends_at.
+-- ended_reason 'completed': a task-priced job finished (completion code or Business confirmed).
 ALTER TABLE shift_assignments
     ADD COLUMN IF NOT EXISTS check_in_code VARCHAR(8),
     ADD COLUMN IF NOT EXISTS early_end_pin VARCHAR(8),
@@ -37,7 +38,7 @@ ALTER TABLE shift_assignments ADD CONSTRAINT shift_assignments_day_of_shift_chk 
     extended_minutes >= 0
     AND (early_end_requested_by IS NULL OR early_end_requested_by IN ('worker', 'business'))
     AND (ended_reason IS NULL OR ended_reason IN (
-        'scheduled_end', 'mutual', 'business_stopped', 'worker_left'
+        'scheduled_end', 'mutual', 'business_stopped', 'worker_left', 'completed'
     ))
 );
 

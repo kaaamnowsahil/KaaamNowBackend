@@ -61,6 +61,8 @@ _SHIFT_WRITE_COLUMNS = (
     "arrival_instructions",
     "site_contact_name",
     "cancellation_cutoff_hours",
+    "pricing_mode",
+    "task_price_minor",
 )
 
 
@@ -95,6 +97,8 @@ async def insert_shift(
         values["site_contact_name"],
         check_in_code,
         values["cancellation_cutoff_hours"],
+        values.get("pricing_mode", "hourly"),
+        values.get("task_price_minor"),
     )
 
 

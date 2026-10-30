@@ -16,6 +16,29 @@ from app.constants.profiles.profile_route_strings import MSG_COORDINATES_PAIR
 from app.constants.shifts.shift_route_strings import MAX_BULK_SHIFTS
 
 ShiftType = Literal["live", "scheduled"]
+PricingMode = Literal["hourly", "task"]
+MSG_HOURLY_RATE_REQUIRED = "hourly_rate_minor is required for hourly pricing."
+MSG_TASK_PRICE_REQUIRED = "task_price_minor is required for task pricing."
+
+
+def check_pricing(mode: str | None, hourly_rate_minor: int | None, task_price: int | None) -> None:
+    if mode == "task":
+        if task_price is None:
+            raise ValueError(MSG_TASK_PRICE_REQUIRED)
+    elif hourly_rate_minor is None:
+        raise ValueError(MSG_HOURLY_RATE_REQUIRED)
+
+
+def task_price_field():  # type: ignore[no-untyped-def]
+    return Field(
+        default=None,
+        gt=0,
+        le=10_000_000,
+        description="Task pricing: fixed pay per worker for the whole job (paise).",
+        examples=[150000],
+    )
+
+
 ShiftStatus = Literal[
     "draft",
     "awaiting_payment",
@@ -37,7 +60,13 @@ class _ShiftFields(BaseModel):
     responsibilities: str | None = Field(default=None, max_length=4000)
     requirements: str | None = Field(default=None, max_length=4000)
     workers_required: int | None = Field(default=None, ge=1, le=100)
+    pricing_mode: PricingMode | None = Field(
+        default=None,
+        description="hourly: rate × booked time. task: fixed price per worker, no timing "
+        "rules (ends_at / duration / break are ignored).",
+    )
     hourly_rate_minor: int | None = Field(default=None, gt=0, le=10_000_000)
+    task_price_minor: int | None = task_price_field()
     starts_at: datetime | None = Field(default=None, description="Live shifts: omit to start now.")
     ends_at: datetime | None = None
     duration_minutes: int | None = Field(
@@ -70,11 +99,19 @@ class ShiftCreate(_ShiftFields):
     category_slug: str = Field(max_length=64)
     job_title: str = Field(min_length=2, max_length=120)
     workers_required: int = Field(ge=1, le=100)
-    hourly_rate_minor: int = Field(gt=0, le=10_000_000, examples=[15000])
+    pricing_mode: PricingMode = "hourly"
+    hourly_rate_minor: int | None = Field(
+        default=None, gt=0, le=10_000_000, examples=[15000], description="Hourly pricing only."
+    )
     publish: bool = Field(default=False, description="Create and post in one step.")
     promo_code: str | None = Field(
         default=None, max_length=32, description="Promo code or free-fees voucher."
     )
+
+    @model_validator(mode="after")
+    def _pricing(self):  # type: ignore[no-untyped-def]
+        check_pricing(self.pricing_mode, self.hourly_rate_minor, self.task_price_minor)
+        return self
 
 
 class ShiftPatch(_ShiftFields):
@@ -87,9 +124,17 @@ class ShiftBulkItem(_ShiftFields):
     category_slug: str = Field(max_length=64)
     job_title: str = Field(min_length=2, max_length=120, description="Role shown to workers.")
     workers_required: int = Field(ge=1, le=100)
-    hourly_rate_minor: int = Field(gt=0, le=10_000_000, examples=[15000])
+    pricing_mode: PricingMode = "hourly"
+    hourly_rate_minor: int | None = Field(
+        default=None, gt=0, le=10_000_000, examples=[15000], description="Hourly pricing only."
+    )
     starts_at: datetime
     break_minutes: int = Field(default=0, ge=0, le=240)
+
+    @model_validator(mode="after")
+    def _pricing(self):  # type: ignore[no-untyped-def]
+        check_pricing(self.pricing_mode, self.hourly_rate_minor, self.task_price_minor)
+        return self
 
 
 class ShiftBulkCreate(BaseModel):
@@ -125,7 +170,9 @@ class ShiftBulkPublish(BaseModel):
 class ShiftEstimateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    hourly_rate_minor: int = Field(gt=0, le=10_000_000)
+    pricing_mode: PricingMode = "hourly"
+    hourly_rate_minor: int | None = Field(default=None, gt=0, le=10_000_000)
+    task_price_minor: int | None = task_price_field()
     workers_required: int = Field(ge=1, le=100)
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -133,12 +180,21 @@ class ShiftEstimateRequest(BaseModel):
     break_minutes: int = Field(default=0, ge=0, le=240)
     promo_code: str | None = Field(default=None, max_length=32)
 
+    @model_validator(mode="after")
+    def _pricing(self):  # type: ignore[no-untyped-def]
+        check_pricing(self.pricing_mode, self.hourly_rate_minor, self.task_price_minor)
+        return self
+
 
 class ShiftCostEstimate(BaseModel):
     """Figma "Estimated cost" card."""
 
     currency: str
-    paid_minutes_per_worker: int
+    pricing_mode: PricingMode = "hourly"
+    task_price_minor: int | None = Field(
+        default=None, description="Task pricing: fixed pay per worker (= pay_per_worker_minor)."
+    )
+    paid_minutes_per_worker: int = Field(description="Booked paid minutes; 0 for task pricing.")
     pay_per_worker_minor: int
     workers_required: int
     worker_subtotal_minor: int
@@ -232,10 +288,12 @@ class ShiftResponse(BaseModel):
     responsibilities: str
     requirements: str
     workers_required: int
-    hourly_rate_minor: int
+    pricing_mode: PricingMode = "hourly"
+    hourly_rate_minor: int = Field(description="0 for task pricing.")
+    task_price_minor: int | None = None
     currency: str
     starts_at: datetime
-    ends_at: datetime
+    ends_at: datetime = Field(description="Task pricing: end of the day-of-work window only.")
     break_minutes: int
     workplace_name: str
     address_text: str
@@ -282,7 +340,9 @@ class ShiftListItem(BaseModel):
     checked_in_count: int
     pending_applications: int
     withdrawn_count: int = 0
+    pricing_mode: PricingMode = "hourly"
     hourly_rate_minor: int
+    task_price_minor: int | None = None
     currency: str
     starts_at: datetime
     ends_at: datetime
@@ -405,10 +465,16 @@ class WorkerShiftCard(BaseModel):
     starts_at: datetime
     ends_at: datetime
     break_minutes: int
-    hourly_rate_minor: int
+    pricing_mode: PricingMode = "hourly"
+    hourly_rate_minor: int = Field(description="0 for task pricing.")
     worker_hourly_rate_minor: int = Field(description="Hourly rate after worker commission.")
+    task_price_minor: int | None = Field(
+        default=None, description="Task pricing: fixed pay for the job before commission."
+    )
     currency: str
-    estimated_pay_minor: int = Field(description="Paid minutes × rate, after worker commission.")
+    estimated_pay_minor: int = Field(
+        description="Paid minutes × rate (or the task price), after worker commission."
+    )
     spots_left: int
     my_application_id: UUID | None = None
     my_application_status: str | None = None

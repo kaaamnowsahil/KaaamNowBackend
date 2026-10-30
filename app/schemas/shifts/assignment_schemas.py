@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.attendance.attendance_schemas import ExtensionView
+from app.schemas.attendance.attendance_schemas import CompletionCodeView, ExtensionView
 from app.schemas.shifts.application_schemas import WorkerSummary
 from app.schemas.shifts.shift_schemas import BusinessCard, CancellationQuote, WorkerShiftCard
 
@@ -36,6 +36,9 @@ class RosterEntry(BaseModel):
     check_in_code: str | None = Field(default=None, description="Tell this worker on arrival.")
     extended_minutes: int = 0
     ended_reason: str | None = None
+    completion_code: CompletionCodeView | None = Field(
+        default=None, description="Give it to this worker when the work is done."
+    )
 
 
 class Roster(BaseModel):
@@ -87,6 +90,11 @@ class AssignmentDetail(BaseModel):
         default=None, description="Shown only to the side that did NOT ask to end early."
     )
     pending_extension: ExtensionView | None = None
+    completion_code: CompletionCodeView | None = Field(
+        default=None,
+        description="While checked in. Business: the code to give the worker when the work is "
+        "done. Worker: attempts left / locked (no code).",
+    )
 
 
 class TrackingPoint(BaseModel):

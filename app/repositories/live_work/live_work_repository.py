@@ -103,6 +103,8 @@ async def insert_booking_pricing(
     idempotency_key: str | None,
     promo_code_id: UUID | None = None,
     promo_code: str | None = None,
+    pricing_mode: str = "hourly",
+    task_price_minor: int | None = None,
 ) -> None:
     await conn.execute(
         q.INSERT_BOOKING_PRICING,
@@ -128,6 +130,8 @@ async def insert_booking_pricing(
         promo_code_id,
         promo_code,
         charge.discount_minor,
+        pricing_mode,
+        task_price_minor,
     )
 
 

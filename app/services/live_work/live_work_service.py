@@ -10,10 +10,12 @@ import asyncpg
 
 from app.config.settings import load_settings
 from app.constants.application.application_constants import ROLE_BUSINESS
+from app.constants.attendance.attendance_route_strings import MSG_TASK_NO_TIMING
 from app.constants.notifications.notification_route_strings import KIND_EXTENSION_REQUESTED
 from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_IN,
     CHECK_IN_CODE_LENGTH,
+    PRICING_TASK,
     SHIFT_AWAITING_PAYMENT,
     SHIFT_CANCELLED,
     SHIFT_DRAFT,
@@ -39,6 +41,7 @@ from app.schemas.live_work.live_work_schemas import (
     LiveWorkQuoteRequest,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.catalog import catalog_service
 from app.services.live_work import (
@@ -48,9 +51,13 @@ from app.services.live_work import (
     live_work_hooks,
 )
 from app.services.live_work.live_pricing import (
+    LiveCharge,
+    LiveRates,
+    LiveTerms,
     booking_charge,
     extension_charge,
     extension_rate,
+    live_terms,
     validate_extension_minutes,
     validate_reserved_minutes,
 )
@@ -63,9 +70,9 @@ from app.services.live_work.live_work_views import (
 from app.services.notifications.notification_service import notify
 from app.services.profiles.profile_lookup import business_scope, require_postable_business
 from app.services.promos import promo_service
+from app.services.promos.promo_rules import Promo
 from app.services.users import terms_service
 from app.utils.clock import utc_now
-from app.utils.money import pay_for_minutes
 from app.utils.references import new_numeric_code
 
 MSG_FIX_FIELDS = "Please correct the highlighted fields."
@@ -85,8 +92,33 @@ async def _owned_booking(
     return pricing
 
 
+def _terms(body: LiveWorkQuoteRequest | LiveWorkCreate) -> LiveTerms:
+    return live_terms(
+        pricing_mode=body.pricing_mode,
+        hourly_rate_minor=body.hourly_rate_minor,
+        duration_minutes=body.duration_minutes,
+        task_price_minor=body.task_price_minor,
+        task_window_minutes=load_settings().task_window_minutes,
+    )
+
+
+def _duration_error(terms: LiveTerms) -> str | None:
+    return None if terms.is_task else validate_reserved_minutes(terms.reserved_minutes)
+
+
+def _terms_charge(terms: LiveTerms, rates: LiveRates, promo: Promo | None) -> LiveCharge:
+    return booking_charge(
+        terms.hourly_rate_minor,
+        terms.reserved_minutes,
+        rates,
+        promo,
+        task_price_minor=terms.task_price_minor if terms.is_task else None,
+    )
+
+
 async def quote(user: AuthenticatedUser, body: LiveWorkQuoteRequest) -> LivePriceBreakdown:
-    error = validate_reserved_minutes(body.duration_minutes)
+    terms = _terms(body)
+    error = _duration_error(terms)
     if error:
         raise field_errors({"duration_minutes": error})
     async with get_pool().acquire() as conn:
@@ -98,18 +130,20 @@ async def quote(user: AuthenticatedUser, body: LiveWorkQuoteRequest) -> LivePric
                 conn,
                 body.promo_code,
                 user_id=user.user_id,
-                amount_minor=pay_for_minutes(body.hourly_rate_minor, body.duration_minutes),
+                amount_minor=terms.base_minor,
             )
             if body.promo_code
             else None
         )
     return breakdown(
         currency=load_settings().default_currency,
-        hourly_rate_minor=body.hourly_rate_minor,
-        reserved_minutes=body.duration_minutes,
+        hourly_rate_minor=terms.hourly_rate_minor,
+        reserved_minutes=terms.reserved_minutes,
         rates=rates,
-        charge=booking_charge(body.hourly_rate_minor, body.duration_minutes, rates, promo),
+        charge=_terms_charge(terms, rates, promo),
         promo_code=promo.code if promo else None,
+        pricing_mode=terms.pricing_mode,
+        task_price_minor=terms.task_price_minor,
     )
 
 
@@ -144,7 +178,7 @@ async def available_workers(
 
 def _validate_create(body: LiveWorkCreate) -> None:
     errors: dict[str, str] = {}
-    duration_error = validate_reserved_minutes(body.duration_minutes)
+    duration_error = _duration_error(_terms(body))
     if duration_error:
         errors["duration_minutes"] = duration_error
     if not body.accept_terms:
@@ -168,6 +202,7 @@ async def _create_locked(
         if existing is not None:
             return existing
     await terms_service.require_accepted(conn, user.user_id, ROLE_BUSINESS)
+    terms = _terms(body)
     rates = await active_rates(conn)
     category_id = await catalog_service.resolve_category_id(conn, body.category_slug)
     shift_id = await shift_repository.insert_shift(
@@ -182,9 +217,11 @@ async def _create_locked(
             "responsibilities": body.description,
             "requirements": "",
             "workers_required": 1,
-            "hourly_rate_minor": body.hourly_rate_minor,
+            "pricing_mode": terms.pricing_mode,
+            "hourly_rate_minor": terms.hourly_rate_minor,
+            "task_price_minor": terms.task_price_minor,
             "starts_at": now,
-            "ends_at": now + timedelta(minutes=body.duration_minutes),
+            "ends_at": now + timedelta(minutes=terms.reserved_minutes),
             "break_minutes": 0,
             "workplace_name": business["business_name"],
             "address_text": body.address_text,
@@ -201,13 +238,13 @@ async def _create_locked(
             body.promo_code,
             user_id=user.user_id,
             shift_id=shift_id,
-            amount_minor=pay_for_minutes(body.hourly_rate_minor, body.duration_minutes),
+            amount_minor=terms.base_minor,
             now=now,
         )
         if body.promo_code
         else None
     )
-    charge = booking_charge(body.hourly_rate_minor, body.duration_minutes, rates, promo)
+    charge = _terms_charge(terms, rates, promo)
     if body.expected_total_minor is not None and body.expected_total_minor != charge.total_minor:
         # Raised inside the posting transaction, so the shift and coupon hold roll back.
         raise conflict(
@@ -220,13 +257,15 @@ async def _create_locked(
         shift_id=shift_id,
         business_profile_id=business["id"],
         currency=settings.default_currency,
-        hourly_rate_minor=body.hourly_rate_minor,
-        reserved_minutes=body.duration_minutes,
+        hourly_rate_minor=terms.hourly_rate_minor,
+        reserved_minutes=terms.reserved_minutes,
         rates=rates,
         charge=charge,
         idempotency_key=body.idempotency_key,
         promo_code_id=promo.id if promo else None,
         promo_code=promo.code if promo else None,
+        pricing_mode=terms.pricing_mode,
+        task_price_minor=terms.task_price_minor,
     )
     await live_work_repository.set_awaiting_payment(
         conn, shift_id, now=now, fee_policy_version=None, commission_pct=rates.commission_pct
@@ -382,9 +421,15 @@ async def cancel(
         return await build_business_state(conn, shift_id, utc_now())
 
 
+def _reject_task_extension(pricing: asyncpg.Record) -> None:
+    if pricing["pricing_mode"] == PRICING_TASK:
+        raise conflict("task_no_timing", MSG_TASK_NO_TIMING)
+
+
 async def _extension_quote(
     conn: asyncpg.Connection, pricing: asyncpg.Record, extra_minutes: int
 ) -> LiveExtensionQuote:
+    _reject_task_extension(pricing)
     applied = [
         e
         for e in await live_work_repository.list_extensions(conn, pricing["shift_id"])
@@ -568,4 +613,15 @@ async def reissue_arrival_code(user: AuthenticatedUser, shift_id: UUID) -> Busin
                 code=live_work_hooks.new_arrival_code(),
                 expires_at=now + timedelta(seconds=settings.live_arrival_code_ttl_seconds),
             )
+        return await build_business_state(conn, shift_id, utc_now())
+
+
+async def reissue_completion_code(user: AuthenticatedUser, shift_id: UUID) -> BusinessLiveBooking:
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            await _owned_booking(conn, user, shift_id)
+            current = await live_work_repository.get_current_assignment(conn, shift_id)
+            if current is None or current["status"] != ASG_CHECKED_IN:
+                raise live_work_core.state_error()
+            await completion_codes.reissue(conn, current["id"], shift_id)
         return await build_business_state(conn, shift_id, utc_now())

@@ -80,3 +80,17 @@ ALTER TABLE shifts
     ADD COLUMN IF NOT EXISTS tax_percentage NUMERIC(5, 2),
     ADD COLUMN IF NOT EXISTS tax_label VARCHAR(40),
     ADD COLUMN IF NOT EXISTS tax_base VARCHAR(16);
+
+-- 'hourly': each worker is paid hourly_rate_minor for the booked time.
+-- 'task': each worker is paid task_price_minor once the job is done (completion code); there
+-- are no timing rules, hourly_rate_minor is 0 and ends_at only bounds the day of work.
+-- Existing rows default to 'hourly' and already satisfy the check.
+ALTER TABLE shifts
+    ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(8) NOT NULL DEFAULT 'hourly',
+    ADD COLUMN IF NOT EXISTS task_price_minor BIGINT;
+ALTER TABLE shifts DROP CONSTRAINT IF EXISTS shifts_hourly_rate_chk;
+ALTER TABLE shifts DROP CONSTRAINT IF EXISTS shifts_pricing_chk;
+ALTER TABLE shifts ADD CONSTRAINT shifts_pricing_chk CHECK (
+    (pricing_mode = 'hourly' AND hourly_rate_minor > 0 AND task_price_minor IS NULL)
+    OR (pricing_mode = 'task' AND hourly_rate_minor = 0 AND task_price_minor > 0)
+);

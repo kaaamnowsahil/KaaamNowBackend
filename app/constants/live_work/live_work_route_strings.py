@@ -31,6 +31,7 @@ PATH_BOOKING_EXTENSIONS: Final[str] = "/{booking_id}/extensions"
 PATH_BOOKING_EXTENSION_CANCEL: Final[str] = "/{booking_id}/extensions/{extension_id}/cancel"
 PATH_BOOKING_END: Final[str] = "/{booking_id}/end"
 PATH_BOOKING_ARRIVAL_CODE: Final[str] = "/{booking_id}/arrival-code/reissue"
+PATH_BOOKING_COMPLETION_CODE: Final[str] = "/{booking_id}/completion-code/reissue"
 
 # Worker
 PATH_REQUESTS: Final[str] = "/requests"

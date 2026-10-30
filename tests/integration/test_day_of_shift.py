@@ -10,6 +10,7 @@ import httpx
 
 from app.db.pool import get_pool
 from app.services.shifts.shift_sweeps import prompt_extensions
+from tests.integration.conftest import completion_code
 from tests.integration.test_cancellations import BOOKING, _balance, _booked_shift, _vouchers
 
 API = "/api/v1"
@@ -87,9 +88,12 @@ async def test_extension_prompt_accept_and_overtime_pay(  # type: ignore[no-unty
         UUID(assignment_id),
     )
     out = await app_client.post(
-        f"{API}/worker/assignments/{assignment_id}/check-out", json={}, headers=worker.headers
+        f"{API}/worker/assignments/{assignment_id}/check-out",
+        json={"completion_code": await completion_code(app_client, business, assignment_id)},
+        headers=worker.headers,
     )
     assert out.status_code == 200, out.text
+    assert out.json()["ended_reason"] == "scheduled_end"
     too_much = await app_client.post(
         f"{API}/business/assignments/{assignment_id}/attendance/approve",
         json={"approved_minutes": 331},

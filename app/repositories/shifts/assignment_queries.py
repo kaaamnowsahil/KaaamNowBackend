@@ -15,7 +15,7 @@ _CONTEXT_SELECT = """
 SELECT a.*, s.business_profile_id, s.status AS shift_status, s.shift_type, s.starts_at,
        s.ends_at, s.break_minutes, s.latitude AS shift_latitude, s.longitude AS shift_longitude,
        s.job_title, s.check_in_code AS shift_check_in_code, s.cancellation_cutoff_hours,
-       s.workers_required,
+       s.workers_required, s.pricing_mode, s.task_price_minor,
        s.site_contact_name, bp.user_id AS business_user_id, bp.business_name,
        wp.user_id AS worker_user_id,
        ar.id AS attendance_id, ar.checked_in_at, ar.check_in_distance_m, ar.checked_out_at,
@@ -42,11 +42,15 @@ SELECT a.id AS assignment_id, a.status, a.source, a.confirmed_at, a.travel_start
        wp.rating_avg, wp.rating_count, wp.completed_shift_count, wp.verification_status,
        ar.id AS attendance_id, ar.checked_in_at, ar.check_in_distance_m, ar.checked_out_at,
        ar.worker_note, ar.recorded_minutes, ar.approved_minutes, ar.business_note,
-       ar.approved_at
+       ar.approved_at,
+       cc.code AS completion_code, cc.failed_attempts AS completion_failed_attempts,
+       cc.locked_at AS completion_locked_at, cc.verified_at AS completion_verified_at,
+       cc.issued_count AS completion_issued_count
 FROM shift_assignments a
 JOIN worker_profiles wp ON wp.id = a.worker_profile_id
 JOIN users u ON u.id = wp.user_id
 LEFT JOIN attendance_records ar ON ar.assignment_id = a.id
+LEFT JOIN assignment_completion_codes cc ON cc.assignment_id = a.id
 WHERE a.shift_id = $1
 ORDER BY (a.status = 'cancelled'), a.confirmed_at
 """
@@ -100,8 +104,8 @@ SELECT count(*) FROM shift_assignments WHERE shift_id = $1 AND status = ANY($2::
 """
 
 LIST_SHIFT_ASSIGNMENTS = """
-SELECT a.id, a.status, a.worker_profile_id, a.hourly_rate_minor, wp.user_id AS worker_user_id,
-       u.full_name, ar.recorded_minutes, ar.approved_minutes
+SELECT a.id, a.status, a.worker_profile_id, a.hourly_rate_minor, a.ended_reason,
+       wp.user_id AS worker_user_id, u.full_name, ar.recorded_minutes, ar.approved_minutes
 FROM shift_assignments a
 JOIN worker_profiles wp ON wp.id = a.worker_profile_id
 JOIN users u ON u.id = wp.user_id
@@ -181,6 +185,7 @@ JOIN business_profiles bp ON bp.id = s.business_profile_id
 JOIN worker_profiles wp ON wp.id = a.worker_profile_id
 JOIN users u ON u.id = wp.user_id
 WHERE a.status = 'checked_in' AND a.extension_prompted_at IS NULL
+  AND s.pricing_mode = 'hourly'
   AND s.ends_at + make_interval(mins => a.extended_minutes) BETWEEN $1 AND $2
 FOR UPDATE OF a SKIP LOCKED
 """

@@ -20,6 +20,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config.settings import load_settings
+from app.constants.application.application_constants import MSG_RAZORPAY_LIVE_KEYS_DISABLED
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,8 @@ class RazorpayPaymentProvider:
         settings = load_settings()
         if not settings.razorpay_key_id or not settings.razorpay_key_secret:
             raise PaymentProviderError("RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set")
+        if not settings.razorpay_key_allowed:
+            raise PaymentProviderError(MSG_RAZORPAY_LIVE_KEYS_DISABLED)
         self._key_id = settings.razorpay_key_id
         self._key_secret = settings.razorpay_key_secret
         self._base = settings.razorpay_api_base.rstrip("/")

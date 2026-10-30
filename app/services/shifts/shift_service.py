@@ -30,6 +30,8 @@ from app.constants.shifts.shift_route_strings import (
     MSG_SHIFT_NOT_CANCELLABLE,
     MSG_SHIFT_NOT_DRAFT,
     MSG_SHIFT_NOT_FOUND,
+    PRICING_HOURLY,
+    PRICING_TASK,
     SCHEDULED_NOTIFY_BATCH_SIZE,
     SHIFT_AWAITING_PAYMENT,
     SHIFT_CANCELLABLE_STATUSES,
@@ -53,6 +55,8 @@ from app.repositories.shifts import (
     shift_repository,
 )
 from app.schemas.shifts.shift_schemas import (
+    MSG_HOURLY_RATE_REQUIRED,
+    MSG_TASK_PRICE_REQUIRED,
     BusinessShiftItem,
     ConvertToScheduledRequest,
     DashboardGroup,
@@ -101,14 +105,17 @@ from app.services.shifts.domain.shift_rules import (
     dashboard_group,
     estimate_cost,
     is_late_cancellation,
+    is_task,
     paid_minutes,
     resolve_window,
+    seat_pay_minor,
+    task_window_end,
     validate_window,
 )
 from app.services.users import terms_service
 from app.utils.clock import minutes_between, utc_now
 from app.utils.geo import bounding_box_deltas
-from app.utils.money import FeeRates, pay_for_minutes
+from app.utils.money import FeeRates
 from app.utils.references import new_numeric_code
 
 # --- helpers ---------------------------------------------------------------------------
@@ -122,13 +129,18 @@ async def _estimate_for(
     rates = catalog_service.shift_rates(row, default_rates)
     if rates is None:
         rates = await catalog_service.active_rates(conn)
+    task = is_task(row)
     return estimate_cost(
         hourly_rate_minor=row["hourly_rate_minor"],
         workers_required=row["workers_required"],
-        minutes_per_worker=paid_minutes(row["starts_at"], row["ends_at"], row["break_minutes"]),
+        minutes_per_worker=(
+            0 if task else paid_minutes(row["starts_at"], row["ends_at"], row["break_minutes"])
+        ),
         rates=rates,
         currency=row["currency"],
         promo=await promo_service.preview_promo(conn, row),
+        pricing_mode=row["pricing_mode"],
+        task_price_minor=row["task_price_minor"],
     )
 
 
@@ -167,7 +179,9 @@ def _merged_values(
         "responsibilities",
         "requirements",
         "workers_required",
+        "pricing_mode",
         "hourly_rate_minor",
+        "task_price_minor",
         "break_minutes",
         "workplace_name",
         "address_text",
@@ -185,6 +199,21 @@ def _merged_values(
         values["latitude"], values["longitude"] = business["latitude"], business["longitude"]
     if not values.get("workplace_name"):
         values["workplace_name"] = business["business_name"]
+    return _normalise_pricing(values)
+
+
+def _normalise_pricing(values: dict[str, Any]) -> dict[str, Any]:
+    """Task pricing: fixed price, no hourly rate or break. Hourly: a rate, no task price."""
+    if values.get("pricing_mode") == PRICING_TASK:
+        if not values.get("task_price_minor"):
+            raise bad_request("task_price_required", MSG_TASK_PRICE_REQUIRED)
+        values["hourly_rate_minor"] = 0
+        values["break_minutes"] = 0
+    else:
+        values["pricing_mode"] = PRICING_HOURLY
+        values["task_price_minor"] = None
+        if not values.get("hourly_rate_minor"):
+            raise bad_request("hourly_rate_required", MSG_HOURLY_RATE_REQUIRED)
     return values
 
 
@@ -291,16 +320,27 @@ async def activate_paid_shift(conn: asyncpg.Connection, shift_id: UUID, now: dat
 
 async def estimate(user: AuthenticatedUser, body: ShiftEstimateRequest) -> ShiftCostEstimate:
     now = utc_now()
-    starts_at, ends_at = resolve_window(
-        shift_type=SHIFT_LIVE,
-        starts_at=body.starts_at,
-        ends_at=body.ends_at,
-        duration_minutes=body.duration_minutes,
-        now=now,
+    task = body.pricing_mode == PRICING_TASK
+    if task:
+        minutes = 0
+    else:
+        starts_at, ends_at = resolve_window(
+            shift_type=SHIFT_LIVE,
+            starts_at=body.starts_at,
+            ends_at=body.ends_at,
+            duration_minutes=body.duration_minutes,
+            now=now,
+        )
+        minutes = paid_minutes(starts_at, ends_at, body.break_minutes)
+    hourly_rate = 0 if task else body.hourly_rate_minor or 0
+    pay_per_worker = seat_pay_minor(
+        pricing_mode=body.pricing_mode,
+        hourly_rate_minor=hourly_rate,
+        task_price_minor=body.task_price_minor,
+        minutes=minutes,
     )
     async with get_pool().acquire() as conn:
         policy = await catalog_service.require_active_fee_policy(conn)
-        minutes = paid_minutes(starts_at, ends_at, body.break_minutes)
         promo = None
         if body.promo_code:
             promo = Promo.from_row(
@@ -311,17 +351,18 @@ async def estimate(user: AuthenticatedUser, body: ShiftEstimateRequest) -> Shift
                     user_id=user.user_id,
                     now=now,
                     booking_type=BOOKING_SHIFT,
-                    amount_minor=pay_for_minutes(body.hourly_rate_minor, minutes)
-                    * body.workers_required,
+                    amount_minor=pay_per_worker * body.workers_required,
                 )
             )
     return estimate_cost(
-        hourly_rate_minor=body.hourly_rate_minor,
+        hourly_rate_minor=hourly_rate,
         workers_required=body.workers_required,
         minutes_per_worker=minutes,
         rates=catalog_service.policy_rates(policy),
         currency=load_settings().default_currency,
         promo=promo,
+        pricing_mode=body.pricing_mode,
+        task_price_minor=body.task_price_minor if task else None,
     )
 
 
@@ -333,11 +374,12 @@ async def _insert_shift(
     now: datetime,
 ) -> UUID:
     settings = load_settings()
+    task = body.pricing_mode == PRICING_TASK
     starts_at, ends_at = resolve_window(
         shift_type=shift_type,
         starts_at=body.starts_at,
-        ends_at=body.ends_at,
-        duration_minutes=body.duration_minutes,
+        ends_at=None if task else body.ends_at,
+        duration_minutes=settings.task_window_minutes if task else body.duration_minutes,
         now=now,
     )
     base = {
@@ -476,7 +518,10 @@ async def update_draft(user: AuthenticatedUser, shift_id: UUID, body: ShiftPatch
                 values["category_id"] = await catalog_service.resolve_category_id(
                     conn, body.category_slug
                 )
-            if body.starts_at or body.ends_at or body.duration_minutes:
+            if values["pricing_mode"] == PRICING_TASK:
+                values["starts_at"] = body.starts_at or shift["starts_at"]
+                values["ends_at"] = task_window_end(values["starts_at"])
+            elif body.starts_at or body.ends_at or body.duration_minutes:
                 duration = body.duration_minutes or minutes_between(
                     shift["starts_at"], shift["ends_at"]
                 )

@@ -27,6 +27,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_APPROVED,
     ASG_BOOKED_STATUSES,
     ASG_CHECKED_IN,
+    END_WORKER_LEFT,
     MSG_SHIFT_NOT_FOUND,
     SHIFT_COMPLETED,
     SHIFT_FILLED,
@@ -48,7 +49,7 @@ from app.services.pricing.shift_pricing import as_business_charge, shift_charge
 from app.services.profiles.profile_lookup import business_scope
 from app.services.promos import promo_service
 from app.services.promos.promo_rules import Promo
-from app.services.shifts.domain.shift_rules import paid_minutes
+from app.services.shifts.domain.shift_rules import is_task, paid_minutes, shift_seat_pay
 from app.utils.clock import utc_now
 from app.utils.money import FeeRates, overtime_pay, pay_for_minutes
 from app.utils.references import INVOICE_REFERENCE_PREFIX, new_reference
@@ -153,9 +154,16 @@ async def _insert_invoice_with_lines(
     return invoice_id
 
 
-def worker_pay(assignment: asyncpg.Record, booked_minutes: int) -> int:
-    """Booked-window minutes at the rate; minutes past the booking (accepted extensions)
-    at ``overtime_rate_pct``."""
+def worker_pay(
+    assignment: asyncpg.Record, booked_minutes: int, shift: asyncpg.Record | None = None
+) -> int:
+    """Hourly: booked-window minutes at the rate; minutes past the booking (accepted
+    extensions) at ``overtime_rate_pct``. Task: the fixed price unless the worker walked off
+    (a task is paid for the result, not the time)."""
+    if shift is not None and is_task(shift):
+        if assignment["ended_reason"] == END_WORKER_LEFT:
+            return 0
+        return shift["task_price_minor"]
     minutes = assignment["approved_minutes"] or 0
     regular = min(minutes, booked_minutes)
     rate = assignment["hourly_rate_minor"]
@@ -164,8 +172,14 @@ def worker_pay(assignment: asyncpg.Record, booked_minutes: int) -> int:
     )
 
 
-def _pay_line_label(assignment: asyncpg.Record, minutes: int, booked_minutes: int) -> str:
-    label = f"{assignment['full_name'] or 'Worker'} · {minutes // 60}h {minutes % 60}m"
+def _pay_line_label(
+    assignment: asyncpg.Record, minutes: int, booked_minutes: int, *, task: bool = False
+) -> str:
+    name = assignment["full_name"] or "Worker"
+    if task:
+        done = assignment["ended_reason"] != END_WORKER_LEFT
+        return f"{name} · task {'completed' if done else 'not completed'} (fixed price)"
+    label = f"{name} · {minutes // 60}h {minutes % 60}m"
     overtime = max(minutes - booked_minutes, 0)
     if overtime:
         label += f" (incl. {overtime}m overtime @ {load_settings().overtime_rate_pct}%)"
@@ -176,8 +190,11 @@ async def create_deposit_invoice(
     conn: asyncpg.Connection, shift: asyncpg.Record, rates: FeeRates, now: datetime
 ) -> UUID:
     """Booked minutes × rate for every seat, paid before the shift goes live."""
-    minutes = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
-    pay = pay_for_minutes(shift["hourly_rate_minor"], minutes)
+    task = is_task(shift)
+    minutes = (
+        0 if task else paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
+    )
+    pay = shift_seat_pay(shift)
     seats = shift["workers_required"]
     promo = await promo_service.shift_promo(conn, shift)
     return await _insert_invoice_with_lines(
@@ -192,9 +209,11 @@ async def create_deposit_invoice(
         worker_lines=[
             (
                 None,
-                f"{seats} × {minutes // 60}h {minutes % 60}m booked",
+                f"{seats} × task (fixed price)"
+                if task
+                else f"{seats} × {minutes // 60}h {minutes % 60}m booked",
                 minutes * seats,
-                shift["hourly_rate_minor"],
+                pay if task else shift["hourly_rate_minor"],
                 pay * seats,
             )
         ],
@@ -253,8 +272,9 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
             ]
             rates = catalog_service.shift_rates(shift) or await catalog_service.active_rates(conn)
             booked = paid_minutes(shift["starts_at"], shift["ends_at"], shift["break_minutes"])
+            task = is_task(shift)
             pay_lines = [
-                (a, a["approved_minutes"] or 0, worker_pay(a, booked)) for a in assignments
+                (a, a["approved_minutes"] or 0, worker_pay(a, booked, shift)) for a in assignments
             ]
             promo = await promo_service.shift_promo(conn, shift)
             charge = shift_charge(sum(amount for _, _, amount in pay_lines), rates, promo)
@@ -285,9 +305,9 @@ async def generate_invoice(user: AuthenticatedUser, shift_id: UUID) -> InvoiceRe
                 worker_lines=[
                     (
                         a["id"],
-                        _pay_line_label(a, minutes, booked),
+                        _pay_line_label(a, minutes, booked, task=task),
                         minutes,
-                        a["hourly_rate_minor"],
+                        amount if task else a["hourly_rate_minor"],
                         amount,
                     )
                     for a, minutes, amount in pay_lines

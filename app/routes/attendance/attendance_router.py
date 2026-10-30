@@ -17,6 +17,7 @@ from app.constants.attendance.attendance_route_strings import (
     PATH_APPROVE,
     PATH_CHECK_IN,
     PATH_CHECK_OUT,
+    PATH_COMPLETION_CODE_REISSUE,
     PATH_EARLY_END,
     PATH_EARLY_END_REQUEST,
     PATH_END,
@@ -140,6 +141,17 @@ async def decline_extension(
 )
 async def business_end(assignment_id: UUID, user: RequireShiftsWrite) -> AssignmentDetail:
     return await attendance_service.business_end(user, assignment_id)
+
+
+@business_router.post(
+    PATH_COMPLETION_CODE_REISSUE,
+    response_model=AssignmentDetail,
+    summary=swagger_summary("Issue a new completion code", SWAGGER_ROLE_BUSINESS),
+)
+async def reissue_completion_code(
+    assignment_id: UUID, user: RequireShiftsWrite
+) -> AssignmentDetail:
+    return await attendance_service.reissue_completion_code(user, assignment_id)
 
 
 @business_router.post(
