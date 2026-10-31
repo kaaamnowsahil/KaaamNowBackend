@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -18,8 +18,8 @@ from app.constants.shifts.shift_route_strings import (
     PRICING_TASK,
     SHIFT_AWAITING_PAYMENT,
     SHIFT_CANCELLED,
+    SHIFT_COMPLETED,
     SHIFT_DRAFT,
-    SHIFT_IN_PROGRESS,
     SHIFT_LIVE,
 )
 from app.db.pool import get_pool
@@ -43,6 +43,7 @@ from app.schemas.live_work.live_work_schemas import (
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
+from app.services.cancellations.cancellation_rules import SeatQuote
 from app.services.catalog import catalog_service
 from app.services.live_work import (
     live_refund_service,
@@ -106,21 +107,38 @@ def _duration_error(terms: LiveTerms) -> str | None:
     return None if terms.is_task else validate_reserved_minutes(terms.reserved_minutes)
 
 
-def _terms_charge(terms: LiveTerms, rates: LiveRates, promo: Promo | None) -> LiveCharge:
+def _terms_charge(
+    terms: LiveTerms, rates: LiveRates, promo: Promo | None, workers: int
+) -> LiveCharge:
+    """Per-Worker charge; the coupon is split across the Workers."""
     return booking_charge(
         terms.hourly_rate_minor,
         terms.reserved_minutes,
         rates,
         promo,
         task_price_minor=terms.task_price_minor if terms.is_task else None,
+        workers=workers,
     )
+
+
+def _workers_error(workers: int) -> str | None:
+    limit = load_settings().live_max_workers
+    return None if 1 <= workers <= limit else f"Choose between 1 and {limit} Workers."
 
 
 async def quote(user: AuthenticatedUser, body: LiveWorkQuoteRequest) -> LivePriceBreakdown:
     terms = _terms(body)
-    error = _duration_error(terms)
-    if error:
-        raise field_errors({"duration_minutes": error})
+    errors = {
+        field: message
+        for field, message in (
+            ("duration_minutes", _duration_error(terms)),
+            ("workers_required", _workers_error(body.workers_required)),
+        )
+        if message
+    }
+    if errors:
+        raise field_errors(errors)
+    workers = body.workers_required
     async with get_pool().acquire() as conn:
         if body.category_slug:
             await catalog_service.resolve_category_id(conn, body.category_slug)
@@ -130,7 +148,7 @@ async def quote(user: AuthenticatedUser, body: LiveWorkQuoteRequest) -> LivePric
                 conn,
                 body.promo_code,
                 user_id=user.user_id,
-                amount_minor=terms.base_minor,
+                amount_minor=terms.base_minor * workers,
             )
             if body.promo_code
             else None
@@ -140,10 +158,11 @@ async def quote(user: AuthenticatedUser, body: LiveWorkQuoteRequest) -> LivePric
         hourly_rate_minor=terms.hourly_rate_minor,
         reserved_minutes=terms.reserved_minutes,
         rates=rates,
-        charge=_terms_charge(terms, rates, promo),
+        charge=_terms_charge(terms, rates, promo, workers),
         promo_code=promo.code if promo else None,
         pricing_mode=terms.pricing_mode,
         task_price_minor=terms.task_price_minor,
+        workers_required=workers,
     )
 
 
@@ -181,6 +200,9 @@ def _validate_create(body: LiveWorkCreate) -> None:
     duration_error = _duration_error(_terms(body))
     if duration_error:
         errors["duration_minutes"] = duration_error
+    workers_error = _workers_error(body.workers_required)
+    if workers_error:
+        errors["workers_required"] = workers_error
     if not body.accept_terms:
         errors["accept_terms"] = "Please accept the Live Work booking terms to continue."
     if body.latitude == 0 and body.longitude == 0:
@@ -216,7 +238,7 @@ async def _create_locked(
             "job_title": body.job_title,
             "responsibilities": body.description,
             "requirements": "",
-            "workers_required": 1,
+            "workers_required": body.workers_required,
             "pricing_mode": terms.pricing_mode,
             "hourly_rate_minor": terms.hourly_rate_minor,
             "task_price_minor": terms.task_price_minor,
@@ -238,19 +260,20 @@ async def _create_locked(
             body.promo_code,
             user_id=user.user_id,
             shift_id=shift_id,
-            amount_minor=terms.base_minor,
+            amount_minor=terms.base_minor * body.workers_required,
             now=now,
         )
         if body.promo_code
         else None
     )
-    charge = _terms_charge(terms, rates, promo)
-    if body.expected_total_minor is not None and body.expected_total_minor != charge.total_minor:
+    charge = _terms_charge(terms, rates, promo, body.workers_required)
+    booking_total = charge.total_minor * body.workers_required
+    if body.expected_total_minor is not None and body.expected_total_minor != booking_total:
         # Raised inside the posting transaction, so the shift and coupon hold roll back.
         raise conflict(
             "price_changed",
             "The price was updated. Please review the new total before posting.",
-            {"total_minor": charge.total_minor, "settings_version": rates.version},
+            {"total_minor": booking_total, "settings_version": rates.version},
         )
     await live_work_repository.insert_booking_pricing(
         conn,
@@ -266,6 +289,7 @@ async def _create_locked(
         promo_code=promo.code if promo else None,
         pricing_mode=terms.pricing_mode,
         task_price_minor=terms.task_price_minor,
+        workers_required=body.workers_required,
     )
     await live_work_repository.set_awaiting_payment(
         conn, shift_id, now=now, fee_policy_version=None, commission_pct=rates.commission_pct
@@ -337,14 +361,63 @@ async def cancel_preview(user: AuthenticatedUser, shift_id: UUID) -> LiveCancelP
     async with get_pool().acquire() as conn:
         pricing = await _owned_booking(conn, user, shift_id)
         shift = await live_work_repository.get_shift(conn, shift_id)
-        assignment = await live_work_repository.get_current_assignment(conn, shift_id)
-        plan = await live_work_core.business_cancel_plan(conn, shift, pricing, assignment)
+        plan = await live_work_core.business_cancel_plan(conn, shift, pricing)
     return cancel_preview_view(plan, pricing["currency"])
+
+
+def _check_expected_refund(body: LiveCancelRequest, plan: live_work_core.CancelPlan) -> None:
+    if body.expected_refund_minor is not None and body.expected_refund_minor != plan.refund_minor:
+        raise conflict(
+            "cancellation_terms_changed",
+            "The booking changed. Please review the cancellation again.",
+            {"refund_minor": plan.refund_minor},
+        )
+
+
+async def _release_worker(
+    conn: asyncpg.Connection,
+    *,
+    shift: asyncpg.Record,
+    seat: asyncpg.Record,
+    quote: SeatQuote,
+    reason: str,
+    actor_user_id: UUID,
+    now: datetime,
+) -> None:
+    """Business releases one Worker before they start: the seat's fee tier is recorded and the
+    Worker is told. The caller refunds the rest of the seat."""
+    await assignment_repository.cancel_assignment(
+        conn,
+        seat["id"],
+        now=now,
+        actor_user_id=actor_user_id,
+        reason=cancel_reason("business", reason),
+        late=quote.fee_minor > 0,
+    )
+    await cancellation_service.apply_seat(
+        conn,
+        shift=shift,
+        assignment_id=seat["id"],
+        worker_profile_id=seat["worker_profile_id"],
+        worker_user_id=seat["worker_user_id"],
+        quote=quote,
+        actor_user_id=actor_user_id,
+        now=now,
+    )
+    await live_work_core.close_open_extensions(conn, shift["id"], now, seat["id"])
+    await live_work_core.notify_cancelled(
+        conn,
+        seat["worker_user_id"],
+        "Live Work cancelled by the Business",
+        shift["job_title"],
+        {"shift_id": shift["id"], "assignment_id": seat["id"], "live_work": True},
+    )
 
 
 async def cancel(
     user: AuthenticatedUser, shift_id: UUID, body: LiveCancelRequest
 ) -> BusinessLiveBooking:
+    """Cancel the whole booking (every Worker who hasn't started, and the empty seats)."""
     now = utc_now()
     refund_ids: list[UUID | None] = []
     async with get_pool().acquire() as conn:
@@ -353,20 +426,10 @@ async def cancel(
             shift = await shift_repository.lock_shift(conn, shift_id)
             if shift["status"] == SHIFT_CANCELLED:
                 return await build_business_state(conn, shift_id, now)
-            assignment = await live_work_repository.get_current_assignment(conn, shift_id)
-            plan = await live_work_core.business_cancel_plan(conn, shift, pricing, assignment)
-            if (
-                body.expected_refund_minor is not None
-                and body.expected_refund_minor != plan.refund_minor
-            ):
-                raise conflict(
-                    "cancellation_terms_changed",
-                    "The booking changed. Please review the cancellation again.",
-                    {"refund_minor": plan.refund_minor},
-                )
+            plan = await live_work_core.business_cancel_plan(conn, shift, pricing)
+            _check_expected_refund(body, plan)
             await live_work_core.withdraw_offers(conn, shift_id)
-            deposit = await live_work_repository.list_shift_invoices(conn, shift_id)
-            for invoice in deposit:
+            for invoice in await live_work_repository.list_shift_invoices(conn, shift_id):
                 await live_work_billing.void_invoice(conn, invoice["id"])
             if plan.stage in ("before_payment", "before_acceptance"):
                 await promo_service.restore_for_booking(conn, shift_id, now)
@@ -378,47 +441,161 @@ async def cancel(
                     live_refund_service.REASON_BUSINESS_CANCELLED,
                     user.user_id,
                 )
-            elif plan.stage == "before_start":
-                await assignment_repository.cancel_assignment(
-                    conn,
-                    assignment["id"],
-                    now=now,
-                    actor_user_id=user.user_id,
-                    reason=cancel_reason("business", body.reason),
-                    late=plan.quote.fee_minor > 0,  # type: ignore[union-attr]
+            elif plan.stage in ("before_start", "during_work"):
+                for seat, quote in plan.seats:
+                    if seat["status"] == ASG_CHECKED_IN:
+                        refund_ids += await live_work_core.business_force_stop(
+                            conn,
+                            shift=shift,
+                            pricing=pricing,
+                            assignment=await assignment_repository.lock_context(conn, seat["id"]),
+                            actor_user_id=user.user_id,
+                            now=now,
+                        )
+                        continue
+                    await _release_worker(
+                        conn,
+                        shift=shift,
+                        seat=seat,
+                        quote=quote,
+                        reason=body.reason,
+                        actor_user_id=user.user_id,
+                        now=now,
+                    )
+                    refund_ids += await live_work_core.queue_split_refund(
+                        conn,
+                        shift_id,
+                        quote.business_refund_minor,
+                        live_refund_service.REASON_BUSINESS_CANCELLED,
+                        user.user_id,
+                        assignment_id=seat["id"],
+                    )
+                if plan.empty_seat_refund_minor:
+                    refund_ids += await live_work_core.queue_split_refund(
+                        conn,
+                        shift_id,
+                        plan.empty_seat_refund_minor,
+                        live_refund_service.REASON_BUSINESS_CANCELLED,
+                        user.user_id,
+                        deposit_only=True,
+                        scope="empty_seats",
+                    )
+            seats = await live_work_repository.list_assignments(conn, shift_id)
+            current = await shift_repository.lock_shift(conn, shift_id)
+            if any(a["status"] in live_work_core.DONE_SEAT_STATUSES for a in seats):
+                if current["status"] != SHIFT_COMPLETED:
+                    await shift_repository.set_status(
+                        conn,
+                        shift_id,
+                        from_status=current["status"],
+                        to_status=SHIFT_COMPLETED,
+                        now=now,
+                        actor_user_id=user.user_id,
+                        reason="business_cancelled_rest",
+                    )
+            else:
+                await shift_repository.cancel_shift(
+                    conn, shift_id, now=now, reason=cancel_reason("business", body.reason)
                 )
-                await cancellation_service.apply_seat(
-                    conn,
-                    shift=shift,
-                    assignment_id=assignment["id"],
-                    worker_profile_id=assignment["worker_profile_id"],
-                    worker_user_id=assignment["worker_user_id"],
-                    quote=plan.quote,  # type: ignore[arg-type]
-                    actor_user_id=user.user_id,
-                    now=now,
-                )
-                refund_ids += await live_work_core.queue_split_refund(
+                await shift_repository.record_history(
                     conn,
                     shift_id,
-                    plan.refund_minor,
-                    live_refund_service.REASON_BUSINESS_CANCELLED,
+                    current["status"],
+                    SHIFT_CANCELLED,
                     user.user_id,
+                    "business_cancelled",
                 )
-                await live_work_core.notify_cancelled(
+        await live_refund_service.process_refunds(refund_ids)
+        return await build_business_state(conn, shift_id, utc_now())
+
+
+async def _owned_seat(
+    conn: asyncpg.Connection, shift_id: UUID, assignment_id: UUID, *, lock: bool
+) -> asyncpg.Record:
+    seat = await (
+        assignment_repository.lock_context(conn, assignment_id)
+        if lock
+        else assignment_repository.get_context(conn, assignment_id)
+    )
+    if seat is None or seat["shift_id"] != shift_id:
+        raise live_work_core.not_found_error()
+    return seat
+
+
+async def cancel_worker_preview(
+    user: AuthenticatedUser, shift_id: UUID, assignment_id: UUID
+) -> LiveCancelPreview:
+    async with get_pool().acquire() as conn:
+        pricing = await _owned_booking(conn, user, shift_id)
+        seat = await _owned_seat(conn, shift_id, assignment_id, lock=False)
+        plan = await live_work_core.business_seat_cancel_plan(conn, pricing, seat)
+    return cancel_preview_view(plan, pricing["currency"])
+
+
+async def cancel_worker(
+    user: AuthenticatedUser, shift_id: UUID, assignment_id: UUID, body: LiveCancelRequest
+) -> BusinessLiveBooking:
+    """Release one Worker before they start; the other Workers keep their booking."""
+    now = utc_now()
+    refund_ids: list[UUID | None] = []
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            pricing = await _owned_booking(conn, user, shift_id)
+            shift = await shift_repository.lock_shift(conn, shift_id)
+            seat = await _owned_seat(conn, shift_id, assignment_id, lock=True)
+            if seat["status"] == "cancelled":
+                return await build_business_state(conn, shift_id, now)
+            plan = await live_work_core.business_seat_cancel_plan(conn, pricing, seat)
+            _check_expected_refund(body, plan)
+            quote = plan.quote
+            assert quote is not None
+            if plan.stage == "during_work":
+                refund_ids = await live_work_core.business_force_stop(
                     conn,
-                    assignment["worker_user_id"],
-                    "Live Work cancelled by the Business",
-                    shift["job_title"],
-                    {"shift_id": shift_id, "assignment_id": assignment["id"], "live_work": True},
+                    shift=shift,
+                    pricing=pricing,
+                    assignment=seat,
+                    actor_user_id=user.user_id,
+                    now=now,
                 )
-            await shift_repository.cancel_shift(
-                conn, shift_id, now=now, reason=cancel_reason("business", body.reason)
+                await live_refund_service.process_refunds(refund_ids)
+                return await build_business_state(conn, shift_id, utc_now())
+            await _release_worker(
+                conn,
+                shift=shift,
+                seat=seat,
+                quote=quote,
+                reason=body.reason,
+                actor_user_id=user.user_id,
+                now=now,
             )
-            await shift_repository.record_history(
-                conn, shift_id, shift["status"], SHIFT_CANCELLED, user.user_id, "business_cancelled"
+            refund_ids = await live_work_core.release_seat(
+                conn,
+                shift,
+                pricing,
+                assignment_id,
+                plan.refund_minor,
+                live_refund_service.REASON_BUSINESS_CANCELLED,
+                user.user_id,
+                now,
             )
         await live_refund_service.process_refunds(refund_ids)
         return await build_business_state(conn, shift_id, utc_now())
+
+
+async def _seat_for_action(
+    conn: asyncpg.Connection, shift_id: UUID, assignment_id: UUID | None, statuses: tuple[str, ...]
+) -> asyncpg.Record:
+    """The Worker an action targets: ``assignment_id``, or the first Worker in ``statuses``."""
+    seats = await live_work_repository.list_assignments(conn, shift_id)
+    if assignment_id is not None:
+        seats = [a for a in seats if a["id"] == assignment_id]
+        if not seats:
+            raise live_work_core.not_found_error()
+    seat = next((a for a in seats if a["status"] in statuses), None)
+    if seat is None:
+        raise live_work_core.state_error({"stage": seats[0]["status"] if seats else None})
+    return seat
 
 
 def _reject_task_extension(pricing: asyncpg.Record) -> None:
@@ -427,13 +604,17 @@ def _reject_task_extension(pricing: asyncpg.Record) -> None:
 
 
 async def _extension_quote(
-    conn: asyncpg.Connection, pricing: asyncpg.Record, extra_minutes: int
+    conn: asyncpg.Connection,
+    pricing: asyncpg.Record,
+    extra_minutes: int,
+    assignment_id: UUID | None = None,
 ) -> LiveExtensionQuote:
+    """For one Worker: their reserved time + their applied extensions."""
     _reject_task_extension(pricing)
     applied = [
         e
         for e in await live_work_repository.list_extensions(conn, pricing["shift_id"])
-        if e["status"] == "applied"
+        if e["status"] == "applied" and assignment_id in (None, e["assignment_id"])
     ]
     surcharge = Decimal(pricing["extension_surcharge_pct"])
     charge = extension_charge(
@@ -468,14 +649,26 @@ async def _extension_quote(
 
 
 async def extension_quote(
-    user: AuthenticatedUser, shift_id: UUID, extra_minutes: int
+    user: AuthenticatedUser,
+    shift_id: UUID,
+    extra_minutes: int,
+    assignment_id: UUID | None = None,
 ) -> LiveExtensionQuote:
     error = validate_extension_minutes(extra_minutes)
     if error:
         raise field_errors({"extra_minutes": error})
     async with get_pool().acquire() as conn:
         pricing = await _owned_booking(conn, user, shift_id)
-        return await _extension_quote(conn, pricing, extra_minutes)
+        if assignment_id is None:
+            seats = await live_work_repository.list_assignments(conn, shift_id)
+            working = next((a for a in seats if a["status"] == ASG_CHECKED_IN), None)
+            assignment_id = working["id"] if working else None
+        elif not any(
+            a["id"] == assignment_id
+            for a in await live_work_repository.list_assignments(conn, shift_id)
+        ):
+            raise live_work_core.not_found_error()
+        return await _extension_quote(conn, pricing, extra_minutes, assignment_id)
 
 
 async def request_extension(
@@ -489,14 +682,10 @@ async def request_extension(
         async with conn.transaction():
             pricing = await _owned_booking(conn, user, shift_id)
             shift = await shift_repository.lock_shift(conn, shift_id)
-            assignment = await live_work_repository.get_current_assignment(conn, shift_id)
-            if (
-                shift["status"] != SHIFT_IN_PROGRESS
-                or assignment is None
-                or assignment["status"] != ASG_CHECKED_IN
-            ):
-                raise live_work_core.state_error({"stage": shift["status"]})
-            ext_quote = await _extension_quote(conn, pricing, body.extra_minutes)
+            assignment = await _seat_for_action(
+                conn, shift_id, body.assignment_id, (ASG_CHECKED_IN,)
+            )
+            ext_quote = await _extension_quote(conn, pricing, body.extra_minutes, assignment["id"])
             if (
                 body.expected_total_minor is not None
                 and body.expected_total_minor != ext_quote.additional_total_minor
@@ -534,7 +723,7 @@ async def request_extension(
                     )
             except asyncpg.UniqueViolationError:
                 raise conflict(
-                    "extension_open", "An extension request is already open for this booking."
+                    "extension_open", "An extension request is already open for this Worker."
                 ) from None
             await notify(
                 conn,
@@ -568,37 +757,41 @@ async def cancel_extension(
         return await build_business_state(conn, shift_id, utc_now())
 
 
-async def end_work(user: AuthenticatedUser, shift_id: UUID) -> BusinessLiveBooking:
+async def end_work(
+    user: AuthenticatedUser, shift_id: UUID, assignment_id: UUID | None = None
+) -> BusinessLiveBooking:
+    """Business ends a Worker's work without the completion code = force-cancel (100% billed,
+    the Worker gets their share). Agreed completion goes through the Worker and the code."""
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             pricing = await _owned_booking(conn, user, shift_id)
             shift = await shift_repository.lock_shift(conn, shift_id)
-            current = await live_work_repository.get_current_assignment(conn, shift_id)
-            if current is None:
-                raise live_work_core.state_error({"stage": shift["status"]})
+            current = await _seat_for_action(conn, shift_id, assignment_id, (ASG_CHECKED_IN,))
             assignment = await assignment_repository.lock_context(conn, current["id"])
-            await live_work_core.complete_booking(
+            refund_ids = await live_work_core.business_force_stop(
                 conn,
                 shift=shift,
                 pricing=pricing,
                 assignment=assignment,
-                ended_by="business",
                 actor_user_id=user.user_id,
                 now=now,
             )
+        await live_refund_service.process_refunds(refund_ids)
         return await build_business_state(conn, shift_id, utc_now())
 
 
-async def reissue_arrival_code(user: AuthenticatedUser, shift_id: UUID) -> BusinessLiveBooking:
+async def reissue_arrival_code(
+    user: AuthenticatedUser, shift_id: UUID, assignment_id: UUID | None = None
+) -> BusinessLiveBooking:
     settings = load_settings()
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             await _owned_booking(conn, user, shift_id)
-            current = await live_work_repository.get_current_assignment(conn, shift_id)
-            if current is None or current["status"] not in ("confirmed", "en_route"):
-                raise live_work_core.state_error()
+            current = await _seat_for_action(
+                conn, shift_id, assignment_id, live_work_core.BEFORE_START_SEAT_STATUSES
+            )
             code = await live_work_repository.lock_arrival_code(conn, current["id"])
             if code is None or code["verified_at"] is not None:
                 raise live_work_core.state_error()
@@ -616,12 +809,12 @@ async def reissue_arrival_code(user: AuthenticatedUser, shift_id: UUID) -> Busin
         return await build_business_state(conn, shift_id, utc_now())
 
 
-async def reissue_completion_code(user: AuthenticatedUser, shift_id: UUID) -> BusinessLiveBooking:
+async def reissue_completion_code(
+    user: AuthenticatedUser, shift_id: UUID, assignment_id: UUID | None = None
+) -> BusinessLiveBooking:
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             await _owned_booking(conn, user, shift_id)
-            current = await live_work_repository.get_current_assignment(conn, shift_id)
-            if current is None or current["status"] != ASG_CHECKED_IN:
-                raise live_work_core.state_error()
+            current = await _seat_for_action(conn, shift_id, assignment_id, (ASG_CHECKED_IN,))
             await completion_codes.reissue(conn, current["id"], shift_id)
         return await build_business_state(conn, shift_id, utc_now())

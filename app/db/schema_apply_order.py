@@ -92,4 +92,6 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "relations/cancellations.sql",
     "relations/shift_assignments__shift_extensions.sql",
     "relations/live_work.sql",
+    # Triggers
+    "relations/realtime_notify.sql",
 )

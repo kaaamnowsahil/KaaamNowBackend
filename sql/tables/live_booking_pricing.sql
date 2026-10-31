@@ -65,3 +65,11 @@ ALTER TABLE live_booking_pricing ADD CONSTRAINT live_booking_pricing_total_chk C
     promo_discount_minor >= 0 AND promo_discount_minor <= commission_minor
     AND total_minor = base_amount_minor + commission_minor - promo_discount_minor + tax_minor
 );
+
+-- Several Workers on one booking: every amount above is for ONE seat (the coupon share too);
+-- the deposit is seat total × workers_required.
+ALTER TABLE live_booking_pricing
+    ADD COLUMN IF NOT EXISTS workers_required SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE live_booking_pricing DROP CONSTRAINT IF EXISTS live_booking_pricing_workers_chk;
+ALTER TABLE live_booking_pricing ADD CONSTRAINT live_booking_pricing_workers_chk
+    CHECK (workers_required BETWEEN 1 AND 50);

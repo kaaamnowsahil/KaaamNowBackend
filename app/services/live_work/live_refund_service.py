@@ -33,6 +33,9 @@ REASON_BUSINESS_CANCELLED = "business_cancelled"
 REASON_WORKER_LEFT = "worker_left_unworked_time"
 REASON_LATE_PAYMENT = "payment_after_booking_closed"
 REASON_EXTENSION_VOID = "extension_not_applied"
+REASON_UNFILLED_SEATS = "unfilled_seats"
+REASON_SEAT_RELEASED = "seat_released"
+REASON_UNWORKED_TIME = "finished_early_unworked_time"
 
 
 async def queue_refund(
@@ -43,23 +46,35 @@ async def queue_refund(
     amount_minor: int,
     reason: str,
     actor_user_id: UUID | None,
+    assignment_id: UUID | None = None,
+    scope: str | None = None,
 ) -> UUID | None:
-    """Queue a refund of ``amount_minor`` from the invoice's successful payment. Idempotent per
-    (reason, payment). Returns the refund id, or None when nothing was paid / already queued."""
+    """Queue a refund of ``amount_minor`` from the invoice's successful payment, never more than
+    is left unrefunded on it. Idempotent per (reason, payment, seat or ``scope``). Returns the
+    refund id, or None when nothing was paid / already queued."""
     if amount_minor <= 0:
         return None
     payment = await live_work_repository.get_succeeded_payment(conn, invoice_id)
     if payment is None or not payment["provider_payment_id"]:
         return None
-    amount = min(amount_minor, payment["amount_minor"])
+    left = payment["amount_minor"] - await live_work_repository.payment_refunded_minor(
+        conn, payment["id"]
+    )
+    amount = min(amount_minor, left)
+    if amount <= 0:
+        return None
+    key = f"{reason}:{payment['id']}"
+    if assignment_id is not None or scope:
+        key += f":{assignment_id or scope}"
     refund_id = await live_work_repository.insert_refund(
         conn,
         shift_id=shift_id,
         payment=payment,
         amount_minor=amount,
         reason=reason,
-        idempotency_key=f"{reason}:{payment['id']}",
+        idempotency_key=key,
         created_by_user_id=actor_user_id,
+        assignment_id=assignment_id,
     )
     if refund_id is not None:
         await live_work_repository.add_refund_due(conn, invoice_id, amount)

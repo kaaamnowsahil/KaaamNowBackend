@@ -123,8 +123,9 @@ class KaaamNowSettings(BaseSettings):
     live_search_timeout_seconds: int
     live_offer_timeout_seconds: int
     live_dispatch_batch_size: int
-    # Live Work (paid, single-worker live bookings)
+    # Live Work (paid live bookings, 1..live_max_workers Workers each)
     live_work_payment_window_seconds: int
+    live_max_workers: int
     live_arrival_code_ttl_seconds: int
     live_arrival_max_attempts: int
     live_arrival_max_reissues: int

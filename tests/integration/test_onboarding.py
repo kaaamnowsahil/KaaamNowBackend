@@ -213,8 +213,9 @@ async def test_business_signup_logo_and_catalog(app_client: httpx.AsyncClient) -
 async def test_content_sections_and_audience(app_client: httpx.AsyncClient) -> None:
     terms = (await app_client.get(f"{API}/content/terms")).json()
     assert terms["audience"] == "worker"
-    assert terms["sections"][0]["title"] == "1. Using KaaamNow"
-    assert terms["sections"][0]["id"] == "1-using-kaaamnow"
+    assert terms["sections"][0]["title"] == "1. What KaaamNow is"
+    assert terms["sections"][0]["id"] == "1-what-kaaamnow-is"
+    assert any(section["title"].endswith("Live Work") for section in terms["sections"])
 
     faqs = (await app_client.get(f"{API}/content/faqs", params={"audience": "business"})).json()
     assert faqs["items"][0]["slug"] == "how-do-i-pay-for-a-shift"

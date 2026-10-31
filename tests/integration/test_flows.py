@@ -387,6 +387,20 @@ async def test_live_flow_end_to_end(app_client, db, make_business, make_worker) 
     assert summary["available_minor"] == 43200  # Rs 450 - 4% commission
     assert summary["lifetime_minor"] == 43200
     assert summary["completed_shifts"] == 1
+    ledger = (
+        await app_client.get(f"{API}/worker/earnings/entries", headers=worker.headers)
+    ).json()["items"]
+    shift_rows = [e for e in ledger if e["assignment_id"] == assignment_id]
+    assert [(e["entry_type"], e["amount_minor"]) for e in shift_rows] == [
+        ("shift_earning", 43200)
+    ]  # Workers see only what they get; the platform charge row is folded in
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM earning_ledger_entries WHERE assignment_id = $1::uuid",
+            assignment_id,
+        )
+        == 2
+    )
 
     rate = await app_client.post(
         f"{API}/assignments/{assignment_id}/ratings",

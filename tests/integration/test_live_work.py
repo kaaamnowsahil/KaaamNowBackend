@@ -345,6 +345,12 @@ async def test_full_live_work_flow(app_client, make_business, make_worker, db) -
         await app_client.get(f"{WRK}/bookings/{assignment_id}", headers=worker.headers)
     ).json()
     assert worker_view["completion"]["code"] is None
+    # Worked the whole reserved + extra time, so all of it is billed.
+    await db.execute(
+        "UPDATE attendance_records SET checked_in_at = $2 WHERE assignment_id = $1",
+        UUID(assignment_id),
+        datetime.now(UTC) - timedelta(minutes=MINUTES + 61),
+    )
     code = await live_completion_code(app_client, business, booking_id)
     done = await app_client.post(
         f"{WRK}/bookings/{assignment_id}/complete",
@@ -485,7 +491,7 @@ async def test_business_cancel_before_payment_and_before_acceptance(
     assert repeat.status_code == 200 and len(repeat.json()["refunds"]) == 1
 
 
-async def test_business_cancel_after_acceptance_follows_policy(  # type: ignore[no-untyped-def]
+async def test_business_cancel_before_the_arrival_code_is_free(  # type: ignore[no-untyped-def]
     app_client, make_business, make_worker, db
 ) -> None:
     business = await make_business()
@@ -499,8 +505,8 @@ async def test_business_cancel_after_acceptance_follows_policy(  # type: ignore[
         )
     ).json()
     assert preview["stage"] == "before_start"
-    assert preview["fee_minor"] > 0
-    assert preview["business_refund_minor"] + preview["business_retained_minor"] == TOTAL
+    assert preview["fee_minor"] == 0 and preview["worker_compensation_minor"] == 0
+    assert preview["business_refund_minor"] == TOTAL
     cancelled = await app_client.post(
         f"{BIZ}/{booking['booking_id']}/cancel",
         json={"reason": "Plans changed", "expected_refund_minor": preview["business_refund_minor"]},
@@ -513,7 +519,8 @@ async def test_business_cancel_after_acceptance_follows_policy(  # type: ignore[
         "SELECT * FROM cancellation_charges WHERE assignment_id = $1", UUID(job["assignment_id"])
     )
     assert charge["party"] == "business"
-    assert charge["worker_compensation_minor"] == preview["worker_compensation_minor"]
+    assert charge["worker_compensation_minor"] == 0
+    assert sum((await _ledger(db, job["assignment_id"])).values()) == 0
     worker_view = (
         await app_client.get(f"{WRK}/bookings/{job['assignment_id']}", headers=worker.headers)
     ).json()
@@ -554,7 +561,15 @@ async def test_worker_cancel_before_start_reopens_search(  # type: ignore[no-unt
     assert strikes == (1 if preview["strike_weight"] > 0 else 0)
 
 
-async def test_worker_walk_off_bills_worked_time_only(  # type: ignore[no-untyped-def]
+async def _worked(db: asyncpg.Connection, assignment_id: str, minutes: int) -> None:
+    await db.execute(
+        "UPDATE attendance_records SET checked_in_at = $2 WHERE assignment_id = $1",
+        UUID(assignment_id),
+        datetime.now(UTC) - timedelta(minutes=minutes),
+    )
+
+
+async def test_worker_force_cancel_is_not_paid_and_refunds_in_full(  # type: ignore[no-untyped-def]
     app_client, make_business, make_worker, db
 ) -> None:
     business = await make_business()
@@ -562,18 +577,15 @@ async def test_worker_walk_off_bills_worked_time_only(  # type: ignore[no-untype
     lat, lng = _location()
     await _place_worker(app_client, worker, lat, lng)
     booking, job = await _started(app_client, business, worker, lat, lng)
-    started_at = datetime.now(UTC) - timedelta(minutes=30)
-    await db.execute(
-        "UPDATE attendance_records SET checked_in_at = $2 WHERE assignment_id = $1",
-        UUID(job["assignment_id"]),
-        started_at,
-    )
+    await _worked(db, job["assignment_id"], 30)
     preview = (
         await app_client.get(
             f"{WRK}/bookings/{job['assignment_id']}/cancel-preview", headers=worker.headers
         )
     ).json()
     assert preview["stage"] == "during_work"
+    assert preview["business_refund_minor"] == TOTAL
+    assert preview["fee_minor"] == 0 and preview["business_voucher"] is True
     cancelled = await app_client.post(
         f"{WRK}/bookings/{job['assignment_id']}/cancel", json={}, headers=worker.headers
     )
@@ -584,12 +596,54 @@ async def test_worker_walk_off_bills_worked_time_only(  # type: ignore[no-untype
     assert state["status"] == "completed"
     assert state["assignment"]["ended_reason"] == "worker_left"
     assert all(r["status"] == "processed" for r in state["refunds"])
-    refunded = sum(r["amount_minor"] for r in state["refunds"])
-    assert 0 < refunded < TOTAL
-    assert state["final_invoice"]["total_minor"] + refunded == TOTAL
+    assert sum(r["amount_minor"] for r in state["refunds"]) == TOTAL
+    assert state["final_invoice"]["total_minor"] == 0
+    assert await _ledger(db, job["assignment_id"]) == {}
+    assert cancelled.json()["earnings"]["final_net_minor"] is None
+    voucher = await db.fetchval(
+        "SELECT voucher_promo_id FROM cancellation_charges WHERE assignment_id = $1",
+        UUID(job["assignment_id"]),
+    )
+    assert voucher is not None
 
 
-async def test_business_end_work_early_bills_reserved_time(  # type: ignore[no-untyped-def]
+async def test_business_force_cancel_pays_in_full_and_worker_gets_share(  # type: ignore[no-untyped-def]
+    app_client, make_business, make_worker, db
+) -> None:
+    business = await make_business()
+    worker = await make_worker("Stopped Early")
+    lat, lng = _location()
+    await _place_worker(app_client, worker, lat, lng)
+    booking, job = await _started(app_client, business, worker, lat, lng)
+    seat_url = f"{BIZ}/{booking['booking_id']}/workers/{job['assignment_id']}"
+    preview = (await app_client.get(f"{seat_url}/cancel-preview", headers=business.headers)).json()
+    assert preview["stage"] == "during_work"
+    assert preview["business_refund_minor"] == 0
+    assert preview["business_retained_minor"] == TOTAL
+    assert preview["worker_compensation_minor"] == BASE * 80 // 100
+    cancelled = await app_client.post(
+        f"{seat_url}/cancel", json={"expected_refund_minor": 0}, headers=business.headers
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    body = cancelled.json()
+    assert body["status"] == "completed"
+    assert body["final_invoice"]["total_minor"] == TOTAL
+    assert body["refunds"] == []
+    ledger = await _ledger(db, job["assignment_id"])
+    assert sum(ledger.values()) == BASE * 80 // 100
+    worker_view = (
+        await app_client.get(f"{WRK}/bookings/{job['assignment_id']}", headers=worker.headers)
+    ).json()
+    assert worker_view["earnings"]["final_net_minor"] == BASE * 80 // 100
+    entries = (
+        await app_client.get(f"{API}/worker/earnings/entries", headers=worker.headers)
+    ).json()["items"]
+    assert [(e["entry_type"], e["amount_minor"]) for e in entries] == [
+        ("shift_earning", BASE * 80 // 100)
+    ]
+
+
+async def test_business_end_without_code_is_a_force_cancel(  # type: ignore[no-untyped-def]
     app_client, make_business, make_worker, db
 ) -> None:
     business = await make_business()
@@ -597,15 +651,49 @@ async def test_business_end_work_early_bills_reserved_time(  # type: ignore[no-u
     lat, lng = _location()
     await _place_worker(app_client, worker, lat, lng)
     booking, job = await _started(app_client, business, worker, lat, lng)
+    whole = (
+        await app_client.get(
+            f"{BIZ}/{booking['booking_id']}/cancel-preview", headers=business.headers
+        )
+    ).json()
+    assert whole["stage"] == "during_work" and whole["business_refund_minor"] == 0
     ended = await app_client.post(f"{BIZ}/{booking['booking_id']}/end", headers=business.headers)
     assert ended.status_code == 200, ended.text
     assert ended.json()["status"] == "completed"
     assert ended.json()["final_invoice"]["total_minor"] == TOTAL
     assert ended.json()["refunds"] == []
+    assert sum((await _ledger(db, job["assignment_id"])).values()) == BASE * 80 // 100
+
+
+async def test_completing_early_with_the_code_bills_worked_time(  # type: ignore[no-untyped-def]
+    app_client, make_business, make_worker, db
+) -> None:
+    business = await make_business()
+    worker = await make_worker("Done Early")
+    lat, lng = _location()
+    await _place_worker(app_client, worker, lat, lng)
+    booking, job = await _started(app_client, business, worker, lat, lng)
+    await _worked(db, job["assignment_id"], 60)
+    code = await live_completion_code(app_client, business, booking["booking_id"])
+    done = await app_client.post(
+        f"{WRK}/bookings/{job['assignment_id']}/complete",
+        json={"completion_code": code},
+        headers=worker.headers,
+    )
+    assert done.status_code == 200, done.text
+    state = (
+        await app_client.get(f"{BIZ}/{booking['booking_id']}", headers=business.headers)
+    ).json()
+    half = TOTAL // 2
+    assert state["final_invoice"]["total_minor"] == half
+    assert [(r["amount_minor"], r["status"]) for r in state["refunds"]] == [
+        (TOTAL - half, "processed")
+    ]
     assert await _ledger(db, job["assignment_id"]) == {
-        "shift_earning": BASE,
-        "commission": -COMMISSION,
+        "shift_earning": BASE // 2,
+        "commission": -(COMMISSION // 2),
     }
+    assert done.json()["earnings"]["final_net_minor"] == (BASE - COMMISSION) // 2
 
 
 # --- sweeps --------------------------------------------------------------------------

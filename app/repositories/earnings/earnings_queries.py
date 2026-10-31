@@ -23,7 +23,7 @@ INSERT INTO earning_ledger_entries (
 )
 SELECT a.worker_profile_id, 'commission',
        -round(l.amount_minor * i.worker_fee_percentage / 100)::bigint, i.currency, a.id, i.id,
-       'Commission ' || trim_scale(i.worker_fee_percentage)::text || '%: ' || s.job_title
+       'Platform charge ' || trim_scale(i.worker_fee_percentage)::text || '%: ' || s.job_title
 FROM shift_invoice_lines l
 JOIN shift_invoices i ON i.id = l.invoice_id
 JOIN shift_assignments a ON a.id = l.assignment_id
@@ -71,12 +71,33 @@ SELECT COALESCE(SUM(amount_minor), 0) FROM withdrawals
 WHERE worker_profile_id = $1 AND status IN ('initiated', 'processing')
 """
 
-LIST_LEDGER = """
-SELECT id, entry_type, amount_minor, currency, assignment_id, withdrawal_id, description,
-       created_at
-FROM earning_ledger_entries WHERE worker_profile_id = $1
-ORDER BY created_at DESC
+# Workers see what they take home: each job's platform-charge debit and platform share (work
+# stopped by the Business) are folded into its earning.
+_PLATFORM_DEBIT = """({t}.entry_type = 'commission'
+    OR ({t}.entry_type = 'adjustment' AND {t}.description LIKE 'Platform share%'))"""
+
+LIST_LEDGER = f"""
+SELECT e.id, e.entry_type, e.amount_minor + COALESCE(fee.total, 0) AS amount_minor,
+       e.currency, e.assignment_id, e.withdrawal_id, e.description, e.created_at
+FROM earning_ledger_entries e
+LEFT JOIN LATERAL (
+    SELECT SUM(f.amount_minor) AS total FROM earning_ledger_entries f
+    WHERE e.entry_type = 'shift_earning' AND f.assignment_id = e.assignment_id
+      AND f.worker_profile_id = e.worker_profile_id AND {_PLATFORM_DEBIT.format(t="f")}
+) fee ON true
+WHERE e.worker_profile_id = $1
+  AND NOT ({_PLATFORM_DEBIT.format(t="e")} AND EXISTS (
+      SELECT 1 FROM earning_ledger_entries s
+      WHERE s.entry_type = 'shift_earning' AND s.assignment_id = e.assignment_id
+  ))
+ORDER BY e.created_at DESC
 LIMIT $2 OFFSET $3
+"""
+
+ASSIGNMENT_NET = f"""
+SELECT SUM(amount_minor) FROM earning_ledger_entries e
+WHERE e.worker_profile_id = $1 AND e.assignment_id = $2
+  AND (e.entry_type = 'shift_earning' OR {_PLATFORM_DEBIT.format(t="e")})
 """
 
 _ACCOUNT_COLUMNS = """

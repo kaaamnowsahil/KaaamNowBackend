@@ -49,8 +49,8 @@ def tax_base_description(tax_base: str, tax_label: str) -> str:
     if tax_base == TAX_BASE_BASE_AMOUNT:
         return f"{tax_label} is charged on the base amount only (rate × duration)."
     if tax_base == TAX_BASE_COMMISSION:
-        return f"{tax_label} is charged on the platform commission only."
-    return f"{tax_label} is charged on the base amount plus the platform commission."
+        return f"{tax_label} is charged on the platform charge only."
+    return f"{tax_label} is charged on the base amount plus the platform charge."
 
 
 def rates_from_row(row: asyncpg.Record) -> LiveRates:
@@ -85,6 +85,7 @@ def breakdown(
     promo_code: str | None = None,
     pricing_mode: str = "hourly",
     task_price_minor: int | None = None,
+    workers_required: int = 1,
 ) -> LivePriceBreakdown:
     return LivePriceBreakdown(
         currency=currency,
@@ -109,6 +110,9 @@ def breakdown(
         worker_net_minor=charge.worker_net_minor,
         extension_surcharge_pct=float(rates.extension_surcharge_pct),
         extension_rate_minor=extension_rate(hourly_rate_minor, rates.extension_surcharge_pct),
+        workers_required=workers_required,
+        max_workers=load_settings().live_max_workers,
+        booking_total_minor=charge.total_minor * workers_required,
     )
 
 

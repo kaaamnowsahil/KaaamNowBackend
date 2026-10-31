@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import asyncpg
@@ -10,17 +11,23 @@ from app.config.settings import load_settings
 from app.constants.profiles.profile_route_strings import MSG_WORKER_LOCATION_REQUIRED
 from app.constants.shifts.shift_route_strings import (
     APP_APPLIED,
+    APP_CONFIRMED,
     APP_DECLINED,
     APP_EXPIRED,
     APP_REJECTED,
     APP_SELECTED,
     APP_WITHDRAWN,
     ASG_APPROVED,
+    ASG_CANCELLED,
     ASG_CHECKED_IN,
     ASG_CHECKED_OUT,
     ASG_CONFIRMED,
     ASG_EN_ROUTE,
+    DISPATCH_WITHDRAWN,
     MSG_SHIFT_NOT_FOUND,
+    SHIFT_LIVE,
+    SHIFT_OPEN,
+    SHIFT_SEARCHING,
 )
 from app.db.pool import get_pool
 from app.exceptions.api_errors import bad_request, not_found
@@ -130,7 +137,7 @@ async def get_shift(
         )
         if row is None or (row["status"] == "draft"):
             raise not_found("shift_not_found", MSG_SHIFT_NOT_FOUND)
-        has_conflict = row["my_assignment_id"] is None and (
+        has_conflict = row["my_assignment_status"] in (None, ASG_CANCELLED) and (
             await shift_repository.worker_has_overlap(
                 conn,
                 worker["id"],
@@ -139,7 +146,52 @@ async def get_shift(
                 exclude_shift_id=row["id"],
             )
         )
-    return worker_shift_detail(row).model_copy(update={"has_time_conflict": has_conflict})
+    reason = _reapply_block_reason(row, has_conflict, utc_now())
+    return worker_shift_detail(row).model_copy(
+        update={
+            "has_time_conflict": has_conflict,
+            "can_reapply": _left_shift(row) and reason is None,
+            "reapply_block_reason": reason if _left_shift(row) else None,
+        }
+    )
+
+
+def _left_shift(row: asyncpg.Record) -> bool:
+    """The worker withdrew, cancelled their booking, or was removed (no active response)."""
+    if row["my_assignment_status"] not in (None, ASG_CANCELLED):
+        return False
+    if row["shift_type"] == SHIFT_LIVE:
+        return row["my_assignment_status"] == ASG_CANCELLED
+    return row["my_application_status"] in (APP_WITHDRAWN, APP_CONFIRMED)
+
+
+def _reapply_block_reason(row: asyncpg.Record, has_conflict: bool, now: datetime) -> str | None:
+    """Mirrors the apply / live accept checks so the button never offers a refused action."""
+    if row["shift_type"] == SHIFT_LIVE:
+        if row["my_dispatch_status"] != DISPATCH_WITHDRAWN:
+            return "business_cancelled"
+        if row["my_reaccept_count"]:
+            return "reapply_limit"
+        searching = row["status"] == SHIFT_SEARCHING and (
+            row["search_expires_at"] is not None and row["search_expires_at"] > now
+        )
+        if not searching:
+            return "not_recruiting"
+    else:
+        if row["my_application_status"] != APP_WITHDRAWN:
+            return "business_cancelled"
+        if row["my_reapply_count"]:
+            return "reapply_limit"
+        if row["status"] not in (SHIFT_SEARCHING, SHIFT_OPEN):
+            return "not_recruiting"
+        closes = timedelta(hours=load_settings().apply_closes_hours_before)
+        if row["starts_at"] - closes <= now:
+            return "apply_closed"
+    if row["booked_count"] >= row["workers_required"]:
+        return "shift_full"
+    if has_conflict:
+        return "overlapping_shift"
+    return None
 
 
 async def my_shifts(

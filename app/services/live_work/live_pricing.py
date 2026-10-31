@@ -21,7 +21,8 @@ All amounts come from the shared engine (app.services.pricing.pricing_engine). A
 only reduces the booking's commission (Live Work has no gateway charge) and never applies to
 extensions.
 
-Reserved time is always billed in full, even when work finishes early.
+The booking total is paid upfront; on completion an hourly booking is billed only for the time
+worked (live_work_core.complete_booking) and the rest is refunded.
 
 Task pricing: ``base = task_price`` (fixed, no duration, no extensions); ``reserved_minutes`` is
 only the window the job must be done in. Commission, tax and coupons work exactly as above.
@@ -187,20 +188,25 @@ def booking_charge(
     promo: Promo | None = None,
     *,
     task_price_minor: int | None = None,
+    workers: int = 1,
 ) -> LiveCharge:
-    """``task_price_minor`` set: a task booking with that fixed base."""
+    """One seat's charge. ``task_price_minor`` set: a task booking with that fixed base.
+    Several Workers: the coupon is worked out once on the whole booking and split evenly
+    across the seats (rounded down), so it is never applied N times."""
     base = (
         task_price_minor
         if task_price_minor is not None
         else pay_for_minutes(hourly_rate_minor, reserved_minutes)
     )
-    return charge_for_base(
-        base,
-        commission_pct=rates.commission_pct,
-        tax_pct=rates.tax_pct,
-        tax_base=rates.tax_base,
-        promo=promo,
-    )
+    rate_args = {
+        "commission_pct": rates.commission_pct,
+        "tax_pct": rates.tax_pct,
+        "tax_base": rates.tax_base,
+    }
+    if workers == 1 or promo is None:
+        return charge_for_base(base, promo=promo, **rate_args)
+    booking_discount = charge_for_base(base * workers, promo=promo, **rate_args).discount_minor
+    return charge_for_base(base, discount_minor=booking_discount // workers, **rate_args)
 
 
 def extension_rate(hourly_rate_minor: int, surcharge_pct: Decimal) -> int:

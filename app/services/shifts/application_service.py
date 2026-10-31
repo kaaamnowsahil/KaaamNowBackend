@@ -35,6 +35,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_CONFIRM_EXPIRED,
     MSG_NOT_SCHEDULED_SHIFT,
     MSG_OVERLAPPING_SHIFT,
+    MSG_REAPPLY_LIMIT,
     MSG_SHIFT_BEYOND_MAX_DISTANCE,
     MSG_SHIFT_FULL,
     MSG_SHIFT_NOT_FOUND,
@@ -169,6 +170,11 @@ async def apply(
                 longitude=lng,
             )
             if row is None:
+                previous = await application_repository.get_worker_application(
+                    conn, shift_id, worker["id"]
+                )
+                if previous is not None and previous["status"] == APP_WITHDRAWN:
+                    raise conflict("reapply_limit", MSG_REAPPLY_LIMIT)
                 raise conflict("application_exists", MSG_APPLICATION_EXISTS)
             await _book_selected(conn, worker, row["id"], shift, seats, now)
             return await _application_response(conn, row["id"])

@@ -36,6 +36,8 @@ def _booking_item(row: asyncpg.Record) -> AdminLiveBookingItem:
         business_name=row["business_name"],
         worker_name=row["worker_name"],
         assignment_status=row["assignment_status"],
+        workers_required=row["workers_required"],
+        workers_filled=row["workers_filled"],
         pricing_mode=row["pricing_mode"],
         reserved_minutes=row["reserved_minutes"],
         task_price_minor=row["task_price_minor"],

@@ -17,6 +17,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_OUT,
     ASG_CONFIRMED,
     ASG_EN_ROUTE,
+    DISPATCH_WITHDRAWN,
     PRICING_TASK,
     SHIFT_AWAITING_PAYMENT,
     SHIFT_CANCELLED,
@@ -25,6 +26,7 @@ from app.constants.shifts.shift_route_strings import (
     SHIFT_IN_PROGRESS,
     SHIFT_SEARCHING,
 )
+from app.repositories.earnings import earnings_repository
 from app.repositories.live_work import live_work_repository
 from app.repositories.live_work.live_work_repository import AvailableWorkersQuery
 from app.repositories.profiles import profile_repository
@@ -39,6 +41,8 @@ from app.schemas.live_work.live_work_schemas import (
     LiveInvoiceSummary,
     LiveRefundView,
     LiveSearchView,
+    LiveSeatActions,
+    LiveSeatView,
     LiveTimerView,
     LiveWorkDetails,
     LiveWorkerArrivalView,
@@ -52,6 +56,7 @@ from app.services.attendance import completion_codes
 from app.services.catalog import catalog_service
 from app.services.live_work import live_work_billing
 from app.services.live_work.live_pricing_settings_service import breakdown, rates_from_row
+from app.services.live_work.live_refund_service import REASON_UNFILLED_SEATS
 from app.utils.geo import bounding_box_deltas, haversine_km
 
 ACTIVE_ASSIGNMENT_STATUSES = (ASG_CONFIRMED, ASG_EN_ROUTE, ASG_CHECKED_IN)
@@ -137,6 +142,7 @@ def booking_breakdown(booking: asyncpg.Record):  # type: ignore[no-untyped-def]
         promo_code=booking["promo_code"],
         pricing_mode=booking["pricing_mode"],
         task_price_minor=booking["task_price_minor"],
+        workers_required=booking["workers_required"],
     )
 
 
@@ -179,14 +185,15 @@ def _timer(
             remaining_seconds=None,
             completed_at=assignment["checked_out_at"],
         )
+    ends_at = assignment["checked_in_at"] + timedelta(
+        minutes=booking["reserved_minutes"] + assignment["extended_minutes"]
+    )
     return LiveTimerView(
         started_at=assignment["checked_in_at"],
-        ends_at=booking["ends_at"],
+        ends_at=ends_at,
         reserved_minutes=booking["reserved_minutes"],
         extended_minutes=assignment["extended_minutes"],
-        remaining_seconds=(
-            max(int((booking["ends_at"] - now).total_seconds()), 0) if running else None
-        ),
+        remaining_seconds=max(int((ends_at - now).total_seconds()), 0) if running else None,
         completed_at=assignment["checked_out_at"],
     )
 
@@ -302,15 +309,95 @@ def _refund_view(row: asyncpg.Record) -> LiveRefundView:
     return LiveRefundView.model_validate(dict(row))
 
 
+def _worker_view(seat: asyncpg.Record) -> LiveWorkerView:
+    return LiveWorkerView(
+        worker_id=seat["worker_profile_id"],
+        full_name=seat["full_name"],
+        photo_url=seat["photo_url"],
+        rating_avg=float(seat["rating_avg"]) if seat["rating_avg"] is not None else None,
+        rating_count=seat["rating_count"] or 0,
+        completed_shift_count=seat["completed_shift_count"] or 0,
+        verification_status=seat["verification_status"],
+    )
+
+
+async def _seat_view(
+    conn: asyncpg.Connection,
+    booking: asyncpg.Record,
+    seat: asyncpg.Record,
+    extensions: list[asyncpg.Record],
+    invoices: list[asyncpg.Record],
+    now: datetime,
+) -> tuple[LiveSeatView, datetime | None]:
+    """→ (one Worker's card, location timestamp for the version hash)."""
+    location, location_status = await _worker_location(conn, booking, seat, now)
+    arrival = None
+    if seat["status"] in BEFORE_START_STATUSES:
+        code = await live_work_repository.get_arrival_code(conn, seat["id"])
+        if code is not None:
+            attempts_left, locked, expired = _arrival_flags(code, now)
+            arrival = LiveArrivalCodeView(
+                code=code["code"],
+                expires_at=code["expires_at"],
+                attempts_left=attempts_left,
+                locked=locked,
+                expired=expired,
+                verified=code["verified_at"] is not None,
+            )
+    working = seat["status"] == ASG_CHECKED_IN
+    completion = (
+        await completion_codes.load_view(conn, seat["id"], for_business=True) if working else None
+    )
+    final = next(
+        (
+            i
+            for i in invoices
+            if i["invoice_kind"] == INVOICE_KIND_FINAL and i["assignment_id"] == seat["id"]
+        ),
+        None,
+    )
+    open_ext = any(
+        e["assignment_id"] == seat["id"] and e["status"] in OPEN_EXTENSION_STATUSES
+        for e in extensions
+    )
+    view = LiveSeatView(
+        assignment=LiveAssignmentView(
+            assignment_id=seat["id"],
+            status=seat["status"],
+            accepted_at=seat["confirmed_at"],
+            travel_started_at=seat["travel_started_at"],
+            started_at=seat["checked_in_at"],
+            completed_at=seat["checked_out_at"],
+            ended_reason=seat["ended_reason"],
+            worker=_worker_view(seat),
+            location=location,
+            location_status=location_status,  # type: ignore[arg-type]
+        ),
+        arrival_code=arrival,
+        completion_code=completion,
+        timer=_timer(booking, seat, now),
+        actions=LiveSeatActions(
+            can_cancel=seat["status"] in BEFORE_START_STATUSES or working,
+            can_extend=working and not open_ext and booking["pricing_mode"] != PRICING_TASK,
+            can_end_work=working,
+            can_reissue_code=arrival is not None,
+            can_reissue_completion_code=completion is not None and completion.can_reissue,
+        ),
+        final_invoice=invoice_summary(final) if final else None,
+    )
+    return view, location.recorded_at if location else None
+
+
 async def build_business_state(
     conn: asyncpg.Connection, shift_id: UUID, now: datetime
 ) -> BusinessLiveBooking:
     booking = await live_work_repository.get_booking(conn, shift_id)
-    assignment = await live_work_repository.get_current_assignment(conn, shift_id)
+    all_seats = await live_work_repository.list_assignments(conn, shift_id)
     invoices = await live_work_repository.list_shift_invoices(conn, shift_id)
     extensions = await live_work_repository.list_extensions(conn, shift_id)
     refunds = await live_work_repository.list_refunds(conn, shift_id)
-    status = business_status(booking["shift_status"], assignment)
+    first = all_seats[0] if all_seats else None
+    status = business_status(booking["shift_status"], first)
     deposit = next((i for i in invoices if i["invoice_kind"] == INVOICE_KIND_DEPOSIT), None)
     final = next((i for i in invoices if i["invoice_kind"] == INVOICE_KIND_FINAL), None)
 
@@ -334,46 +421,19 @@ async def build_business_state(
             available_workers=count,
         )
 
-    assignment_view = None
-    arrival = None
-    location_marker = None
-    if assignment is not None and status not in ("searching", "awaiting_payment"):
-        location, location_status = await _worker_location(conn, booking, assignment, now)
-        location_marker = location.recorded_at if location else None
-        assignment_view = LiveAssignmentView(
-            assignment_id=assignment["id"],
-            status=assignment["status"],
-            accepted_at=assignment["confirmed_at"],
-            travel_started_at=assignment["travel_started_at"],
-            started_at=assignment["checked_in_at"],
-            completed_at=assignment["checked_out_at"],
-            ended_reason=assignment["ended_reason"],
-            worker=LiveWorkerView(
-                worker_id=assignment["worker_profile_id"],
-                full_name=assignment["full_name"],
-                photo_url=assignment["photo_url"],
-                rating_avg=float(assignment["rating_avg"])
-                if assignment["rating_avg"] is not None
-                else None,
-                rating_count=assignment["rating_count"] or 0,
-                completed_shift_count=assignment["completed_shift_count"] or 0,
-                verification_status=assignment["verification_status"],
-            ),
-            location=location,
-            location_status=location_status,  # type: ignore[arg-type]
-        )
-        if assignment["status"] in BEFORE_START_STATUSES:
-            code = await live_work_repository.get_arrival_code(conn, assignment["id"])
-            if code is not None:
-                attempts_left, locked, expired = _arrival_flags(code, now)
-                arrival = LiveArrivalCodeView(
-                    code=code["code"],
-                    expires_at=code["expires_at"],
-                    attempts_left=attempts_left,
-                    locked=locked,
-                    expired=expired,
-                    verified=code["verified_at"] is not None,
-                )
+    shown = (
+        all_seats if status == "cancelled" else [a for a in all_seats if a["status"] != "cancelled"]
+    )
+    if status == "awaiting_payment":
+        shown = []
+    seats: list[LiveSeatView] = []
+    markers: list[datetime | None] = []
+    for seat in shown:
+        view, marker = await _seat_view(conn, booking, seat, extensions, invoices, now)
+        seats.append(view)
+        markers.append(marker)
+    # The single-Worker fields mirror the first card; N=1 bookings read exactly as before.
+    lead = seats[0] if seats and status != "searching" else None
 
     cancellation = None
     if status == "cancelled":
@@ -392,37 +452,40 @@ async def build_business_state(
             refund_minor=refund_total,
         )
 
-    completion = (
-        await completion_codes.load_view(conn, assignment["id"], for_business=True)
-        if assignment is not None and assignment["status"] == ASG_CHECKED_IN
-        else None
-    )
-    task = booking["pricing_mode"] == PRICING_TASK
+    working = any(v.assignment.status == ASG_CHECKED_IN for v in seats)
+    active = any(v.assignment.status in ACTIVE_ASSIGNMENT_STATUSES for v in seats)
     open_ext = next((e for e in extensions if e["status"] in OPEN_EXTENSION_STATUSES), None)
     actions = BusinessLiveActions(
         can_pay=(
             status == "awaiting_payment" and deposit is not None and deposit["status"] == "pending"
         )
         or (open_ext is not None and open_ext["status"] == "awaiting_payment"),
-        can_cancel=status in ("awaiting_payment", "searching", "assigned", "en_route"),
-        can_extend=status == "in_progress" and open_ext is None and not task,
-        can_end_work=status == "in_progress",
-        can_reissue_code=arrival is not None,
+        can_cancel=working
+        or status in ("awaiting_payment", "searching", "assigned", "en_route")
+        or (status == "in_progress" and active),
+        can_extend=lead is not None and lead.actions.can_extend,
+        can_end_work=working,
+        can_reissue_code=lead is not None and lead.actions.can_reissue_code,
         can_repost=status in ("no_workers", "cancelled"),
-        can_reissue_completion_code=completion is not None and completion.can_reissue,
+        can_reissue_completion_code=lead is not None and lead.actions.can_reissue_completion_code,
     )
     version = _version(
         booking["updated_at"],
-        assignment["updated_at"] if assignment else None,
-        assignment["checked_in_at"] if assignment else None,
+        booking["open_seats"],
+        [(a["id"], a["updated_at"], a["checked_in_at"]) for a in all_seats],
         [(e["id"], e["status"]) for e in extensions],
         [(r["id"], r["status"]) for r in refunds],
         [(i["id"], i["status"]) for i in invoices],
-        location_marker,
-        arrival.attempts_left if arrival else None,
-        arrival.code if arrival else None,
-        completion.code if completion else None,
-        completion.attempts_left if completion else None,
+        markers,
+        [
+            (
+                v.arrival_code.attempts_left if v.arrival_code else None,
+                v.arrival_code.code if v.arrival_code else None,
+                v.completion_code.code if v.completion_code else None,
+                v.completion_code.attempts_left if v.completion_code else None,
+            )
+            for v in seats
+        ],
         search.available_workers if search else None,
         search.notified_workers if search else None,
     )
@@ -437,15 +500,22 @@ async def build_business_state(
         pricing=booking_breakdown(booking),
         search=search,
         deposit_invoice=invoice_summary(deposit) if deposit else None,
-        assignment=assignment_view,
-        arrival_code=arrival,
-        completion_code=completion,
-        timer=_timer(booking, assignment, now),
+        assignment=lead.assignment if lead else None,
+        arrival_code=lead.arrival_code if lead else None,
+        completion_code=lead.completion_code if lead else None,
+        timer=lead.timer if lead else None,
         extensions=[extension_view(e) for e in extensions],
         final_invoice=invoice_summary(final) if final else None,
         refunds=[_refund_view(r) for r in refunds],
         cancellation=cancellation,
         actions=actions,
+        workers_required=booking["workers_required"],
+        workers_filled=booking["workers_filled"],
+        seat_total_minor=booking["total_minor"],
+        unfilled_refund_minor=sum(
+            r["amount_minor"] for r in refunds if r["reason"] == REASON_UNFILLED_SEATS
+        ),
+        workers=seats,
     )
 
 
@@ -473,8 +543,11 @@ async def build_worker_state(
                 expired=expired,
             )
     cancellation = None
+    can_accept_again = False
     if status == "cancelled":
         party, reason = _split_reason(assignment["cancel_reason"])
+        if party == "worker":
+            can_accept_again = await _can_accept_again(conn, booking, assignment, now)
         cancellation = LiveCancellationView(
             cancelled_at=assignment["cancelled_at"],
             cancelled_by=party,  # type: ignore[arg-type]
@@ -518,17 +591,43 @@ async def build_worker_state(
             worker_net_minor=booking["worker_net_minor"],
             extension_net_minor=applied_net,
             total_net_minor=booking["worker_net_minor"] + applied_net,
+            final_net_minor=(
+                await earnings_repository.assignment_net(
+                    conn, assignment["worker_profile_id"], assignment["id"]
+                )
+                if assignment["status"] in (ASG_CHECKED_OUT, ASG_APPROVED)
+                else None
+            ),
         ),
         arrival=arrival,
         completion=completion,
         timer=_timer(booking, timer_assignment, now),  # type: ignore[arg-type]
         extensions=[extension_view(e) for e in extensions],
         cancellation=cancellation,
+        workers_required=booking["workers_required"],
         actions=WorkerLiveActions(
             can_start_travel=assignment["status"] == ASG_CONFIRMED,
             can_start_work=assignment["status"] in BEFORE_START_STATUSES,
             can_complete=assignment["status"] == ASG_CHECKED_IN,
             can_cancel=assignment["status"] in ACTIVE_ASSIGNMENT_STATUSES,
             can_answer_extension=pending_answer and assignment["status"] == ASG_CHECKED_IN,
+            can_accept_again=can_accept_again,
         ),
+    )
+
+
+async def _can_accept_again(
+    conn: asyncpg.Connection, booking: asyncpg.Record, assignment: asyncpg.Record, now: datetime
+) -> bool:
+    """Same rule as live accept: withdrawn dispatch, not re-accepted yet, search still open."""
+    expires_at = booking["search_expires_at"]
+    if booking["shift_status"] != SHIFT_SEARCHING or expires_at is None or expires_at <= now:
+        return False
+    dispatch = await dispatch_repository.get_dispatch(
+        conn, assignment["shift_id"], assignment["worker_profile_id"]
+    )
+    return (
+        dispatch is not None
+        and dispatch["status"] == DISPATCH_WITHDRAWN
+        and dispatch["reaccept_count"] == 0
     )

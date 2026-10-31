@@ -38,11 +38,11 @@ INSERT INTO live_booking_pricing (
     reserved_minutes, base_amount_minor, commission_pct, commission_minor, tax_pct, tax_label,
     tax_base, taxable_minor, tax_minor, total_minor, worker_commission_minor, worker_net_minor,
     extension_surcharge_pct, idempotency_key, promo_code_id, promo_code, promo_discount_minor,
-    pricing_mode, task_price_minor
+    pricing_mode, task_price_minor, workers_required
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-    $21, $22, $23, $24
+    $21, $22, $23, $24, $25
 )
 """
 GET_BOOKING_PRICING = "SELECT * FROM live_booking_pricing WHERE shift_id = $1"
@@ -78,7 +78,10 @@ SELECT s.id AS shift_id, s.status AS shift_status, s.job_title, s.responsibiliti
        p.commission_pct, p.commission_minor, p.tax_pct, p.tax_label, p.tax_base,
        p.taxable_minor, p.tax_minor, p.total_minor, p.worker_commission_minor,
        p.worker_net_minor, p.extension_surcharge_pct, p.promo_code, p.promo_discount_minor,
-       p.pricing_mode, p.task_price_minor
+       p.pricing_mode, p.task_price_minor, p.workers_required,
+       s.workers_required AS open_seats,
+       (SELECT count(*) FROM shift_assignments sa
+        WHERE sa.shift_id = s.id AND sa.status <> 'cancelled')::int AS workers_filled
 FROM live_booking_pricing p
 JOIN shifts s ON s.id = p.shift_id
 JOIN business_profiles bp ON bp.id = s.business_profile_id
@@ -107,6 +110,20 @@ WHERE a.shift_id = $1
 ORDER BY (a.status = 'cancelled'), a.confirmed_at DESC
 LIMIT 1
 """
+# Every seat of the booking: active first, then finished, then cancelled.
+LIST_ASSIGNMENTS = """
+SELECT a.*, wp.user_id AS worker_user_id, u.full_name, u.photo_url, wp.rating_avg,
+       wp.rating_count, wp.completed_shift_count, wp.verification_status,
+       ar.checked_in_at, ar.checked_out_at, ar.recorded_minutes, ar.approved_minutes
+FROM shift_assignments a
+JOIN worker_profiles wp ON wp.id = a.worker_profile_id
+JOIN users u ON u.id = wp.user_id
+LEFT JOIN attendance_records ar ON ar.assignment_id = a.id
+WHERE a.shift_id = $1
+ORDER BY CASE WHEN a.status IN ('confirmed', 'en_route', 'checked_in') THEN 0
+              WHEN a.status = 'cancelled' THEN 2 ELSE 1 END,
+         a.confirmed_at
+"""
 GET_WORKER_ACTIVE_ASSIGNMENT = """
 SELECT a.id FROM shift_assignments a
 JOIN live_booking_pricing p ON p.shift_id = a.shift_id
@@ -130,6 +147,12 @@ UPDATE shift_assignments SET status = 'approved', updated_at = now() WHERE id = 
 SET_SHIFT_WINDOW = (
     "UPDATE shifts SET starts_at = $2, ends_at = $3, updated_at = now() WHERE id = $1"
 )
+EXTEND_SHIFT_END_TO = """
+UPDATE shifts SET ends_at = GREATEST(ends_at, $2), updated_at = now() WHERE id = $1
+"""
+SET_SHIFT_WORKERS_REQUIRED = """
+UPDATE shifts SET workers_required = $2, updated_at = now() WHERE id = $1
+"""
 EXTEND_SHIFT_END = """
 UPDATE shifts SET ends_at = ends_at + make_interval(mins => $2), updated_at = now() WHERE id = $1
 """
@@ -252,11 +275,11 @@ INSERT INTO shift_invoices (
     platform_fee_minor, total_minor, fee_percentage, fee_policy_version, issued_at, paid_at,
     invoice_kind, gateway_fee_minor, gateway_fee_percentage, worker_fee_percentage,
     deposit_applied_minor, refund_due_minor, tax_minor, tax_percentage, tax_label, tax_base,
-    live_pricing_version, promo_code, promo_discount_minor
+    live_pricing_version, promo_code, promo_discount_minor, assignment_id
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, 0, $9, $14, $15, $16, $17, $18,
-    $19, $20, $21, $22
+    $19, $20, $21, $22, $23
 )
 RETURNING id
 """
@@ -276,13 +299,17 @@ WHERE id = $1
 INSERT_REFUND = """
 INSERT INTO live_refunds (
     shift_id, payment_id, invoice_id, amount_minor, currency, reason, idempotency_key,
-    provider, created_by_user_id
+    provider, created_by_user_id, assignment_id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING id
 """
 LIST_REFUNDS = "SELECT * FROM live_refunds WHERE shift_id = $1 ORDER BY created_at"
+REFUND_AMOUNT = "SELECT amount_minor FROM live_refunds WHERE id = $1"
+SUM_PAYMENT_REFUNDS = """
+SELECT COALESCE(SUM(amount_minor), 0) FROM live_refunds WHERE payment_id = $1
+"""
 LOCK_DUE_REFUNDS = """
 SELECT * FROM live_refunds
 WHERE status IN ('pending', 'failed') AND attempts < $1
@@ -310,9 +337,14 @@ LIST_UNPAID_BOOKINGS = """
 SELECT s.id FROM live_booking_pricing p JOIN shifts s ON s.id = p.shift_id
 WHERE s.status = 'awaiting_payment' AND s.published_at < $1
 """
-LIST_OVERDUE_ACTIVE_BOOKINGS = """
-SELECT s.id FROM live_booking_pricing p JOIN shifts s ON s.id = p.shift_id
-WHERE s.status = 'in_progress' AND s.ends_at < $1 AND p.pricing_mode = 'hourly'
+# Seats whose reserved (+ extended) time ended before $1 and are still working.
+LIST_OVERDUE_ACTIVE_SEATS = """
+SELECT a.id AS assignment_id, a.shift_id
+FROM live_booking_pricing p
+JOIN shift_assignments a ON a.shift_id = p.shift_id AND a.status = 'checked_in'
+JOIN attendance_records ar ON ar.assignment_id = a.id
+WHERE p.pricing_mode = 'hourly'
+  AND ar.checked_in_at + make_interval(mins => p.reserved_minutes + a.extended_minutes) < $1
 """
 
 # --- admin -----------------------------------------------------------------------------

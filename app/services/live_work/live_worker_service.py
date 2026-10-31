@@ -16,10 +16,10 @@ from app.constants.notifications.notification_route_strings import (
     KIND_WORKER_EN_ROUTE,
 )
 from app.constants.shifts.shift_route_strings import (
+    ASG_APPROVED,
     ASG_CHECKED_IN,
+    ASG_CHECKED_OUT,
     ASG_CONFIRMED,
-    SHIFT_FILLED,
-    SHIFT_IN_PROGRESS,
 )
 from app.db.pool import get_pool
 from app.exceptions.api_errors import ApiError, bad_request, conflict, not_found
@@ -27,7 +27,7 @@ from app.pagination import clamp_page_limit
 from app.repositories.attendance import attendance_repository
 from app.repositories.live_work import live_work_repository
 from app.repositories.profiles import profile_repository
-from app.repositories.shifts import assignment_repository, shift_repository
+from app.repositories.shifts import assignment_repository, dispatch_repository, shift_repository
 from app.schemas.live_work.live_work_schemas import (
     LiveCancelPreview,
     LiveCancelRequest,
@@ -50,6 +50,8 @@ from app.services.profiles.profile_lookup import require_worker_profile
 from app.services.shifts import live_dispatch_service
 from app.utils.clock import utc_now
 from app.utils.geo import haversine_km
+
+STARTED_SEAT_STATUSES = (ASG_CHECKED_IN, ASG_CHECKED_OUT, ASG_APPROVED)
 
 
 async def _owned_assignment(
@@ -285,19 +287,17 @@ async def start_work(
                     accuracy_m=body.accuracy_m,
                     recorded_at=now,
                 )
-                await live_work_repository.set_shift_window(
-                    conn, shift["id"], now, now + timedelta(minutes=pricing["reserved_minutes"])
+                ends_at = now + timedelta(minutes=pricing["reserved_minutes"])
+                seats = await live_work_repository.list_assignments(conn, shift["id"])
+                if any(
+                    a["id"] != assignment_id and a["status"] in STARTED_SEAT_STATUSES for a in seats
+                ):
+                    await live_work_repository.extend_shift_end_to(conn, shift["id"], ends_at)
+                else:
+                    await live_work_repository.set_shift_window(conn, shift["id"], now, ends_at)
+                await live_work_core.settle_status(
+                    conn, shift["id"], now, user.user_id, "live_work_started"
                 )
-                if shift["status"] == SHIFT_FILLED:
-                    await shift_repository.set_status(
-                        conn,
-                        shift["id"],
-                        from_status=SHIFT_FILLED,
-                        to_status=SHIFT_IN_PROGRESS,
-                        now=now,
-                        actor_user_id=user.user_id,
-                        reason="live_work_started",
-                    )
                 await notify(
                     conn,
                     ctx["business_user_id"],
@@ -322,6 +322,7 @@ async def complete(
     codes are counted in a committed transaction, then the error is raised."""
     now = utc_now()
     failure: ApiError | None = None
+    refund_ids: list[UUID | None] = []
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             _, ctx = await _owned_assignment(conn, user, assignment_id, lock=True)
@@ -335,7 +336,7 @@ async def complete(
             if failure is None:
                 shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
                 pricing = await live_work_repository.get_booking_pricing(conn, ctx["shift_id"])
-                await live_work_core.complete_booking(
+                refund_ids = await live_work_core.complete_booking(
                     conn,
                     shift=shift,
                     pricing=pricing,
@@ -346,6 +347,7 @@ async def complete(
                 )
         if failure is not None:
             raise failure
+        await live_refund_service.process_refunds(refund_ids)
         return await _state(conn, assignment_id)
 
 
@@ -390,6 +392,9 @@ async def cancel(
                     reason=cancel_reason("worker", body.reason),
                     late=plan.quote.fee_minor > 0,  # type: ignore[union-attr]
                 )
+                await dispatch_repository.withdraw_accepted(
+                    conn, shift["id"], ctx["worker_profile_id"], now
+                )
                 await cancellation_service.apply_seat(
                     conn,
                     shift=shift,
@@ -401,14 +406,16 @@ async def cancel(
                     now=now,
                     seat_reopens=True,
                 )
-                await live_work_core.restart_search(
-                    conn, shift, pricing, now, user.user_id, "worker_cancelled_reassign"
+                outcome, refund_ids = await live_work_core.reopen_or_release_seat(
+                    conn, shift, pricing, assignment_id, user.user_id, now
                 )
                 await live_work_core.notify_cancelled(
                     conn,
                     ctx["business_user_id"],
                     "Your Worker cancelled",
-                    f"{shift['job_title']} · we're finding another Worker.",
+                    f"{shift['job_title']} · we're finding another Worker."
+                    if outcome != "released"
+                    else f"{shift['job_title']} · that Worker's share is being refunded.",
                     {"shift_id": shift["id"], "live_work": True},
                 )
         await live_refund_service.process_refunds(refund_ids)

@@ -8,6 +8,7 @@ from uuid import UUID
 import asyncpg
 
 from app.repositories.earnings.earnings_queries import (
+    ASSIGNMENT_NET,
     BALANCE,
     CLEAR_DEFAULT_ACCOUNT,
     COUNT_ACTIVE_ACCOUNTS,
@@ -247,3 +248,10 @@ async def finish_withdrawal(
     now: datetime,
 ) -> None:
     await conn.execute(FINISH_WITHDRAWAL, withdrawal_id, status, failure_reason, now)
+
+
+async def assignment_net(
+    conn: asyncpg.Connection, worker_profile_id: UUID, assignment_id: UUID
+) -> int | None:
+    """What the Worker took home for one job (pay − platform charge), or None if not paid."""
+    return await conn.fetchval(ASSIGNMENT_NET, worker_profile_id, assignment_id)

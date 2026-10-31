@@ -24,7 +24,12 @@ SELECT s.*, wc.slug AS category_slug, wc.name AS category_name,
        d.id AS deposit_invoice_id, d.status AS deposit_status
 FROM shifts s
 JOIN work_categories wc ON wc.id = s.category_id
-LEFT JOIN shift_invoices i ON i.shift_id = s.id AND i.invoice_kind = 'final'
+LEFT JOIN LATERAL (
+    SELECT fi.id, fi.status FROM shift_invoices fi
+    WHERE fi.shift_id = s.id AND fi.invoice_kind = 'final'
+    ORDER BY (fi.status = 'pending') DESC, fi.issued_at DESC
+    LIMIT 1
+) i ON true
 LEFT JOIN shift_invoices d ON d.shift_id = s.id AND d.invoice_kind = 'deposit'
 """
 
@@ -224,12 +229,15 @@ SELECT s.id, s.shift_type, s.status, s.job_title, wc.slug AS category_slug,
        ap.confirm_by AS my_confirm_by, ap.applied_at AS my_applied_at,
        ap.decided_at AS my_decided_at, ap.responded_at AS my_responded_at,
        a.id AS my_assignment_id, a.status AS my_assignment_status,
+       ap.reapply_count AS my_reapply_count, s.search_expires_at,
+       d.status AS my_dispatch_status, d.reaccept_count AS my_reaccept_count,
        CASE WHEN $2::float8 IS NULL OR $3::float8 IS NULL THEN NULL
             ELSE kn_haversine_km($2, $3, s.latitude, s.longitude) END AS distance_km
 FROM shifts s
 JOIN work_categories wc ON wc.id = s.category_id
 JOIN business_profiles bp ON bp.id = s.business_profile_id
 LEFT JOIN shift_applications ap ON ap.shift_id = s.id AND ap.worker_profile_id = $1
+LEFT JOIN live_dispatches d ON d.shift_id = s.id AND d.worker_profile_id = $1
 LEFT JOIN LATERAL (
     SELECT x.id, x.status FROM shift_assignments x
     WHERE x.shift_id = s.id AND x.worker_profile_id = $1

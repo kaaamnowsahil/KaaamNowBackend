@@ -20,6 +20,8 @@ from app.constants.live_work.live_work_route_strings import (
     PATH_BOOKING_EXTENSION_CANCEL,
     PATH_BOOKING_EXTENSION_QUOTE,
     PATH_BOOKING_EXTENSIONS,
+    PATH_BOOKING_WORKER_CANCEL,
+    PATH_BOOKING_WORKER_CANCEL_PREVIEW,
     PATH_BOOKINGS,
     PATH_QUOTE,
 )
@@ -122,14 +124,39 @@ async def cancel(
 
 
 @router.get(
+    PATH_BOOKING_WORKER_CANCEL_PREVIEW,
+    response_model=LiveCancelPreview,
+    summary=swagger_summary("Preview releasing one Worker", SWAGGER_ROLE_BUSINESS),
+)
+async def cancel_worker_preview(
+    booking_id: UUID, assignment_id: UUID, user: RequireShiftsRead
+) -> LiveCancelPreview:
+    return await live_work_service.cancel_worker_preview(user, booking_id, assignment_id)
+
+
+@router.post(
+    PATH_BOOKING_WORKER_CANCEL,
+    response_model=BusinessLiveBooking,
+    summary=swagger_summary("Release one Worker before they start", SWAGGER_ROLE_BUSINESS),
+)
+async def cancel_worker(
+    booking_id: UUID, assignment_id: UUID, body: LiveCancelRequest, user: RequireShiftsWrite
+) -> BusinessLiveBooking:
+    return await live_work_service.cancel_worker(user, booking_id, assignment_id, body)
+
+
+@router.get(
     PATH_BOOKING_EXTENSION_QUOTE,
     response_model=LiveExtensionQuote,
     summary=swagger_summary("Price extra time", SWAGGER_ROLE_BUSINESS),
 )
 async def extension_quote(
-    booking_id: UUID, user: RequireShiftsRead, minutes: int = Query()
+    booking_id: UUID,
+    user: RequireShiftsRead,
+    minutes: int = Query(),
+    assignment_id: UUID | None = Query(default=None),
 ) -> LiveExtensionQuote:
-    return await live_work_service.extension_quote(user, booking_id, minutes)
+    return await live_work_service.extension_quote(user, booking_id, minutes, assignment_id)
 
 
 @router.post(
@@ -162,8 +189,10 @@ async def cancel_extension(
         "End Work now (reserved time or task price is billed)", SWAGGER_ROLE_BUSINESS
     ),
 )
-async def end_work(booking_id: UUID, user: RequireShiftsWrite) -> BusinessLiveBooking:
-    return await live_work_service.end_work(user, booking_id)
+async def end_work(
+    booking_id: UUID, user: RequireShiftsWrite, assignment_id: UUID | None = Query(default=None)
+) -> BusinessLiveBooking:
+    return await live_work_service.end_work(user, booking_id, assignment_id)
 
 
 @router.post(
@@ -171,8 +200,10 @@ async def end_work(booking_id: UUID, user: RequireShiftsWrite) -> BusinessLiveBo
     response_model=BusinessLiveBooking,
     summary=swagger_summary("New arrival code", SWAGGER_ROLE_BUSINESS),
 )
-async def reissue_arrival_code(booking_id: UUID, user: RequireShiftsWrite) -> BusinessLiveBooking:
-    return await live_work_service.reissue_arrival_code(user, booking_id)
+async def reissue_arrival_code(
+    booking_id: UUID, user: RequireShiftsWrite, assignment_id: UUID | None = Query(default=None)
+) -> BusinessLiveBooking:
+    return await live_work_service.reissue_arrival_code(user, booking_id, assignment_id)
 
 
 @router.post(
@@ -181,6 +212,6 @@ async def reissue_arrival_code(booking_id: UUID, user: RequireShiftsWrite) -> Bu
     summary=swagger_summary("New completion code", SWAGGER_ROLE_BUSINESS),
 )
 async def reissue_completion_code(
-    booking_id: UUID, user: RequireShiftsWrite
+    booking_id: UUID, user: RequireShiftsWrite, assignment_id: UUID | None = Query(default=None)
 ) -> BusinessLiveBooking:
-    return await live_work_service.reissue_completion_code(user, booking_id)
+    return await live_work_service.reissue_completion_code(user, booking_id, assignment_id)

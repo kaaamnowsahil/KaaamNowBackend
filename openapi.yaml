@@ -2714,6 +2714,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/workers/{assignment_id}/cancel-preview:
+    get:
+      tags:
+      - Business / Work — Live Work
+      summary: Preview releasing one Worker · Business / Work
+      operationId: cancel_worker_preview_api_v1_business_live_work__booking_id__workers__assignment_id__cancel_preview_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveCancelPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/workers/{assignment_id}/cancel:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Release one Worker before they start · Business / Work
+      operationId: cancel_worker_api_v1_business_live_work__booking_id__workers__assignment_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Assignment Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveCancelRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/business/live-work/{booking_id}/extension-quote:
     get:
       tags:
@@ -2736,6 +2814,15 @@ paths:
         schema:
           type: integer
           title: Minutes
+      - name: assignment_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
       responses:
         '200':
           description: Successful Response
@@ -2836,6 +2923,15 @@ paths:
           type: string
           format: uuid
           title: Booking Id
+      - name: assignment_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
       responses:
         '200':
           description: Successful Response
@@ -2865,6 +2961,15 @@ paths:
           type: string
           format: uuid
           title: Booking Id
+      - name: assignment_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
       responses:
         '200':
           description: Successful Response
@@ -2894,6 +2999,15 @@ paths:
           type: string
           format: uuid
           title: Booking Id
+      - name: assignment_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
       responses:
         '200':
           description: Successful Response
@@ -6816,6 +6930,14 @@ components:
           - type: string
           - type: 'null'
           title: Assignment Status
+        workers_required:
+          type: integer
+          title: Workers Required
+          default: 1
+        workers_filled:
+          type: integer
+          title: Workers Filled
+          default: 0
         pricing_mode:
           type: string
           enum:
@@ -8326,6 +8448,33 @@ components:
           - type: 'null'
         actions:
           $ref: '#/components/schemas/BusinessLiveActions'
+        workers_required:
+          type: integer
+          title: Workers Required
+          description: Workers booked.
+          default: 1
+        workers_filled:
+          type: integer
+          title: Workers Filled
+          description: Workers who took a seat (not cancelled).
+          default: 0
+        seat_total_minor:
+          type: integer
+          title: Seat Total Minor
+          description: Price per Worker.
+          default: 0
+        unfilled_refund_minor:
+          type: integer
+          title: Unfilled Refund Minor
+          description: Refunded for seats nobody took when the search ended.
+          default: 0
+        workers:
+          items:
+            $ref: '#/components/schemas/LiveSeatView'
+          type: array
+          title: Workers
+          description: Every booked Worker. ``assignment`` / ``arrival_code`` / ``completion_code``
+            / ``timer`` above mirror the first one.
       type: object
       required:
       - booking_id
@@ -8781,6 +8930,12 @@ components:
           title: Unfilled Cutoff Hours
           description: Seats still empty this many hours before start are refunded
             with a voucher.
+        business_stop_worker_share_pct:
+          type: integer
+          title: Business Stop Worker Share Pct
+          description: 'Business stops / force-cancels after the work started: the
+            Worker keeps this % of the pay; the Business pays 100%.'
+          default: 80
         tiers:
           items:
             $ref: '#/components/schemas/CancellationTier'
@@ -10211,6 +10366,13 @@ components:
       title: LiveExtensionAnswer
     LiveExtensionCreate:
       properties:
+        assignment_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
+          description: 'Which Worker to extend; default: the first working Worker.'
         extra_minutes:
           type: integer
           title: Extra Minutes
@@ -10306,6 +10468,10 @@ components:
           type: string
           format: uuid
           title: Id
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
         status:
           type: string
           enum:
@@ -10374,6 +10540,7 @@ components:
       type: object
       required:
       - id
+      - assignment_id
       - status
       - extra_minutes
       - hourly_rate_minor
@@ -10542,6 +10709,21 @@ components:
           type: integer
           title: Extension Rate Minor
           description: Hourly rate for extra time (incl. surcharge).
+        workers_required:
+          type: integer
+          title: Workers Required
+          description: Workers booked.
+          default: 1
+        max_workers:
+          type: integer
+          title: Max Workers
+          description: Most Workers one booking may ask for.
+          default: 1
+        booking_total_minor:
+          type: integer
+          title: Booking Total Minor
+          description: 'Business pays for the booking: total_minor × workers_required.'
+          default: 0
       type: object
       required:
       - currency
@@ -10918,6 +11100,65 @@ components:
       - notified_workers
       - available_workers
       title: LiveSearchView
+    LiveSeatActions:
+      properties:
+        can_cancel:
+          type: boolean
+          title: Can Cancel
+          description: 'Release this Worker: a cancellation before they start, a force-cancel
+            (100% billed, the Worker gets their share) once they are working.'
+        can_end_work:
+          type: boolean
+          title: Can End Work
+          description: Same as a force-cancel of this Worker (no completion code needed).
+        can_extend:
+          type: boolean
+          title: Can Extend
+        can_reissue_code:
+          type: boolean
+          title: Can Reissue Code
+        can_reissue_completion_code:
+          type: boolean
+          title: Can Reissue Completion Code
+      type: object
+      required:
+      - can_cancel
+      - can_end_work
+      - can_extend
+      - can_reissue_code
+      - can_reissue_completion_code
+      title: LiveSeatActions
+    LiveSeatView:
+      properties:
+        assignment:
+          $ref: '#/components/schemas/LiveAssignmentView'
+        arrival_code:
+          anyOf:
+          - $ref: '#/components/schemas/LiveArrivalCodeView'
+          - type: 'null'
+        completion_code:
+          anyOf:
+          - $ref: '#/components/schemas/CompletionCodeView'
+          - type: 'null'
+        timer:
+          anyOf:
+          - $ref: '#/components/schemas/LiveTimerView'
+          - type: 'null'
+        actions:
+          $ref: '#/components/schemas/LiveSeatActions'
+        final_invoice:
+          anyOf:
+          - $ref: '#/components/schemas/LiveInvoiceSummary'
+          - type: 'null'
+      type: object
+      required:
+      - assignment
+      - arrival_code
+      - completion_code
+      - timer
+      - actions
+      title: LiveSeatView
+      description: One booked Worker of the booking (several-Worker Live Work).
     LiveStartWork:
       properties:
         arrival_code:
@@ -11069,6 +11310,14 @@ components:
           maxLength: 120
           title: Site Contact Name
           default: ''
+        workers_required:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Workers Required
+          description: How many Workers to book. The price shown is per Worker; the
+            deposit is per Worker × this. The server caps it at LIVE_MAX_WORKERS.
+          default: 1
         accept_terms:
           type: boolean
           title: Accept Terms
@@ -11079,8 +11328,8 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Expected Total Minor
-          description: Total shown on the review screen; a different server total
-            → 409.
+          description: Booking total shown on the review screen (per Worker × Workers);
+            a different server total → 409.
         idempotency_key:
           anyOf:
           - type: string
@@ -11211,6 +11460,14 @@ components:
           - type: 'null'
           title: Task Price Minor
           description: 'Task: fixed price for the job (paise).'
+        workers_required:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Workers Required
+          description: How many Workers to book. The price shown is per Worker; the
+            deposit is per Worker × this. The server caps it at LIVE_MAX_WORKERS.
+          default: 1
         category_slug:
           anyOf:
           - type: string
@@ -14774,6 +15031,12 @@ components:
         can_answer_extension:
           type: boolean
           title: Can Answer Extension
+        can_accept_again:
+          type: boolean
+          title: Can Accept Again
+          description: The worker cancelled before starting and may accept this request
+            once more.
+          default: false
       type: object
       required:
       - can_start_travel
@@ -14837,6 +15100,11 @@ components:
           - type: 'null'
         actions:
           $ref: '#/components/schemas/WorkerLiveActions'
+        workers_required:
+          type: integer
+          title: Workers Required
+          description: Workers booked on this request.
+          default: 1
       type: object
       required:
       - assignment_id
@@ -14875,6 +15143,13 @@ components:
         total_net_minor:
           type: integer
           title: Total Net Minor
+        final_net_minor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Final Net Minor
+          description: 'Once the work ended: what was actually credited (null if nothing
+            was).'
       type: object
       required:
       - reserved_minutes
@@ -15516,6 +15791,26 @@ components:
           description: True when the worker already has another booking overlapping
             this shift.
           default: false
+        can_reapply:
+          type: boolean
+          title: Can Reapply
+          description: The worker withdrew or cancelled and may apply / accept once
+            more now.
+          default: false
+        reapply_block_reason:
+          anyOf:
+          - type: string
+            enum:
+            - reapply_limit
+            - business_cancelled
+            - not_recruiting
+            - apply_closed
+            - shift_full
+            - overlapping_shift
+          - type: 'null'
+          title: Reapply Block Reason
+          description: Why a worker who withdrew or cancelled can't apply again (null
+            if they can).
       type: object
       required:
       - id

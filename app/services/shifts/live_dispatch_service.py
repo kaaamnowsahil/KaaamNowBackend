@@ -22,11 +22,13 @@ from app.constants.shifts.shift_route_strings import (
     DISPATCH_DECLINED,
     DISPATCH_EXPIRED,
     DISPATCH_OFFERED,
+    DISPATCH_WITHDRAWN,
     MSG_ALREADY_BOOKED,
     MSG_LOCATION_STALE,
     MSG_NO_LIVE_OFFER,
     MSG_NOT_LIVE_SHIFT,
     MSG_OVERLAPPING_SHIFT,
+    MSG_REAPPLY_LIMIT,
     MSG_SHIFT_FULL,
     MSG_SHIFT_NOT_FOUND,
     MSG_SHIFT_NOT_RECRUITING,
@@ -116,6 +118,7 @@ async def mark_filled(
         reason=reason,
     )
     await dispatch_repository.withdraw_open_offers(conn, shift["id"])
+    await live_work_hooks.on_filled(conn, shift["id"], now)
 
 
 async def finish_search(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> bool:
@@ -127,6 +130,10 @@ async def finish_search(conn: asyncpg.Connection, shift_id: UUID, now: datetime)
     business_user_id = await _business_user_id(conn, shift["business_profile_id"])
     if seats > 0:
         await mark_filled(conn, shift, now, reason="search_timeout_partial")
+        if seats >= shift["workers_required"] or await live_work_hooks.on_search_partial(
+            conn, shift, seats, business_user_id
+        ):
+            return True
         await notify(
             conn,
             business_user_id,
@@ -231,7 +238,10 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
                 await dispatch_repository.set_status(conn, dispatch["id"], DISPATCH_ACCEPTED, now)
                 dispatch_id = dispatch["id"]
             else:
-                if dispatch is not None and dispatch["status"] not in (
+                if dispatch is not None and dispatch["status"] == DISPATCH_WITHDRAWN:
+                    if dispatch["reaccept_count"] >= 1:
+                        raise conflict("reapply_limit", MSG_REAPPLY_LIMIT)
+                elif dispatch is not None and dispatch["status"] not in (
                     DISPATCH_OFFERED,
                     DISPATCH_EXPIRED,
                 ):

@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS live_dispatches (
         CHECK (status IN ('offered', 'accepted', 'declined', 'expired', 'withdrawn'))
 );
 
+-- A worker who cancelled before starting may accept the same live request once more.
+ALTER TABLE live_dispatches
+    ADD COLUMN IF NOT EXISTS reaccept_count SMALLINT NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS live_dispatches_expiry_idx
     ON live_dispatches (expires_at) WHERE status = 'offered';
 CREATE INDEX IF NOT EXISTS live_dispatches_worker_idx
