@@ -73,6 +73,13 @@ class _LivePricingFields(BaseModel):
 class LiveWorkQuoteRequest(_LivePricingFields):
     model_config = ConfigDict(extra="forbid")
 
+    workers_required: int = Field(
+        default=1,
+        ge=1,
+        le=50,
+        description="How many Workers to book. The price shown is per Worker; the deposit is "
+        "per Worker × this. The server caps it at LIVE_MAX_WORKERS.",
+    )
     category_slug: str | None = Field(default=None, max_length=64)
     promo_code: str | None = Field(default=None, min_length=3, max_length=40)
 
@@ -89,11 +96,19 @@ class LiveWorkCreate(_LivePricingFields):
     longitude: float = Field(ge=-180, le=180)
     arrival_instructions: str = Field(default="", max_length=2000)
     site_contact_name: str = Field(default="", max_length=120)
+    workers_required: int = Field(
+        default=1,
+        ge=1,
+        le=50,
+        description="How many Workers to book. The price shown is per Worker; the deposit is "
+        "per Worker × this. The server caps it at LIVE_MAX_WORKERS.",
+    )
     accept_terms: bool = Field(description="Business accepted the Live Work booking terms.")
     expected_total_minor: int | None = Field(
         default=None,
         ge=0,
-        description="Total shown on the review screen; a different server total → 409.",
+        description="Booking total shown on the review screen (per Worker × Workers); a "
+        "different server total → 409.",
     )
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=64)
     promo_code: str | None = Field(
@@ -111,6 +126,9 @@ class LiveWorkCreate(_LivePricingFields):
 class LiveExtensionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    assignment_id: UUID | None = Field(
+        default=None, description="Which Worker to extend; default: the first working Worker."
+    )
     extra_minutes: int
     expected_total_minor: int | None = Field(default=None, ge=0)
 
@@ -183,6 +201,11 @@ class LivePriceBreakdown(BaseModel):
     worker_net_minor: int = Field(description="Worker receives: base − commission.")
     extension_surcharge_pct: float
     extension_rate_minor: int = Field(description="Hourly rate for extra time (incl. surcharge).")
+    workers_required: int = Field(default=1, description="Workers booked.")
+    max_workers: int = Field(default=1, description="Most Workers one booking may ask for.")
+    booking_total_minor: int = Field(
+        default=0, description="Business pays for the booking: total_minor × workers_required."
+    )
 
 
 class LiveWorkerDot(BaseModel):
@@ -293,6 +316,7 @@ class LiveTimerView(BaseModel):
 
 class LiveExtensionView(BaseModel):
     id: UUID
+    assignment_id: UUID
     status: ExtensionStatus
     extra_minutes: int
     hourly_rate_minor: int
@@ -372,6 +396,30 @@ class LiveCancelPreview(BaseModel):
     currency: str
 
 
+class LiveSeatActions(BaseModel):
+    can_cancel: bool = Field(
+        description="Release this Worker: a cancellation before they start, a force-cancel "
+        "(100% billed, the Worker gets their share) once they are working."
+    )
+    can_end_work: bool = Field(
+        description="Same as a force-cancel of this Worker (no completion code needed)."
+    )
+    can_extend: bool
+    can_reissue_code: bool
+    can_reissue_completion_code: bool
+
+
+class LiveSeatView(BaseModel):
+    """One booked Worker of the booking (several-Worker Live Work)."""
+
+    assignment: LiveAssignmentView
+    arrival_code: LiveArrivalCodeView | None
+    completion_code: CompletionCodeView | None
+    timer: LiveTimerView | None
+    actions: LiveSeatActions
+    final_invoice: LiveInvoiceSummary | None = None
+
+
 class BusinessLiveActions(BaseModel):
     can_pay: bool
     can_cancel: bool
@@ -388,6 +436,10 @@ class WorkerLiveActions(BaseModel):
     can_complete: bool
     can_cancel: bool
     can_answer_extension: bool
+    can_accept_again: bool = Field(
+        default=False,
+        description="The worker cancelled before starting and may accept this request once more.",
+    )
 
 
 class BusinessLiveBooking(BaseModel):
@@ -412,6 +464,17 @@ class BusinessLiveBooking(BaseModel):
     refunds: list[LiveRefundView]
     cancellation: LiveCancellationView | None
     actions: BusinessLiveActions
+    workers_required: int = Field(default=1, description="Workers booked.")
+    workers_filled: int = Field(default=0, description="Workers who took a seat (not cancelled).")
+    seat_total_minor: int = Field(default=0, description="Price per Worker.")
+    unfilled_refund_minor: int = Field(
+        default=0, description="Refunded for seats nobody took when the search ended."
+    )
+    workers: list[LiveSeatView] = Field(
+        default_factory=list,
+        description="Every booked Worker. ``assignment`` / ``arrival_code`` / "
+        "``completion_code`` / ``timer`` above mirror the first one.",
+    )
 
 
 class BusinessLiveBookingPage(BaseModel):
@@ -428,6 +491,10 @@ class WorkerLiveEarnings(BaseModel):
     worker_net_minor: int
     extension_net_minor: int
     total_net_minor: int
+    final_net_minor: int | None = Field(
+        default=None,
+        description="Once the work ended: what was actually credited (null if nothing was).",
+    )
 
 
 class WorkerLiveBooking(BaseModel):
@@ -446,6 +513,7 @@ class WorkerLiveBooking(BaseModel):
     extensions: list[LiveExtensionView]
     cancellation: LiveCancellationView | None
     actions: WorkerLiveActions
+    workers_required: int = Field(default=1, description="Workers booked on this request.")
 
 
 class WorkerLiveRequest(BaseModel):
@@ -529,6 +597,8 @@ class AdminLiveBookingItem(BaseModel):
     business_name: str
     worker_name: str | None
     assignment_status: str | None
+    workers_required: int = 1
+    workers_filled: int = 0
     pricing_mode: PricingMode = "hourly"
     reserved_minutes: int
     task_price_minor: int | None = None

@@ -28,6 +28,7 @@ from app.routes.profiles.admin_verification_router import router as admin_verifi
 from app.routes.promos.promo_router import business_router as promo_business_router
 from app.routes.promos.promo_router import worker_router as promo_worker_router
 from app.routes.ratings.ratings_router import router as ratings_router
+from app.routes.realtime.realtime_router import router as realtime_router
 from app.routes.shifts.assignments_router import router as assignments_router
 from app.routes.shifts.business_shifts_router import live_router as business_live_router
 from app.routes.shifts.business_shifts_router import router as business_shifts_router
@@ -69,6 +70,7 @@ _ROUTERS = (
     support_router,
     promo_business_router,
     promo_worker_router,
+    realtime_router,
 )
 
 

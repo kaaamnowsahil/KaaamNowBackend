@@ -26,3 +26,6 @@ CREATE TABLE IF NOT EXISTS live_refunds (
 CREATE INDEX IF NOT EXISTS live_refunds_shift_idx ON live_refunds (shift_id, created_at);
 CREATE INDEX IF NOT EXISTS live_refunds_retry_idx ON live_refunds (created_at)
     WHERE status IN ('pending', 'failed');
+
+-- Seat the refund belongs to (multi-Worker bookings); NULL for whole-booking / unfilled seats.
+ALTER TABLE live_refunds ADD COLUMN IF NOT EXISTS assignment_id UUID;

@@ -438,6 +438,16 @@ class LiveSearchStatus(BaseModel):
     can_retry: bool
 
 
+ReapplyBlockReason = Literal[
+    "reapply_limit",
+    "business_cancelled",
+    "not_recruiting",
+    "apply_closed",
+    "shift_full",
+    "overlapping_shift",
+]
+
+
 class BusinessCard(BaseModel):
     id: UUID
     business_name: str
@@ -491,6 +501,14 @@ class WorkerShiftDetail(WorkerShiftCard):
     has_time_conflict: bool = Field(
         default=False,
         description="True when the worker already has another booking overlapping this shift.",
+    )
+    can_reapply: bool = Field(
+        default=False,
+        description="The worker withdrew or cancelled and may apply / accept once more now.",
+    )
+    reapply_block_reason: ReapplyBlockReason | None = Field(
+        default=None,
+        description="Why a worker who withdrew or cancelled can't apply again (null if they can).",
     )
 
 

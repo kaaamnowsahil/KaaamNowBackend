@@ -45,8 +45,15 @@ ALTER TABLE shift_invoices ADD CONSTRAINT shift_invoices_kind_chk
     CHECK (invoice_kind IN ('deposit', 'final', 'live_extension'));
 ALTER TABLE shift_invoices DROP CONSTRAINT IF EXISTS shift_invoices_shift_uid;
 DROP INDEX IF EXISTS shift_invoices_shift_kind_uid;
-CREATE UNIQUE INDEX IF NOT EXISTS shift_invoices_shift_kind_once_uid
-    ON shift_invoices (shift_id, invoice_kind) WHERE invoice_kind IN ('deposit', 'final');
+-- One deposit per shift. One final per shift, except Live Work with several Workers, where
+-- each Worker's final bill carries its ``assignment_id`` (other finals keep it NULL).
+ALTER TABLE shift_invoices ADD COLUMN IF NOT EXISTS assignment_id UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS shift_invoices_deposit_once_uid
+    ON shift_invoices (shift_id) WHERE invoice_kind = 'deposit';
+CREATE UNIQUE INDEX IF NOT EXISTS shift_invoices_final_once_uid
+    ON shift_invoices (shift_id, COALESCE(assignment_id, '00000000-0000-0000-0000-000000000000'))
+    WHERE invoice_kind = 'final';
+DROP INDEX IF EXISTS shift_invoices_shift_kind_once_uid;
 ALTER TABLE shift_invoices DROP CONSTRAINT IF EXISTS shift_invoices_total_chk;
 ALTER TABLE shift_invoices ADD CONSTRAINT shift_invoices_total_chk CHECK (
     total_minor = worker_subtotal_minor + platform_fee_minor + gateway_fee_minor + tax_minor

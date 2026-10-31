@@ -12,6 +12,7 @@ from app.repositories.shifts.application_queries import (
     COUNT_SELECTED,
     EXPIRE_DUE_SELECTIONS,
     GET_APPLICATION,
+    GET_WORKER_APPLICATION,
     LIST_APPLICANTS,
     LIST_BUSINESS_APPLICANTS,
     LOCK_APPLICATION,
@@ -42,6 +43,12 @@ async def upsert_application(
         latitude,
         longitude,
     )
+
+
+async def get_worker_application(
+    conn: asyncpg.Connection, shift_id: UUID, worker_profile_id: UUID
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_WORKER_APPLICATION, shift_id, worker_profile_id)
 
 
 async def lock_application(conn: asyncpg.Connection, application_id: UUID) -> asyncpg.Record | None:

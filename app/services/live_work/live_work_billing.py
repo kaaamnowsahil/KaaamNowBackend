@@ -1,7 +1,7 @@
 """Live Work invoices. Every amount comes from the booking's price snapshot.
 
-* deposit        — reserved amount (base + commission − coupon + tax), paid before Workers are
-                   notified.
+* deposit        — reserved amount for every seat (seat base + commission − coupon share + tax,
+                   × workers_required), paid before Workers are notified.
 * live_extension — one per approved extension, paid before the time is added.
 * final          — issued on completion: one worker-pay line (reserved + applied extensions, the
                    task price, or worked time on a walk-off — nothing for an unfinished task) so
@@ -37,7 +37,7 @@ from app.utils.references import INVOICE_REFERENCE_PREFIX, new_reference
 INVOICE_KIND_LIVE_EXTENSION = "live_extension"
 
 
-def _rupees(minor: int) -> str:
+def rupees(minor: int) -> str:
     return f"₹{minor // 100:,}.{minor % 100:02d}"
 
 
@@ -58,8 +58,8 @@ def _commission_line(pricing: asyncpg.Record, charge: LiveCharge) -> str:
     text = f"Platform commission {_pct(pricing['commission_pct'])}%"
     if charge.discount_minor:
         text += (
-            f" {_rupees(charge.commission_minor)} − coupon {pricing['promo_code']} "
-            f"{_rupees(charge.discount_minor)}"
+            f" {rupees(charge.commission_minor)} − coupon {pricing['promo_code']} "
+            f"{rupees(charge.discount_minor)}"
         )
     return text[:200]
 
@@ -99,6 +99,7 @@ async def _insert(
         refund_due_minor=refund_due,
         promo_code=pricing["promo_code"] if charge.discount_minor else None,
         promo_discount_minor=charge.discount_minor,
+        assignment_id=worker_line[0] if kind == INVOICE_KIND_FINAL else None,
     )
     assignment_id, description, minutes, rate = worker_line
     await billing_repository.insert_invoice_line(
@@ -130,7 +131,7 @@ async def _insert(
         line_kind=LINE_TAX,
         description=(
             f"{pricing['tax_label']} {_pct(pricing['tax_pct'])}% on "
-            f"{_rupees(charge.taxable_minor)} — "
+            f"{rupees(charge.taxable_minor)} — "
             f"{tax_base_description(pricing['tax_base'], pricing['tax_label'])}"
         )[:200],
         minutes=None,
@@ -164,22 +165,41 @@ def extension_snapshot_charge(extension: asyncpg.Record) -> LiveCharge:
     )
 
 
+def seats(pricing: asyncpg.Record) -> int:
+    return pricing["workers_required"]
+
+
+def deposit_charge(pricing: asyncpg.Record) -> LiveCharge:
+    """Seat snapshot × workers_required (the coupon share was snapshotted per seat)."""
+    seat, n = snapshot_charge(pricing), seats(pricing)
+    return LiveCharge(
+        base_amount_minor=seat.base_amount_minor * n,
+        commission_minor=seat.commission_minor * n,
+        taxable_minor=seat.taxable_minor * n,
+        tax_minor=seat.tax_minor * n,
+        worker_commission_minor=seat.worker_commission_minor * n,
+        discount_minor=seat.discount_minor * n,
+    )
+
+
 async def create_deposit_invoice(
     conn: asyncpg.Connection, pricing: asyncpg.Record, now: datetime
 ) -> UUID:
+    n = seats(pricing)
+    workers = f" × {n} Workers" if n > 1 else ""
     return await _insert(
         conn,
         pricing,
         kind=INVOICE_KIND_DEPOSIT,
         status=INVOICE_PENDING,
-        charge=snapshot_charge(pricing),
+        charge=deposit_charge(pricing),
         worker_line=(
-            (None, "Task (fixed price)", None, pricing["task_price_minor"])
+            (None, f"Task (fixed price){workers}", None, pricing["task_price_minor"])
             if _is_task(pricing)
             else (
                 None,
                 f"Reserved {_duration(pricing['reserved_minutes'])} × "
-                f"{_rupees(pricing['hourly_rate_minor'])}/h",
+                f"{rupees(pricing['hourly_rate_minor'])}/h{workers}",
                 pricing["reserved_minutes"],
                 pricing["hourly_rate_minor"],
             )
@@ -201,8 +221,8 @@ async def create_extension_invoice(
         worker_line=(
             None,
             f"Extension {_duration(extension['extra_minutes'])} × "
-            f"{_rupees(extension['extension_rate_minor'])}/h "
-            f"(base {_rupees(extension['hourly_rate_minor'])}/h + "
+            f"{rupees(extension['extension_rate_minor'])}/h "
+            f"(base {rupees(extension['hourly_rate_minor'])}/h + "
             f"{_pct(extension['surcharge_pct'])}%)",
             extension["extra_minutes"],
             extension["extension_rate_minor"],
@@ -217,6 +237,20 @@ async def void_invoice(conn: asyncpg.Connection, invoice_id: UUID) -> None:
         return
     await billing_repository.cancel_pending_payments(conn, invoice_id)
     await billing_repository.set_invoice_status(conn, invoice_id, INVOICE_VOID)
+
+
+async def seat_invoices(
+    conn: asyncpg.Connection, shift_id: UUID, assignment_id: UUID
+) -> tuple[asyncpg.Record | None, list[asyncpg.Record]]:
+    """→ (paid deposit or None, paid extension invoices of this seat, newest first)."""
+    paid = await paid_invoices(conn, shift_id)
+    ext_invoice_ids = {
+        e["invoice_id"]
+        for e in await live_work_repository.list_extensions(conn, shift_id)
+        if e["assignment_id"] == assignment_id and e["invoice_id"] is not None
+    }
+    deposit = next((i for i in paid if i["invoice_kind"] == INVOICE_KIND_DEPOSIT), None)
+    return deposit, [i for i in paid if i["id"] in ext_invoice_ids]
 
 
 async def paid_invoices(conn: asyncpg.Connection, shift_id: UUID) -> list[asyncpg.Record]:

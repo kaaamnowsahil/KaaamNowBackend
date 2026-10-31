@@ -90,22 +90,26 @@ async def expire_extensions(pool: asyncpg.Pool) -> int:
 
 
 async def complete_overdue_bookings(pool: asyncpg.Pool) -> int:
-    """Reserved (+ extended) time ended and nobody tapped Complete Work: complete it."""
+    """A seat's reserved (+ extended) time ended and nobody tapped Complete Work: complete it."""
     now = utc_now()
     cutoff = now - timedelta(seconds=load_settings().live_auto_complete_grace_seconds)
     changed = 0
     async with pool.acquire() as conn:
-        for shift_id in await live_work_repository.list_overdue_active_bookings(conn, cutoff):
+        for seat in await live_work_repository.list_overdue_active_seats(conn, cutoff):
             async with conn.transaction():
-                shift = await shift_repository.lock_shift(conn, shift_id)
-                current = await live_work_repository.get_current_assignment(conn, shift_id)
-                if current is None or shift["ends_at"] >= cutoff:
-                    continue
-                assignment = await assignment_repository.lock_context(conn, current["id"])
+                shift = await shift_repository.lock_shift(conn, seat["shift_id"])
+                assignment = await assignment_repository.lock_context(conn, seat["assignment_id"])
                 if assignment["status"] != "checked_in":
                     continue
-                pricing = await live_work_repository.get_booking_pricing(conn, shift_id)
-                await live_work_core.complete_booking(
+                pricing = await live_work_repository.get_booking_pricing(conn, shift["id"])
+                ends_at = live_work_core.seat_ends_at(
+                    assignment["checked_in_at"],
+                    pricing["reserved_minutes"],
+                    assignment["extended_minutes"],
+                )
+                if ends_at >= cutoff:
+                    continue
+                refund_ids = await live_work_core.complete_booking(
                     conn,
                     shift=shift,
                     pricing=pricing,
@@ -114,7 +118,8 @@ async def complete_overdue_bookings(pool: asyncpg.Pool) -> int:
                     actor_user_id=None,
                     now=now,
                 )
-                changed += 1
+            await live_refund_service.process_refunds(refund_ids)
+            changed += 1
     return changed
 
 

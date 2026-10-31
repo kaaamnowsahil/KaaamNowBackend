@@ -315,7 +315,7 @@ async def apply_worker_promos(
             amount_minor=credit,
             currency=currency,
             assignment_id=row["assignment_id"],
-            description=f"Promo {promo.code}: commission discount",
+            description=f"Promo {promo.code}: bonus",
         )
         await promo_repository.apply(
             conn,

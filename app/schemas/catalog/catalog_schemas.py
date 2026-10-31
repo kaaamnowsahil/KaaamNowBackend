@@ -38,6 +38,11 @@ class CancellationPolicy(BaseModel):
     unfilled_cutoff_hours: int = Field(
         description="Seats still empty this many hours before start are refunded with a voucher.",
     )
+    business_stop_worker_share_pct: int = Field(
+        default=80,
+        description="Business stops / force-cancels after the work started: the Worker keeps "
+        "this % of the pay; the Business pays 100%.",
+    )
     tiers: list[CancellationTier]
 
 

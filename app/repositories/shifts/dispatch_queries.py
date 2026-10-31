@@ -73,9 +73,16 @@ INSERT INTO live_dispatches (
 )
 VALUES ($1, $2, $3, $4, 'accepted', $5, $5)
 ON CONFLICT (shift_id, worker_profile_id) DO UPDATE SET
-    status = 'accepted', responded_at = EXCLUDED.responded_at, updated_at = now()
+    status = 'accepted', responded_at = EXCLUDED.responded_at,
+    reaccept_count = live_dispatches.reaccept_count + (live_dispatches.status = 'withdrawn')::int,
+    updated_at = now()
 WHERE live_dispatches.status IN ('offered', 'expired')
+   OR (live_dispatches.status = 'withdrawn' AND live_dispatches.reaccept_count < 1)
 RETURNING id
+"""
+
+GET_DISPATCH = """
+SELECT * FROM live_dispatches WHERE shift_id = $1 AND worker_profile_id = $2
 """
 
 LOCK_DISPATCH = """
@@ -84,6 +91,12 @@ SELECT * FROM live_dispatches WHERE shift_id = $1 AND worker_profile_id = $2 FOR
 
 SET_DISPATCH_STATUS = """
 UPDATE live_dispatches SET status = $2, responded_at = $3, updated_at = now() WHERE id = $1
+"""
+
+# Worker cancelled before starting: they may accept once more (reaccept_count).
+WITHDRAW_ACCEPTED_DISPATCH = """
+UPDATE live_dispatches SET status = 'withdrawn', responded_at = $3, updated_at = now()
+WHERE shift_id = $1 AND worker_profile_id = $2 AND status = 'accepted'
 """
 
 WITHDRAW_OPEN_OFFERS = """

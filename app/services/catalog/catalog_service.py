@@ -69,6 +69,7 @@ async def get_cancellation_policy() -> CancellationPolicy:
         strikes_to_ban=float(policy["strikes_to_ban"]),
         voucher_valid_days=policy["voucher_valid_days"],
         unfilled_cutoff_hours=load_settings().apply_closes_hours_before,
+        business_stop_worker_share_pct=load_settings().business_stop_worker_share_pct,
         tiers=[
             CancellationTier(
                 party=t["party"],

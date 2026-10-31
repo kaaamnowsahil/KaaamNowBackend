@@ -169,6 +169,26 @@ def test_coupon_comes_off_commission_before_tax_and_never_off_worker_pay():
     assert charge.worker_net_minor == 96_000
 
 
+def test_coupon_is_worked_out_once_and_split_across_workers():
+    from uuid import uuid4
+
+    from app.services.promos.promo_rules import Promo
+
+    flat = Promo(uuid4(), "FLAT50", "flat", Decimal(50), "commission", None)
+    # Alone, ₹50 off is capped by one Worker's ₹40 commission.
+    assert booking_charge(50_000, 120, _rates(), flat).discount_minor == 4_000
+    # Three Workers: ₹50 once on ₹120 commission, split evenly (rounded down) per seat.
+    seat = booking_charge(50_000, 120, _rates(), flat, workers=3)
+    assert seat.discount_minor == 5_000 // 3
+    assert seat.base_amount_minor == 100_000
+    assert seat.worker_net_minor == 96_000
+
+    capped = Promo(uuid4(), "HALFCAP", "percent", Decimal(50), "commission", 3_000)
+    # 50% of ₹120 = ₹60, capped at ₹30 for the whole booking → ₹10 per Worker.
+    assert booking_charge(50_000, 120, _rates(), capped, workers=3).discount_minor == 1_000
+    assert booking_charge(50_000, 120, _rates(), workers=3) == booking_charge(50_000, 120, _rates())
+
+
 def test_charge_without_coupon_has_no_discount():
     assert booking_charge(50_000, 120, _rates()).discount_minor == 0
 

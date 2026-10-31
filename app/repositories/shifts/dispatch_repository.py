@@ -11,6 +11,7 @@ from app.repositories.shifts.dispatch_queries import (
     COUNT_DISPATCHES,
     DELETE_UNANSWERED_DISPATCHES,
     EXPIRE_DUE_OFFERS,
+    GET_DISPATCH,
     INSERT_DISPATCHES,
     LIST_DISPATCH_CANDIDATES,
     LIST_OPEN_OFFERS_FOR_WORKER,
@@ -18,6 +19,7 @@ from app.repositories.shifts.dispatch_queries import (
     LOCK_DISPATCH,
     SET_DISPATCH_STATUS,
     UPSERT_ACCEPTED_DISPATCH,
+    WITHDRAW_ACCEPTED_DISPATCH,
     WITHDRAW_OPEN_OFFERS,
 )
 
@@ -109,6 +111,12 @@ async def upsert_accepted(
     )
 
 
+async def get_dispatch(
+    conn: asyncpg.Connection, shift_id: UUID, worker_profile_id: UUID
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(GET_DISPATCH, shift_id, worker_profile_id)
+
+
 async def lock_dispatch(
     conn: asyncpg.Connection, shift_id: UUID, worker_profile_id: UUID
 ) -> asyncpg.Record | None:
@@ -119,6 +127,12 @@ async def set_status(
     conn: asyncpg.Connection, dispatch_id: UUID, status: str, now: datetime
 ) -> None:
     await conn.execute(SET_DISPATCH_STATUS, dispatch_id, status, now)
+
+
+async def withdraw_accepted(
+    conn: asyncpg.Connection, shift_id: UUID, worker_profile_id: UUID, now: datetime
+) -> None:
+    await conn.execute(WITHDRAW_ACCEPTED_DISPATCH, shift_id, worker_profile_id, now)
 
 
 async def withdraw_open_offers(conn: asyncpg.Connection, shift_id: UUID) -> list[UUID]:

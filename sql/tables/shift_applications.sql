@@ -24,6 +24,10 @@ ALTER TABLE shift_applications
     ADD COLUMN IF NOT EXISTS applied_latitude DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS applied_longitude DOUBLE PRECISION;
 
+-- A worker who withdrew (or cancelled their booking) may apply again once per shift.
+ALTER TABLE shift_applications
+    ADD COLUMN IF NOT EXISTS reapply_count SMALLINT NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS shift_applications_shift_status_idx
     ON shift_applications (shift_id, status);
 CREATE INDEX IF NOT EXISTS shift_applications_worker_idx

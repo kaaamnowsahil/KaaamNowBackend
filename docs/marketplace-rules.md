@@ -49,9 +49,8 @@ Business posts + pays  →  Worker applies (= booked instantly)  →  Shift happ
 ```
 
 - **No** business selection, **no** worker confirmation step.
-- Live / instant shifts: code stays in place and is **not removed or hidden**. The existing
-  "Post live request" button stays **disabled** as it is today (web business home already
-  disables it in the Live view). No live-related changes in web or admin.
+- This flow is for **scheduled** shifts. Live Work (instant, paid bookings) has its own
+  rules in §12.
 - Posting rules:
   - Shift must start **at least 24 hours** after posting.
   - Shift can be posted at most 60 days ahead (existing rule).
@@ -204,3 +203,51 @@ what they paid after the fee.
 - Worker negative balances, strikes and bans.
 - T&C versions and acceptance records.
 - Dispute / emergency ticket queue.
+
+## 12. Live Work
+
+Live Work is an instant booking: the Business pays first, nearby Workers get the request,
+and the first Worker to accept is booked (several Workers can be booked on one request).
+
+### Price
+
+- **Hourly:** hourly rate × Work Duration. **Task:** one fixed task price.
+- Business pays upfront: Worker pay + **4% platform charge** + **2% tax** on (pay + platform
+  charge). Live Work has no payment gateway charge.
+- Worker receives the pay minus the **4% platform charge**.
+- Extra time is asked by the Business, accepted by the Worker and paid separately at
+  **130%** of the hourly rate.
+
+### Codes
+
+- **Arrival code** (shown to the Business): the Worker enters it on arrival → work starts.
+- **Completion code** (shown to the Business): the Business gives it to the Worker when the
+  work is done; the Worker enters it to finish. It is the proof that both sides agree the
+  work is complete. Force cancel (below) never needs a code.
+
+### Before the work starts
+
+| Case | Business | Worker |
+|---|---|---|
+| Business cancels before any Worker accepts | Free, full refund | — |
+| Business cancels after a Worker accepted, before the arrival code is entered | Free — full refund | Not paid |
+| Worker cancels after accepting | Not charged; we look for another Worker | Worker cancel tier "less than 2h" from §5 (₹149 + ½ strike) |
+| No Worker found in time | Full refund | — |
+
+### After the work started
+
+| Case | Business pays | Worker gets |
+|---|---|---|
+| Work done, Worker finishes with the completion code — hourly | Pay for the **time actually worked** (capped at the booked + paid extra time) + platform charge + tax; the rest is refunded | Worked pay − 4% |
+| Work done with the completion code — task | Full task price | Task price − 4% |
+| **Business force-cancels** (no code) | **100%** of the booking | **80%** of the pay (`business_stop_worker_share_pct`); the remaining 20% − worker platform charge goes to the platform |
+| **Worker force-cancels** (no code) | **Nothing** — full refund | **Not paid**; walk-off tier from §5 (strike, if configured) |
+
+- When the Worker force-cancels, the Business also gets a **free-fees voucher** (§9) — no
+  platform charge on its next Live booking.
+- "End work" by the Business without the completion code is a force cancel.
+- If nobody finishes the work, it completes automatically after the booked time (+ grace)
+  and is billed like a completion with the code.
+- Workers see only what they receive (pay minus platform charge); the platform share of a
+  force cancel is never shown to them as a separate line.
+

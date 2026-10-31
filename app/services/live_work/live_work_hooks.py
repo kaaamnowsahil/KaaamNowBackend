@@ -12,13 +12,14 @@ import asyncpg
 from app.config.settings import load_settings
 from app.constants.notifications.notification_route_strings import (
     KIND_LIVE_EXPIRED,
+    KIND_LIVE_FILLED,
     KIND_LIVE_REQUEST,
 )
 from app.constants.shifts.shift_route_strings import SHIFT_AWAITING_PAYMENT
 from app.exceptions.api_errors import conflict
 from app.repositories.live_work import live_work_repository
 from app.repositories.shifts import shift_repository
-from app.services.live_work import live_refund_service, live_work_core
+from app.services.live_work import live_refund_service, live_work_billing, live_work_core
 from app.services.notifications.notification_service import notify
 from app.services.promos import promo_service
 from app.utils.clock import utc_now
@@ -57,7 +58,7 @@ async def on_search_expired(
     """No Worker accepted in time: full refund of everything paid. True = handled."""
     if not await live_work_repository.is_live_work(conn, shift["id"]):
         return False
-    paid = await live_work_core.paid_total(conn, shift["id"])
+    paid = await live_work_core.unrefunded_total(conn, shift["id"])
     await live_work_core.queue_split_refund(
         conn, shift["id"], paid, live_refund_service.REASON_NO_WORKERS, None
     )
@@ -71,6 +72,46 @@ async def on_search_expired(
         {"shift_id": shift["id"], "live_work": True},
     )
     return True
+
+
+async def on_search_partial(
+    conn: asyncpg.Connection, shift: asyncpg.Record, seats: int, business_user_id: UUID
+) -> bool:
+    """Search ended with some seats empty: refund the empty seats' share of the deposit and keep
+    the booking for the Workers found. The coupon stays used. True = handled."""
+    if not await live_work_repository.is_live_work(conn, shift["id"]):
+        return False
+    pricing = await live_work_repository.get_booking_pricing(conn, shift["id"])
+    missing = max(shift["workers_required"] - seats, 0)
+    refund = missing * pricing["total_minor"]
+    if refund:
+        await live_work_core.queue_split_refund(
+            conn,
+            shift["id"],
+            refund,
+            live_refund_service.REASON_UNFILLED_SEATS,
+            None,
+            deposit_only=True,
+            scope=f"search:{shift['search_expires_at'].isoformat()}",
+        )
+    await live_work_repository.set_shift_workers_required(conn, shift["id"], max(seats, 1))
+    worker_word = "Worker" if missing == 1 else "Workers"
+    await notify(
+        conn,
+        business_user_id,
+        KIND_LIVE_FILLED,
+        f"{seats} of {pricing['workers_required']} Workers found",
+        f"{shift['job_title']}: {live_work_billing.rupees(refund)} refunded for "
+        f"{missing} {worker_word}.",
+        {"shift_id": shift["id"], "live_work": True},
+    )
+    return True
+
+
+async def on_filled(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> None:
+    """Seats taken: a Worker may already be working (several-Worker search), so settle."""
+    if await live_work_repository.is_live_work(conn, shift_id):
+        await live_work_core.settle_status(conn, shift_id, now, None, "live_work_filled")
 
 
 async def on_deposit_paid(conn: asyncpg.Connection, invoice: asyncpg.Record, now: datetime) -> bool:
@@ -91,7 +132,12 @@ async def on_deposit_paid(conn: asyncpg.Connection, invoice: asyncpg.Record, now
         )
         return True
     pricing = await live_work_repository.get_booking_pricing(conn, shift_id)
-    await promo_service.mark_shift_applied(conn, shift_id, pricing["promo_discount_minor"], now)
+    await promo_service.mark_shift_applied(
+        conn,
+        shift_id,
+        pricing["promo_discount_minor"] * live_work_billing.seats(pricing),
+        now,
+    )
     await live_work_core.restart_search(conn, shift, pricing, now, None, "live_work_paid")
     await notify(
         conn,

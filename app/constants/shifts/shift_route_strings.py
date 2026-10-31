@@ -216,6 +216,7 @@ MSG_SHIFT_LOCATION_REQUIRED: Final[str] = "Pick the shift address on the map bef
 MSG_LOCATION_STALE: Final[str] = "Your location is out of date. Go online again."
 MSG_APPLICATION_NOT_FOUND: Final[str] = "Application not found."
 MSG_APPLICATION_EXISTS: Final[str] = "You have already applied to this shift."
+MSG_REAPPLY_LIMIT: Final[str] = "You can't apply again to this shift."
 MSG_APPLICATION_STATE: Final[str] = "This application can no longer be changed."
 MSG_CONFIRM_EXPIRED: Final[str] = "The time to confirm this selection has passed."
 MSG_ASSIGNMENT_NOT_FOUND: Final[str] = "Booking not found."

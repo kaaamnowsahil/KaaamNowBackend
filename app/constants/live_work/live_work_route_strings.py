@@ -26,6 +26,10 @@ PATH_BOOKINGS: Final[str] = ""
 PATH_BOOKING: Final[str] = "/{booking_id}"
 PATH_BOOKING_CANCEL_PREVIEW: Final[str] = "/{booking_id}/cancel-preview"
 PATH_BOOKING_CANCEL: Final[str] = "/{booking_id}/cancel"
+PATH_BOOKING_WORKER_CANCEL_PREVIEW: Final[str] = (
+    "/{booking_id}/workers/{assignment_id}/cancel-preview"
+)
+PATH_BOOKING_WORKER_CANCEL: Final[str] = "/{booking_id}/workers/{assignment_id}/cancel"
 PATH_BOOKING_EXTENSION_QUOTE: Final[str] = "/{booking_id}/extension-quote"
 PATH_BOOKING_EXTENSIONS: Final[str] = "/{booking_id}/extensions"
 PATH_BOOKING_EXTENSION_CANCEL: Final[str] = "/{booking_id}/extensions/{extension_id}/cancel"

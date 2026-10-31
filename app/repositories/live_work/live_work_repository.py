@@ -105,6 +105,7 @@ async def insert_booking_pricing(
     promo_code: str | None = None,
     pricing_mode: str = "hourly",
     task_price_minor: int | None = None,
+    workers_required: int = 1,
 ) -> None:
     await conn.execute(
         q.INSERT_BOOKING_PRICING,
@@ -132,6 +133,7 @@ async def insert_booking_pricing(
         charge.discount_minor,
         pricing_mode,
         task_price_minor,
+        workers_required,
     )
 
 
@@ -193,6 +195,10 @@ async def get_current_assignment(conn: asyncpg.Connection, shift_id: UUID) -> as
     return await conn.fetchrow(q.GET_CURRENT_ASSIGNMENT, shift_id)
 
 
+async def list_assignments(conn: asyncpg.Connection, shift_id: UUID) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_ASSIGNMENTS, shift_id)
+
+
 async def get_worker_active_assignment_id(
     conn: asyncpg.Connection, worker_profile_id: UUID
 ) -> UUID | None:
@@ -218,6 +224,14 @@ async def set_shift_window(
     conn: asyncpg.Connection, shift_id: UUID, starts_at: datetime, ends_at: datetime
 ) -> None:
     await conn.execute(q.SET_SHIFT_WINDOW, shift_id, starts_at, ends_at)
+
+
+async def extend_shift_end_to(conn: asyncpg.Connection, shift_id: UUID, ends_at: datetime) -> None:
+    await conn.execute(q.EXTEND_SHIFT_END_TO, shift_id, ends_at)
+
+
+async def set_shift_workers_required(conn: asyncpg.Connection, shift_id: UUID, seats: int) -> None:
+    await conn.execute(q.SET_SHIFT_WORKERS_REQUIRED, shift_id, seats)
 
 
 async def extend_shift_end(conn: asyncpg.Connection, shift_id: UUID, minutes: int) -> None:
@@ -418,8 +432,10 @@ async def insert_live_invoice(
     refund_due_minor: int = 0,
     promo_code: str | None = None,
     promo_discount_minor: int = 0,
+    assignment_id: UUID | None = None,
 ) -> UUID:
-    """``commission_minor`` is what the Business pays, i.e. already net of any coupon."""
+    """``commission_minor`` is what the Business pays, i.e. already net of any coupon.
+    ``assignment_id``: set on a Worker's final bill only."""
     total = worker_subtotal_minor + commission_minor + tax_minor
     return await conn.fetchval(
         q.INSERT_LIVE_INVOICE,
@@ -445,6 +461,7 @@ async def insert_live_invoice(
         live_pricing_version,
         promo_code,
         promo_discount_minor,
+        assignment_id,
     )
 
 
@@ -474,6 +491,7 @@ async def insert_refund(
     reason: str,
     idempotency_key: str,
     created_by_user_id: UUID | None,
+    assignment_id: UUID | None = None,
 ) -> UUID | None:
     return await conn.fetchval(
         q.INSERT_REFUND,
@@ -486,7 +504,16 @@ async def insert_refund(
         idempotency_key,
         payment["provider"],
         created_by_user_id,
+        assignment_id,
     )
+
+
+async def refund_amount(conn: asyncpg.Connection, refund_id: UUID) -> int:
+    return int(await conn.fetchval(q.REFUND_AMOUNT, refund_id))
+
+
+async def payment_refunded_minor(conn: asyncpg.Connection, payment_id: UUID) -> int:
+    return int(await conn.fetchval(q.SUM_PAYMENT_REFUNDS, payment_id))
 
 
 async def list_refunds(conn: asyncpg.Connection, shift_id: UUID) -> list[asyncpg.Record]:
@@ -528,10 +555,10 @@ async def list_unpaid_bookings(conn: asyncpg.Connection, posted_before: datetime
     return [r["id"] for r in await conn.fetch(q.LIST_UNPAID_BOOKINGS, posted_before)]
 
 
-async def list_overdue_active_bookings(
+async def list_overdue_active_seats(
     conn: asyncpg.Connection, ended_before: datetime
-) -> list[UUID]:
-    return [r["id"] for r in await conn.fetch(q.LIST_OVERDUE_ACTIVE_BOOKINGS, ended_before)]
+) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_OVERDUE_ACTIVE_SEATS, ended_before)
 
 
 # --- admin -----------------------------------------------------------------------------

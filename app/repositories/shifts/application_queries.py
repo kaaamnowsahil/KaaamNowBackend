@@ -7,7 +7,7 @@ ap.id, ap.shift_id, ap.worker_profile_id, ap.status, ap.distance_km, ap.cover_no
 ap.confirm_by, ap.applied_at, ap.decided_at, ap.responded_at
 """
 
-# Re-applying after withdraw / decline / expiry reopens the same row.
+# Re-applying after withdraw / decline / expiry reopens the same row; after a withdraw only once.
 UPSERT_APPLICATION = f"""
 INSERT INTO shift_applications AS ap (
     shift_id, worker_profile_id, distance_km, cover_note, applied_latitude, applied_longitude
@@ -17,8 +17,9 @@ ON CONFLICT (shift_id, worker_profile_id) DO UPDATE SET
     status = 'applied', distance_km = EXCLUDED.distance_km, cover_note = EXCLUDED.cover_note,
     applied_latitude = EXCLUDED.applied_latitude, applied_longitude = EXCLUDED.applied_longitude,
     confirm_by = NULL, applied_at = now(), decided_at = NULL, responded_at = NULL,
+    reapply_count = ap.reapply_count + (ap.status = 'withdrawn')::int,
     updated_at = now()
-WHERE ap.status IN ('withdrawn', 'declined', 'expired')
+WHERE ap.status IN ('declined', 'expired') OR (ap.status = 'withdrawn' AND ap.reapply_count < 1)
 RETURNING {_APPLICATION_COLUMNS}
 """
 
@@ -100,4 +101,8 @@ UPDATE shift_applications ap SET status = 'expired', responded_at = $1, updated_
 FROM shifts s
 WHERE s.id = ap.shift_id AND ap.status = 'selected' AND ap.confirm_by <= $1
 RETURNING ap.id, ap.shift_id, ap.worker_profile_id, s.business_profile_id, s.job_title
+"""
+
+GET_WORKER_APPLICATION = """
+SELECT status, reapply_count FROM shift_applications WHERE shift_id = $1 AND worker_profile_id = $2
 """
