@@ -19,16 +19,8 @@ CREATE TABLE IF NOT EXISTS earning_ledger_entries (
     )
 );
 
+-- This file runs on every boot against live data: only ever widen these checks, in one step.
 -- ``commission`` (negative): worker commission deducted from a shift earning.
-ALTER TABLE earning_ledger_entries DROP CONSTRAINT IF EXISTS earning_ledger_entries_type_chk;
-ALTER TABLE earning_ledger_entries ADD CONSTRAINT earning_ledger_entries_type_chk
-    CHECK (entry_type IN ('shift_earning', 'withdrawal', 'withdrawal_reversal', 'commission'));
-ALTER TABLE earning_ledger_entries DROP CONSTRAINT IF EXISTS earning_ledger_entries_sign_chk;
-ALTER TABLE earning_ledger_entries ADD CONSTRAINT earning_ledger_entries_sign_chk CHECK (
-    (entry_type IN ('withdrawal', 'commission') AND amount_minor < 0)
-    OR (entry_type NOT IN ('withdrawal', 'commission') AND amount_minor > 0)
-);
-
 -- ``adjustment`` (negative): platform share when the business stops work early (rules §8).
 -- ``promo_credit`` (positive): worker promo code applied to a payout's commission.
 -- ``fee_waiver`` (positive): admin refunded a fee / adjustment for one booking (rules §10).
