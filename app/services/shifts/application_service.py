@@ -32,6 +32,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_APPLICATION_NOT_FOUND,
     MSG_APPLICATION_STATE,
     MSG_APPLY_CLOSED,
+    MSG_CATEGORY_MISMATCH,
     MSG_CONFIRM_EXPIRED,
     MSG_NOT_SCHEDULED_SHIFT,
     MSG_OVERLAPPING_SHIFT,
@@ -128,6 +129,10 @@ async def apply(
             )
             if business["user_id"] == user.user_id:
                 raise conflict("shift_not_recruiting", MSG_SHIFT_NOT_RECRUITING)
+            if not await shift_repository.worker_matches_category(
+                conn, worker["id"], shift["category_id"]
+            ):
+                raise conflict("category_mismatch", MSG_CATEGORY_MISMATCH)
             closes_hours = settings.apply_closes_hours_before
             if shift["starts_at"] - timedelta(hours=closes_hours) <= now:
                 raise conflict("apply_closed", MSG_APPLY_CLOSED.format(hours=closes_hours))

@@ -193,3 +193,14 @@ FOR UPDATE OF a SKIP LOCKED
 MARK_EXTENSION_PROMPTED = """
 UPDATE shift_assignments SET extension_prompted_at = $2 WHERE id = ANY($1::uuid[])
 """
+
+LIST_MISSED_SCHEDULED = """
+SELECT a.id
+FROM shift_assignments a
+JOIN shifts s ON s.id = a.shift_id
+WHERE a.status IN ('confirmed', 'en_route') AND s.shift_type <> 'live'
+  AND s.ends_at + make_interval(mins => a.extended_minutes) < $1
+  AND s.ends_at + make_interval(mins => a.extended_minutes) >= $3
+ORDER BY s.ends_at
+LIMIT $2
+"""

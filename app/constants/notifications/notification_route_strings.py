@@ -44,6 +44,8 @@ KIND_SHIFT_REMINDER: Final[str] = "shift_reminder"
 PUSH_BATCH_SIZE: Final[int] = 200
 # A push still failing transiently after this many sweeps is marked ``failed``.
 PUSH_MAX_ATTEMPTS: Final[int] = 3
+# Older pushes (e.g. after downtime) stay in-app only; ``expires_at`` in the data wins.
+PUSH_MAX_AGE_SECONDS: Final[int] = 30 * 60
 
 MSG_NOTIFICATION_NOT_FOUND: Final[str] = "Notification not found."
 KIND_CANCELLATION_FEE: Final[str] = "cancellation_fee"

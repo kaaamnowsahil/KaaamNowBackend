@@ -292,3 +292,29 @@ async def test_support_ticket_closure_is_server_authoritative(
         headers=admin.headers,
     )
     assert missing.status_code == 404
+
+
+_INFORMATION_SCHEMA_COLUMNS = """
+SELECT c.table_name::text,
+       c.column_name::text,
+       c.data_type::text,
+       c.udt_name::text,
+       c.is_nullable = 'YES' AS is_nullable,
+       c.column_default IS NOT NULL OR c.is_identity = 'YES' AS has_default,
+       c.is_generated = 'ALWAYS' AS is_generated,
+       c.character_maximum_length::int AS max_length
+FROM information_schema.columns c
+WHERE c.table_schema = current_schema() AND c.table_name = ANY($1::text[])
+ORDER BY c.table_name, c.ordinal_position
+"""
+
+
+async def test_catalog_column_query_matches_information_schema(db: asyncpg.Connection) -> None:
+    from app.repositories.admin.admin_queries import LIST_TABLE_COLUMNS
+    from app.services.admin.admin_schema_cache import registered_tables
+
+    tables = list(registered_tables())
+    expected = [tuple(r) for r in await db.fetch(_INFORMATION_SCHEMA_COLUMNS, tables)]
+    actual = [tuple(r) for r in await db.fetch(LIST_TABLE_COLUMNS, tables)]
+    assert expected
+    assert actual == expected

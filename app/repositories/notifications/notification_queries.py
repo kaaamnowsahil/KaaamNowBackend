@@ -33,7 +33,7 @@ UPDATE notifications SET read_at = $2 WHERE user_id = $1 AND read_at IS NULL
 """
 
 CLAIM_PENDING_PUSHES = """
-SELECT n.id, n.user_id, n.kind, n.title, n.body, n.data, n.push_attempts
+SELECT n.id, n.user_id, n.kind, n.title, n.body, n.data, n.push_attempts, n.created_at
 FROM notifications n
 WHERE n.push_status = 'pending'
 ORDER BY n.created_at

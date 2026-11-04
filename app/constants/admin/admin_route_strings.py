@@ -57,7 +57,7 @@ GLOBAL_READ_ONLY_COLUMNS: Final[frozenset[str]] = frozenset(
 GLOBAL_HIDDEN_COLUMNS: Final[frozenset[str]] = frozenset(
     {"code_hash", "token_hash", "password_hash"}
 )
-SCHEMA_CACHE_TTL_SECONDS: Final[float] = 60.0
+SCHEMA_CACHE_TTL_SECONDS: Final[float] = 3600.0
 EXPORT_MAX_ROWS: Final[int] = 10_000
 EXPORT_MEDIA_TYPE: Final[str] = "text/csv; charset=utf-8"
 HEADER_CONTENT_DISPOSITION: Final[str] = "Content-Disposition"

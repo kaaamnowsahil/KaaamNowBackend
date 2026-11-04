@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -40,6 +42,7 @@ from app.schemas.live_work.live_work_schemas import (
     LiveExtensionView,
     LiveInvoiceSummary,
     LiveRefundView,
+    LiveRetryView,
     LiveSearchView,
     LiveSeatActions,
     LiveSeatView,
@@ -55,6 +58,7 @@ from app.schemas.live_work.live_work_schemas import (
 from app.services.attendance import completion_codes
 from app.services.catalog import catalog_service
 from app.services.live_work import live_work_billing
+from app.services.live_work.live_pricing import billed_pricing
 from app.services.live_work.live_pricing_settings_service import breakdown, rates_from_row
 from app.services.live_work.live_refund_service import REASON_UNFILLED_SEATS
 from app.utils.geo import bounding_box_deltas, haversine_km
@@ -388,14 +392,56 @@ async def _seat_view(
     return view, location.recorded_at if location else None
 
 
+@dataclass(frozen=True)
+class BookingRows:
+    booking: asyncpg.Record
+    seats: list[asyncpg.Record]
+    invoices: list[asyncpg.Record]
+    extensions: list[asyncpg.Record]
+    refunds: list[asyncpg.Record]
+
+
+def _by_shift(rows: list[asyncpg.Record]) -> dict[UUID, list[asyncpg.Record]]:
+    grouped: dict[UUID, list[asyncpg.Record]] = defaultdict(list)
+    for row in rows:
+        grouped[row["shift_id"]].append(row)
+    return grouped
+
+
+async def load_booking_rows(
+    conn: asyncpg.Connection, bookings: list[asyncpg.Record]
+) -> list[BookingRows]:
+    """Load every booking's child rows in four queries, whatever the page size."""
+    ids = [b["shift_id"] for b in bookings]
+    if not ids:
+        return []
+    seats = _by_shift(await live_work_repository.list_assignments_for_shifts(conn, ids))
+    invoices = _by_shift(await live_work_repository.list_invoices_for_shifts(conn, ids))
+    extensions = _by_shift(await live_work_repository.list_extensions_for_shifts(conn, ids))
+    refunds = _by_shift(await live_work_repository.list_refunds_for_shifts(conn, ids))
+    return [
+        BookingRows(
+            booking=b,
+            seats=seats.get(b["shift_id"], []),
+            invoices=invoices.get(b["shift_id"], []),
+            extensions=extensions.get(b["shift_id"], []),
+            refunds=refunds.get(b["shift_id"], []),
+        )
+        for b in bookings
+    ]
+
+
 async def build_business_state(
-    conn: asyncpg.Connection, shift_id: UUID, now: datetime
+    conn: asyncpg.Connection, shift_id: UUID, now: datetime, rows: BookingRows | None = None
 ) -> BusinessLiveBooking:
-    booking = await live_work_repository.get_booking(conn, shift_id)
-    all_seats = await live_work_repository.list_assignments(conn, shift_id)
-    invoices = await live_work_repository.list_shift_invoices(conn, shift_id)
-    extensions = await live_work_repository.list_extensions(conn, shift_id)
-    refunds = await live_work_repository.list_refunds(conn, shift_id)
+    if rows is None:
+        booking = await live_work_repository.get_booking(conn, shift_id)
+        (rows,) = await load_booking_rows(conn, [booking])
+    booking = rows.booking
+    all_seats = rows.seats
+    invoices = rows.invoices
+    extensions = rows.extensions
+    refunds = rows.refunds
     first = all_seats[0] if all_seats else None
     status = business_status(booking["shift_status"], first)
     deposit = next((i for i in invoices if i["invoice_kind"] == INVOICE_KIND_DEPOSIT), None)
@@ -419,6 +465,18 @@ async def build_business_state(
             radius_km=booking["search_radius_km"],
             notified_workers=await dispatch_repository.count_dispatches(conn, shift_id),
             available_workers=count,
+        )
+
+    retry = None
+    offer = booking["retry_offer_expires_at"]
+    if status == "no_workers" and offer is not None and offer > now:
+        retry = LiveRetryView(
+            search_round=booking["search_round"],
+            max_search_rounds=booking["max_search_rounds"],
+            expires_at=offer,
+            seconds_left=max(int((offer - now).total_seconds()), 0),
+            boost_options_minor=list(booking["boost_options_minor"]),
+            boost_minor=booking["boost_minor"],
         )
 
     shown = (
@@ -461,13 +519,15 @@ async def build_business_state(
         )
         or (open_ext is not None and open_ext["status"] == "awaiting_payment"),
         can_cancel=working
+        or retry is not None
         or status in ("awaiting_payment", "searching", "assigned", "en_route")
         or (status == "in_progress" and active),
         can_extend=lead is not None and lead.actions.can_extend,
         can_end_work=working,
         can_reissue_code=lead is not None and lead.actions.can_reissue_code,
-        can_repost=status in ("no_workers", "cancelled"),
+        can_repost=retry is None and status in ("no_workers", "cancelled"),
         can_reissue_completion_code=lead is not None and lead.actions.can_reissue_completion_code,
+        can_retry=retry is not None,
     )
     version = _version(
         booking["updated_at"],
@@ -488,6 +548,8 @@ async def build_business_state(
         ],
         search.available_workers if search else None,
         search.notified_workers if search else None,
+        booking["search_round"],
+        retry is not None,
     )
     return BusinessLiveBooking(
         booking_id=shift_id,
@@ -499,6 +561,11 @@ async def build_business_state(
         work=work_details(booking, include_coordinates=True),
         pricing=booking_breakdown(booking),
         search=search,
+        retry=retry,
+        boost_minor=booking["boost_minor"],
+        search_round=booking["search_round"],
+        max_search_rounds=booking["max_search_rounds"],
+        boost_options_minor=list(booking["boost_options_minor"]),
         deposit_invoice=invoice_summary(deposit) if deposit else None,
         assignment=lead.assignment if lead else None,
         arrival_code=lead.arrival_code if lead else None,
@@ -523,7 +590,7 @@ async def build_worker_state(
     conn: asyncpg.Connection, assignment: asyncpg.Record, now: datetime
 ) -> WorkerLiveBooking:
     """``assignment``: an assignment context row (see assignment_repository.get_context)."""
-    booking = await live_work_repository.get_booking(conn, assignment["shift_id"])
+    booking = billed_pricing(await live_work_repository.get_booking(conn, assignment["shift_id"]))
     status = worker_status(assignment["status"])
     extensions = [
         e

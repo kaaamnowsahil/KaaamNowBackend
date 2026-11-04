@@ -54,6 +54,7 @@ from app.constants.shifts.shift_route_strings import (
     END_WORKER_LEFT,
     PRICING_TASK,
     SHIFT_COMPLETED,
+    SHIFT_EXPIRED,
     SHIFT_FILLED,
     SHIFT_IN_PROGRESS,
     SHIFT_SEARCHING,
@@ -80,6 +81,7 @@ from app.services.catalog import catalog_service
 from app.services.live_work import live_refund_service, live_work_billing
 from app.services.live_work.live_pricing import (
     LiveCharge,
+    billed_pricing,
     charge_for_base,
     completed_charge,
     extension_base,
@@ -113,7 +115,7 @@ def _charge(pricing: asyncpg.Record, base_minor: int, *, with_coupon: bool = Fal
     discount = (
         prorated_discount(
             pricing["promo_discount_minor"],
-            reserved_base_minor=pricing["base_amount_minor"],
+            reserved_base_minor=billed_pricing(pricing)["base_amount_minor"],
             base_minor=base_minor,
         )
         if with_coupon
@@ -256,7 +258,8 @@ async def business_cancel_plan(
     seats = await live_work_repository.list_assignments(conn, shift["id"])
     active = [a for a in seats if a["status"] in ACTIVE_SEAT_STATUSES]
     taken = sum(1 for a in seats if a["status"] != "cancelled")
-    if status == SHIFT_SEARCHING and not taken:
+    awaiting_retry = status == SHIFT_EXPIRED and pricing["retry_offer_expires_at"] is not None
+    if (status == SHIFT_SEARCHING or awaiting_retry) and not taken:
         return CancelPlan(
             PARTY_BUSINESS,
             "before_acceptance",
@@ -337,10 +340,11 @@ def _hourly_base(pricing: asyncpg.Record, minutes: int) -> int:
     """Pay for ``minutes`` of work: reserved minutes at the rate, paid extra time with the
     extension surcharge."""
     reserved = pricing["reserved_minutes"]
+    rate = billed_pricing(pricing)["hourly_rate_minor"]
     regular = min(minutes, reserved)
     extra = max(minutes - reserved, 0)
-    return pay_for_minutes(pricing["hourly_rate_minor"], regular) + extension_base(
-        pricing["hourly_rate_minor"], extra, Decimal(pricing["extension_surcharge_pct"])
+    return pay_for_minutes(rate, regular) + extension_base(
+        rate, extra, Decimal(pricing["extension_surcharge_pct"])
     )
 
 
@@ -360,7 +364,7 @@ async def _full_charge(
         if e["status"] == "applied" and e["assignment_id"] == assignment_id
     ]
     charge = completed_charge(
-        live_work_billing.snapshot_charge(pricing),
+        live_work_billing.snapshot_charge(billed_pricing(pricing)),
         [live_work_billing.extension_snapshot_charge(e) for e in applied],
         Decimal(pricing["commission_pct"]),
     )
@@ -776,7 +780,6 @@ async def restart_search(
 ) -> None:
     from app.services.shifts import live_dispatch_service
 
-    settings = load_settings()
     radii = await catalog_service.search_radii(conn)
     await live_work_repository.start_search(
         conn,
@@ -785,7 +788,7 @@ async def restart_search(
         ends_at=now + timedelta(minutes=pricing["reserved_minutes"]),
         radius_km=radii.live_initial_km,
         max_radius_km=radii.live_max_km,
-        expires_at=now + timedelta(seconds=settings.live_search_timeout_seconds),
+        expires_at=now + timedelta(minutes=pricing["search_timeout_minutes"]),
     )
     await shift_repository.record_history(
         conn, shift["id"], shift["status"], SHIFT_SEARCHING, actor_user_id, reason

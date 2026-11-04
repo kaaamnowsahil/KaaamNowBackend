@@ -28,6 +28,7 @@ _task: asyncio.Task[None] | None = None
 
 
 def _jobs() -> list[tuple[str, SweepJob]]:
+    from app.services.attendance.attendance_service import close_missed_shifts
     from app.services.billing.billing_sweeps import expire_stale_payments
     from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
     from app.services.live_work.live_work_sweeps import (
@@ -35,6 +36,7 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         complete_overdue_bookings,
         expire_extensions,
         process_refunds,
+        refund_unanswered_retries,
     )
     from app.services.notifications.notification_sweeps import deliver_pending_pushes
     from app.services.shifts.shift_sweeps import (
@@ -61,8 +63,10 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         ("expire_selection_confirmations", expire_selection_confirmations),
         ("release_unfilled_seats", release_unfilled_seats),
         ("prompt_extensions", prompt_extensions),
+        ("close_missed_shifts", close_missed_shifts),
         ("close_scheduled_recruiting", close_scheduled_recruiting),
         ("expire_stale_payments", expire_stale_payments),
+        ("live_work_retry_refunds", refund_unanswered_retries),
         ("live_work_refunds", process_refunds),
         ("advance_processing_withdrawals", advance_processing_withdrawals),
         ("deliver_pending_pushes", deliver_pending_pushes),
@@ -95,7 +99,12 @@ async def run_locked_sweep(pool: asyncpg.Pool) -> None:
             if changed:
                 log.info("sweep", extra=log_extra(**changed))
         finally:
-            await conn.execute("SELECT pg_advisory_unlock($1)", _SWEEP_ADVISORY_LOCK_KEY)
+            try:
+                await conn.execute("SELECT pg_advisory_unlock($1)", _SWEEP_ADVISORY_LOCK_KEY)
+            except BaseException:
+                # Pooled connections are not reset on release: never return one holding the lock.
+                conn.terminate()
+                raise
 
 
 async def _loop(pool: asyncpg.Pool, interval_seconds: int) -> None:

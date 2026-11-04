@@ -8,10 +8,19 @@ import asyncpg
 
 from app.config.settings import load_settings
 from app.constants.notifications.notification_route_strings import KIND_EXTENSION_ANSWERED
-from app.constants.shifts.shift_route_strings import SHIFT_AWAITING_PAYMENT, SHIFT_CANCELLED
+from app.constants.shifts.shift_route_strings import (
+    SHIFT_AWAITING_PAYMENT,
+    SHIFT_CANCELLED,
+    SHIFT_EXPIRED,
+)
 from app.repositories.live_work import live_work_repository
 from app.repositories.shifts import assignment_repository, shift_repository
-from app.services.live_work import live_refund_service, live_work_billing, live_work_core
+from app.services.live_work import (
+    live_refund_service,
+    live_work_billing,
+    live_work_core,
+    live_work_hooks,
+)
 from app.services.live_work.live_work_views import cancel_reason
 from app.services.notifications.notification_service import notify
 from app.services.promos import promo_service
@@ -125,3 +134,22 @@ async def complete_overdue_bookings(pool: asyncpg.Pool) -> int:
 
 async def process_refunds(pool: asyncpg.Pool) -> int:
     return await live_refund_service.process_due_refunds(pool)
+
+
+async def refund_unanswered_retries(pool: asyncpg.Pool) -> int:
+    """The Business didn't choose between a refund and another search in time: refund."""
+    now = utc_now()
+    changed = 0
+    async with pool.acquire() as conn:
+        for shift_id in await live_work_repository.list_expired_retry_offers(conn, now):
+            async with conn.transaction():
+                shift = await shift_repository.lock_shift(conn, shift_id)
+                pricing = await live_work_repository.get_booking_pricing(conn, shift_id)
+                offer = pricing["retry_offer_expires_at"] if pricing else None
+                if shift["status"] != SHIFT_EXPIRED or offer is None or offer > now:
+                    continue
+                await live_work_hooks.refund_no_workers(
+                    conn, shift, await live_work_core.business_user_id(conn, shift)
+                )
+                changed += 1
+    return changed

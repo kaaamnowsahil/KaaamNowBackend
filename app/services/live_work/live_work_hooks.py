@@ -55,9 +55,36 @@ async def on_accepted(
 async def on_search_expired(
     conn: asyncpg.Connection, shift: asyncpg.Record, business_user_id: UUID
 ) -> bool:
-    """No Worker accepted in time: full refund of everything paid. True = handled."""
-    if not await live_work_repository.is_live_work(conn, shift["id"]):
+    """No Worker accepted in time. Before the last search the Business may add to the pay and
+    search again (or take the refund); after it, everything paid is refunded. True = handled."""
+    pricing = await live_work_repository.get_booking_pricing(conn, shift["id"])
+    if pricing is None:
         return False
+    if pricing["search_round"] < pricing["max_search_rounds"]:
+        minutes = pricing["retry_choice_minutes"]
+        await live_work_repository.set_retry_offer(
+            conn, shift["id"], utc_now() + timedelta(minutes=minutes)
+        )
+        options = ", ".join(f"₹{amount / 100:g}" for amount in pricing["boost_options_minor"])
+        await notify(
+            conn,
+            business_user_id,
+            KIND_LIVE_EXPIRED,
+            "No Worker has accepted yet",
+            f"{shift['job_title']}: add {options} to the pay and search again, or get a full "
+            f"refund. You have {minutes} minutes to choose.",
+            {"shift_id": shift["id"], "live_work": True, "retry": True},
+        )
+        return True
+    await refund_no_workers(conn, shift, business_user_id)
+    return True
+
+
+async def refund_no_workers(
+    conn: asyncpg.Connection, shift: asyncpg.Record, business_user_id: UUID
+) -> None:
+    """Nobody accepted and no further search: full refund of everything paid."""
+    await live_work_repository.set_retry_offer(conn, shift["id"], None)
     paid = await live_work_core.unrefunded_total(conn, shift["id"])
     await live_work_core.queue_split_refund(
         conn, shift["id"], paid, live_refund_service.REASON_NO_WORKERS, None
@@ -67,11 +94,11 @@ async def on_search_expired(
         conn,
         business_user_id,
         KIND_LIVE_EXPIRED,
-        "No Workers available right now",
-        f"{shift['job_title']}: your full payment is being refunded. You can post again.",
+        "No Worker nearby",
+        f"{shift['job_title']}: no Worker nearby accepted, so your full payment is being "
+        "refunded. You can post again.",
         {"shift_id": shift["id"], "live_work": True},
     )
-    return True
 
 
 async def on_search_partial(

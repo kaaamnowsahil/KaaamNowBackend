@@ -36,6 +36,9 @@ PATH_BOOKING_EXTENSION_CANCEL: Final[str] = "/{booking_id}/extensions/{extension
 PATH_BOOKING_END: Final[str] = "/{booking_id}/end"
 PATH_BOOKING_ARRIVAL_CODE: Final[str] = "/{booking_id}/arrival-code/reissue"
 PATH_BOOKING_COMPLETION_CODE: Final[str] = "/{booking_id}/completion-code/reissue"
+PATH_BOOKING_RETRY: Final[str] = "/{booking_id}/retry"
+
+# Nobody accepted: the Business may search again (3 searches in all), adding to the pay.
 
 # Worker
 PATH_REQUESTS: Final[str] = "/requests"

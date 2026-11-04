@@ -1,24 +1,49 @@
 """SQL for the generic admin CRUD layer and dashboard metrics.
 
 Templates marked ``{...}`` only ever receive identifiers that were whitelisted against the
-resource registry *and* ``information_schema`` and then quoted with ``quote_ident``;
+resource registry *and* the database catalog and then quoted with ``quote_ident``;
 every user-supplied value is bound as a ``$n`` parameter.
 """
 
 from __future__ import annotations
 
+# Same values as information_schema.columns, read from pg_catalog directly: the
+# information_schema view runs privilege checks per column and takes seconds on Neon.
 LIST_TABLE_COLUMNS = """
-SELECT c.table_name,
-       c.column_name,
-       c.data_type,
-       c.udt_name,
-       c.is_nullable = 'YES' AS is_nullable,
-       c.column_default IS NOT NULL OR c.is_identity = 'YES' AS has_default,
-       c.is_generated = 'ALWAYS' AS is_generated,
-       c.character_maximum_length AS max_length
-FROM information_schema.columns c
-WHERE c.table_schema = current_schema() AND c.table_name = ANY($1::text[])
-ORDER BY c.table_name, c.ordinal_position
+SELECT c.relname::text AS table_name,
+       a.attname::text AS column_name,
+       CASE
+           WHEN coalesce(bt.typelem, t.typelem) <> 0 AND coalesce(bt.typlen, t.typlen) = -1
+               THEN 'ARRAY'
+           WHEN coalesce(nbt.nspname, nt.nspname) = 'pg_catalog'
+               THEN format_type(coalesce(bt.oid, t.oid), NULL)
+           ELSE 'USER-DEFINED'
+       END AS data_type,
+       coalesce(bt.typname, t.typname)::text AS udt_name,
+       NOT (a.attnotnull OR (t.typtype = 'd' AND t.typnotnull)) AS is_nullable,
+       (a.atthasdef AND a.attgenerated = '') OR a.attidentity <> '' AS has_default,
+       a.attgenerated <> '' AS is_generated,
+       CASE
+           WHEN coalesce(bt.typname, t.typname) IN ('bpchar', 'varchar')
+                AND (CASE WHEN t.typtype = 'd' THEN t.typtypmod ELSE a.atttypmod END) <> -1
+               THEN (CASE WHEN t.typtype = 'd' THEN t.typtypmod ELSE a.atttypmod END) - 4
+           WHEN coalesce(bt.typname, t.typname) IN ('bit', 'varbit')
+                AND (CASE WHEN t.typtype = 'd' THEN t.typtypmod ELSE a.atttypmod END) <> -1
+               THEN (CASE WHEN t.typtype = 'd' THEN t.typtypmod ELSE a.atttypmod END)
+       END AS max_length
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_type t ON t.oid = a.atttypid
+JOIN pg_namespace nt ON nt.oid = t.typnamespace
+LEFT JOIN pg_type bt ON t.typtype = 'd' AND bt.oid = t.typbasetype
+LEFT JOIN pg_namespace nbt ON nbt.oid = bt.typnamespace
+WHERE n.nspname = current_schema()
+  AND c.relname = ANY($1::text[])
+  AND c.relkind IN ('r', 'v', 'f', 'p', 'm')
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+ORDER BY c.relname, a.attnum
 """
 
 SELECT_PAGE = "SELECT {columns} FROM {table}{where} ORDER BY {order} LIMIT {limit} OFFSET {offset}"

@@ -73,3 +73,17 @@ ALTER TABLE live_booking_pricing
 ALTER TABLE live_booking_pricing DROP CONSTRAINT IF EXISTS live_booking_pricing_workers_chk;
 ALTER TABLE live_booking_pricing ADD CONSTRAINT live_booking_pricing_workers_chk
     CHECK (workers_required BETWEEN 1 AND 50);
+
+-- Nobody accepted: the Business may search again up to search_round 3, each time adding to the
+-- pay (boost_minor: ₹/hour for hourly work, ₹ on the task price). The amounts above stay what
+-- was paid; the boost is billed on the final invoice. retry_offer_expires_at is set while the
+-- Business is choosing between a refund and another search.
+ALTER TABLE live_booking_pricing
+    ADD COLUMN IF NOT EXISTS boost_minor BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS search_round SMALLINT NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS retry_offer_expires_at TIMESTAMPTZ;
+ALTER TABLE live_booking_pricing DROP CONSTRAINT IF EXISTS live_booking_pricing_retry_chk;
+ALTER TABLE live_booking_pricing ADD CONSTRAINT live_booking_pricing_retry_chk
+    CHECK (boost_minor >= 0 AND search_round >= 1);
+CREATE INDEX IF NOT EXISTS live_booking_pricing_retry_offer_idx
+    ON live_booking_pricing (retry_offer_expires_at) WHERE retry_offer_expires_at IS NOT NULL;

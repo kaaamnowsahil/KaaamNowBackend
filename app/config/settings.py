@@ -185,9 +185,11 @@ class KaaamNowSettings(BaseSettings):
 
     # --- Notifications / media / support ---
     push_provider: str
-    # push_provider=fcm: path to the Firebase service-account JSON (Project settings →
-    # Service accounts → Generate new private key). Never commit the file.
+    # push_provider=fcm: the Firebase service-account JSON (Project settings → Service
+    # accounts → Generate new private key), as a file path or, on hosts without a writable
+    # filesystem, as the JSON itself in FIREBASE_SERVICE_ACCOUNT_JSON. Never commit either.
     firebase_service_account_file: str = ""
+    firebase_service_account_json: str = ""
     media_storage: str
     media_dir: str
     media_base_url: str

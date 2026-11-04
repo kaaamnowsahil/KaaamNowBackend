@@ -164,6 +164,26 @@ class LiveLocationUpdate(BaseModel):
     accuracy_m: int | None = Field(default=None, ge=0, le=100_000)
 
 
+class LiveRetryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    boost_minor: int = Field(
+        description="Added to the pay for the next search: ₹/hour for hourly work, ₹ on the "
+        "task price. One of the booking's `retry.boost_options_minor`."
+    )
+
+
+class LiveRetryView(BaseModel):
+    """Nobody accepted: the Business can add to the pay and search again, or take a refund."""
+
+    search_round: int = Field(description="Searches done so far.")
+    max_search_rounds: int
+    expires_at: datetime = Field(description="No choice by then: full refund.")
+    seconds_left: int
+    boost_options_minor: list[int]
+    boost_minor: int = Field(description="Already added to the pay by earlier searches.")
+
+
 class LiveCancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -428,6 +448,9 @@ class BusinessLiveActions(BaseModel):
     can_reissue_code: bool
     can_repost: bool
     can_reissue_completion_code: bool = False
+    can_retry: bool = Field(
+        default=False, description="Nobody accepted: add to the pay and search again."
+    )
 
 
 class WorkerLiveActions(BaseModel):
@@ -452,6 +475,17 @@ class BusinessLiveBooking(BaseModel):
     work: LiveWorkDetails
     pricing: LivePriceBreakdown
     search: LiveSearchView | None
+    retry: LiveRetryView | None = None
+    boost_minor: int = Field(
+        default=0,
+        description="Added to the pay after nobody accepted (₹/hour or ₹ on the task price); "
+        "billed with the final bill.",
+    )
+    search_round: int = Field(default=1, description="Searches started so far.")
+    max_search_rounds: int = Field(default=1, description="Searches allowed for this booking.")
+    boost_options_minor: list[int] = Field(
+        default_factory=list, description="Add-on choices offered after a search ends unanswered."
+    )
     deposit_invoice: LiveInvoiceSummary | None
     assignment: LiveAssignmentView | None
     arrival_code: LiveArrivalCodeView | None
@@ -549,6 +583,15 @@ class LivePricingSettingsView(BaseModel):
     tax_base: Literal["subtotal", "base_amount", "commission"]
     tax_base_description: str
     extension_surcharge_pct: float
+    search_timeout_minutes: int = Field(description="How long one search for a Worker runs.")
+    max_search_rounds: int = Field(description="Searches allowed per booking (1 = no retry).")
+    retry_choice_minutes: int = Field(
+        description="Time the Business has to choose refund or search again; then a refund."
+    )
+    boost_options_minor: list[int] = Field(
+        description="Amounts the Business can add to the pay to search again (paise; per hour "
+        "for hourly work, on the task price for task work)."
+    )
     effective_from: datetime
     changed_by_label: str
     notes: str
@@ -565,6 +608,12 @@ class LivePricingSettingsUpdate(BaseModel):
     tax_label: str = Field(min_length=1, max_length=40)
     tax_base: Literal["subtotal", "base_amount", "commission"]
     extension_surcharge_pct: str | float | int
+    search_timeout_minutes: int | None = Field(default=None, description="5–120. Omit to keep.")
+    max_search_rounds: int | None = Field(default=None, description="1–5. Omit to keep.")
+    retry_choice_minutes: int | None = Field(default=None, description="2–60. Omit to keep.")
+    boost_options_minor: list[int] | None = Field(
+        default=None, description="1–5 whole-rupee amounts, ₹1–₹1,000 each, in paise. Omit to keep."
+    )
     notes: str = Field(default="", max_length=300)
 
     _strip_label = field_validator("tax_label", "notes")(_strip)

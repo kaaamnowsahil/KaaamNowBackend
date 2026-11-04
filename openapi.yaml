@@ -1796,6 +1796,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/workers/restricted:
+    get:
+      tags:
+      - admin - support
+      summary: Banned or limited workers · Admin
+      operationId: restricted_workers_api_v1_admin_workers_restricted_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/RestrictedWorker'
+                type: array
+                title: Response Restricted Workers Api V1 Admin Workers Restricted
+                  Get
+      security:
+      - HTTPBearer: []
   /api/v1/admin/support-tickets/{ticket_id}/status:
     post:
       tags:
@@ -2701,6 +2720,41 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/LiveCancelRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessLiveBooking'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/business/live-work/{booking_id}/retry:
+    post:
+      tags:
+      - Business / Work — Live Work
+      summary: Add to the pay and search again · Business / Work
+      operationId: retry_search_api_v1_business_live_work__booking_id__retry_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveRetryRequest'
       responses:
         '200':
           description: Successful Response
@@ -8357,6 +8411,11 @@ components:
           type: boolean
           title: Can Reissue Completion Code
           default: false
+        can_retry:
+          type: boolean
+          title: Can Retry
+          description: 'Nobody accepted: add to the pay and search again.'
+          default: false
       type: object
       required:
       - can_pay
@@ -8407,6 +8466,32 @@ components:
           anyOf:
           - $ref: '#/components/schemas/LiveSearchView'
           - type: 'null'
+        retry:
+          anyOf:
+          - $ref: '#/components/schemas/LiveRetryView'
+          - type: 'null'
+        boost_minor:
+          type: integer
+          title: Boost Minor
+          description: Added to the pay after nobody accepted (₹/hour or ₹ on the
+            task price); billed with the final bill.
+          default: 0
+        search_round:
+          type: integer
+          title: Search Round
+          description: Searches started so far.
+          default: 1
+        max_search_rounds:
+          type: integer
+          title: Max Search Rounds
+          description: Searches allowed for this booking.
+          default: 1
+        boost_options_minor:
+          items:
+            type: integer
+          type: array
+          title: Boost Options Minor
+          description: Add-on choices offered after a search ends unanswered.
         deposit_invoice:
           anyOf:
           - $ref: '#/components/schemas/LiveInvoiceSummary'
@@ -10850,6 +10935,33 @@ components:
           - type: number
           - type: integer
           title: Extension Surcharge Pct
+        search_timeout_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Search Timeout Minutes
+          description: 5–120. Omit to keep.
+        max_search_rounds:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Search Rounds
+          description: 1–5. Omit to keep.
+        retry_choice_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Retry Choice Minutes
+          description: 2–60. Omit to keep.
+        boost_options_minor:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+          - type: 'null'
+          title: Boost Options Minor
+          description: 1–5 whole-rupee amounts, ₹1–₹1,000 each, in paise. Omit to
+            keep.
         notes:
           type: string
           maxLength: 300
@@ -10893,6 +11005,26 @@ components:
         extension_surcharge_pct:
           type: number
           title: Extension Surcharge Pct
+        search_timeout_minutes:
+          type: integer
+          title: Search Timeout Minutes
+          description: How long one search for a Worker runs.
+        max_search_rounds:
+          type: integer
+          title: Max Search Rounds
+          description: Searches allowed per booking (1 = no retry).
+        retry_choice_minutes:
+          type: integer
+          title: Retry Choice Minutes
+          description: Time the Business has to choose refund or search again; then
+            a refund.
+        boost_options_minor:
+          items:
+            type: integer
+          type: array
+          title: Boost Options Minor
+          description: Amounts the Business can add to the pay to search again (paise;
+            per hour for hourly work, on the task price for task work).
         effective_from:
           type: string
           format: date-time
@@ -10915,6 +11047,10 @@ components:
       - tax_base
       - tax_base_description
       - extension_surcharge_pct
+      - search_timeout_minutes
+      - max_search_rounds
+      - retry_choice_minutes
+      - boost_options_minor
       - effective_from
       - changed_by_label
       - notes
@@ -10981,6 +11117,55 @@ components:
       - shift
       title: LiveRequestItem
       description: Figma "New request nearby · Accept within 04:59".
+    LiveRetryRequest:
+      properties:
+        boost_minor:
+          type: integer
+          title: Boost Minor
+          description: 'Added to the pay for the next search: ₹/hour for hourly work,
+            ₹ on the task price. One of the booking''s `retry.boost_options_minor`.'
+      additionalProperties: false
+      type: object
+      required:
+      - boost_minor
+      title: LiveRetryRequest
+    LiveRetryView:
+      properties:
+        search_round:
+          type: integer
+          title: Search Round
+          description: Searches done so far.
+        max_search_rounds:
+          type: integer
+          title: Max Search Rounds
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+          description: 'No choice by then: full refund.'
+        seconds_left:
+          type: integer
+          title: Seconds Left
+        boost_options_minor:
+          items:
+            type: integer
+          type: array
+          title: Boost Options Minor
+        boost_minor:
+          type: integer
+          title: Boost Minor
+          description: Already added to the pay by earlier searches.
+      type: object
+      required:
+      - search_round
+      - max_search_rounds
+      - expires_at
+      - seconds_left
+      - boost_options_minor
+      - boost_minor
+      title: LiveRetryView
+      description: 'Nobody accepted: the Business can add to the pay and search again,
+        or take a refund.'
     LiveSearchState:
       properties:
         search_radius_km:
@@ -12996,6 +13181,47 @@ components:
       - on_hold
       title: Reliability
       description: Active strikes and what they lead to (cancellation policy thresholds).
+    RestrictedWorker:
+      properties:
+        worker_profile_id:
+          type: string
+          format: uuid
+          title: Worker Profile Id
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        full_name:
+          type: string
+          title: Full Name
+        phone:
+          type: string
+          title: Phone
+        banned_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Banned At
+        feed_limited_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Feed Limited Until
+        active_strikes:
+          type: number
+          title: Active Strikes
+      type: object
+      required:
+      - worker_profile_id
+      - user_id
+      - full_name
+      - phone
+      - banned_at
+      - feed_limited_until
+      - active_strikes
+      title: RestrictedWorker
     ReviewSnippet:
       properties:
         stars:
@@ -15400,6 +15626,20 @@ components:
         completed_shift_count:
           type: integer
           title: Completed Shift Count
+        banned_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Banned At
+          description: 'Account on hold: no new shifts until support lifts it.'
+        feed_limited_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Feed Limited Until
+          description: Fewer shifts in the feed until then (strikes).
       type: object
       required:
       - id

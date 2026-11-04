@@ -132,3 +132,34 @@ async def test_sweep_outcomes(
         "SELECT is_active FROM user_devices WHERE push_token = $1", dead_token
     )
     assert dead_active is False
+
+
+async def test_expired_or_old_pushes_stay_in_app_only(
+    app_client: httpx.AsyncClient, db: asyncpg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = await login(app_client)
+    token = f"tok-late-{uuid4()}"
+    await _register(app_client, user.headers, token)
+    sender = ScriptedSender({token: "ok"})
+    monkeypatch.setattr(notification_sweeps, "get_push_sender", lambda: sender)
+    old = await db.fetchval(
+        "INSERT INTO notifications (user_id, kind, title, body, created_at) "
+        "VALUES ($1, 'test', 'Old', 'Body', now() - interval '2 hours') RETURNING id",
+        user.user_id,
+    )
+    expired = await db.fetchval(
+        "INSERT INTO notifications (user_id, kind, title, body, data) "
+        "VALUES ($1, 'live_request', 'Gone', 'Body', "
+        "jsonb_build_object('expires_at', (now() - interval '1 minute')::text)) RETURNING id",
+        user.user_id,
+    )
+    fresh = await _notify(db, user.user_id)
+    await _sweep_until_done(sender, [old, expired, fresh], db)
+    statuses = dict(
+        await db.fetch(
+            "SELECT id, push_status FROM notifications WHERE id = ANY($1::uuid[])",
+            [old, expired, fresh],
+        )
+    )
+    assert statuses == {old: "skipped", expired: "skipped", fresh: "sent"}
+    assert sender.calls == [[token]]

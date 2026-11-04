@@ -42,7 +42,26 @@ _AUDITED_FIELDS = (
     "tax_label",
     "tax_base",
     "extension_surcharge_pct",
+    "search_timeout_minutes",
+    "max_search_rounds",
+    "retry_choice_minutes",
+    "boost_options_minor",
 )
+# Search + retry rules: (min, max) of each admin value.
+SEARCH_LIMITS = {
+    "search_timeout_minutes": (5, 120),
+    "max_search_rounds": (1, 5),
+    "retry_choice_minutes": (2, 60),
+}
+BOOST_LIMITS_MINOR = (100, 100_000)
+MAX_BOOST_OPTIONS = 5
+# Only used if no version exists yet (the seed creates v1 with the same column defaults).
+_FIRST_SAVE_DEFAULTS = {
+    "search_timeout_minutes": 30,
+    "max_search_rounds": 3,
+    "retry_choice_minutes": 10,
+    "boost_options_minor": [1000, 2000, 3000],
+}
 
 
 def tax_base_description(tax_base: str, tax_label: str) -> str:
@@ -126,6 +145,10 @@ def _settings_view(row: asyncpg.Record, currency: str) -> LivePricingSettingsVie
         tax_base=rates.tax_base,  # type: ignore[arg-type]
         tax_base_description=tax_base_description(rates.tax_base, rates.tax_label),
         extension_surcharge_pct=float(rates.extension_surcharge_pct),
+        search_timeout_minutes=row["search_timeout_minutes"],
+        max_search_rounds=row["max_search_rounds"],
+        retry_choice_minutes=row["retry_choice_minutes"],
+        boost_options_minor=list(row["boost_options_minor"]),
         effective_from=row["effective_from"],
         changed_by_label=row["changed_by_label"],
         notes=row["notes"],
@@ -147,9 +170,43 @@ async def get_settings() -> LivePricingSettingsView:
     return _settings_view(row, load_settings().default_currency)
 
 
-def _parse(body: LivePricingSettingsUpdate) -> dict[str, Decimal | str]:
-    values: dict[str, Decimal | str] = {}
+def _parse_search_rules(
+    body: LivePricingSettingsUpdate, current: asyncpg.Record | None, errors: dict[str, str]
+) -> dict[str, int | list[int]]:
+    """Omitted values keep the current version's (or the column default on first save)."""
+    values: dict[str, int | list[int]] = {}
+    for field, (low, high) in SEARCH_LIMITS.items():
+        value = getattr(body, field)
+        if value is None:
+            value = current[field] if current is not None else None
+        elif not low <= value <= high:
+            errors[field] = f"Enter a number from {low} to {high}."
+        if value is not None:
+            values[field] = value
+    options = body.boost_options_minor
+    if options is None:
+        if current is not None:
+            values["boost_options_minor"] = list(current["boost_options_minor"])
+    else:
+        low, high = BOOST_LIMITS_MINOR
+        if not 1 <= len(options) <= MAX_BOOST_OPTIONS:
+            errors["boost_options_minor"] = f"Give 1 to {MAX_BOOST_OPTIONS} amounts."
+        elif len(set(options)) != len(options):
+            errors["boost_options_minor"] = "Each amount can appear only once."
+        elif any(o % 100 or not low <= o <= high for o in options):
+            errors["boost_options_minor"] = (
+                f"Each amount must be whole rupees from ₹{low // 100} to ₹{high // 100:,}."
+            )
+        values["boost_options_minor"] = sorted(options)
+    return values
+
+
+def _parse(
+    body: LivePricingSettingsUpdate, current: asyncpg.Record | None
+) -> dict[str, Decimal | str | int | list[int]]:
+    values: dict[str, Decimal | str | int | list[int]] = {}
     errors: dict[str, str] = {}
+    values.update(_parse_search_rules(body, current, errors))
     for field in ("commission_pct", "tax_pct", "extension_surcharge_pct"):
         try:
             values[field] = parse_percentage(getattr(body, field))
@@ -166,19 +223,22 @@ def _parse(body: LivePricingSettingsUpdate) -> dict[str, Decimal | str]:
     return values
 
 
-def _display(value: Decimal | str) -> str:
+def _display(value: Decimal | str | int | list[int]) -> str:
+    if isinstance(value, list):
+        return ",".join(str(v) for v in value)
     return str(value)
 
 
 async def update_settings(
     admin: AuthenticatedUser, body: LivePricingSettingsUpdate
 ) -> LivePricingSettingsView:
-    values = _parse(body)
     now = utc_now()
     async with get_pool().acquire() as conn:
         async with conn.transaction():
             await live_work_repository.lock_settings(conn)
             current = await live_work_repository.get_active_settings(conn)
+            values = _parse(body, current)
+            values = {**_FIRST_SAVE_DEFAULTS, **values}
             changed = [
                 field
                 for field in _AUDITED_FIELDS
@@ -203,6 +263,10 @@ async def update_settings(
                 changed_by_user_id=admin.user_id,
                 changed_by_label=label,
                 notes=body.notes,
+                search_timeout_minutes=values["search_timeout_minutes"],  # type: ignore[arg-type]
+                max_search_rounds=values["max_search_rounds"],  # type: ignore[arg-type]
+                retry_choice_minutes=values["retry_choice_minutes"],  # type: ignore[arg-type]
+                boost_options_minor=values["boost_options_minor"],  # type: ignore[arg-type]
             )
             for field in changed:
                 await live_work_repository.insert_audit(

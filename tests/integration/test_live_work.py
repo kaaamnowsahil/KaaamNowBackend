@@ -699,11 +699,17 @@ async def test_completing_early_with_the_code_bills_worked_time(  # type: ignore
 # --- sweeps --------------------------------------------------------------------------
 
 
-async def test_no_worker_found_refunds_in_full(app_client, make_business, db) -> None:  # type: ignore[no-untyped-def]
+async def test_no_worker_found_on_the_last_search_refunds_in_full(  # type: ignore[no-untyped-def]
+    app_client, make_business, db
+) -> None:
     business = await make_business()
     lat, lng = _location()
     booking = await _searching(app_client, business, lat, lng)
     assert booking["search"]["notified_workers"] == 0
+    await db.execute(
+        "UPDATE live_booking_pricing SET search_round = 3 WHERE shift_id = $1",
+        UUID(booking["booking_id"]),
+    )
     await db.execute(
         "UPDATE shifts SET search_expires_at = now() - interval '1 second' WHERE id = $1",
         UUID(booking["booking_id"]),
@@ -714,7 +720,9 @@ async def test_no_worker_found_refunds_in_full(app_client, make_business, db) ->
     ).json()
     assert state["status"] == "no_workers"
     assert [(r["amount_minor"], r["status"]) for r in state["refunds"]] == [(TOTAL, "processed")]
+    assert state["retry"] is None
     assert state["actions"]["can_repost"] is True
+    assert state["actions"]["can_retry"] is False
 
 
 async def test_unpaid_booking_is_cancelled_after_payment_window(  # type: ignore[no-untyped-def]
@@ -867,3 +875,45 @@ async def test_admin_pricing_settings_audit_and_snapshots(  # type: ignore[no-un
     finally:
         restored = await app_client.put(f"{ADM}/pricing", json=defaults, headers=admin.headers)
         assert restored.status_code == 200, restored.text
+
+
+async def test_worker_outside_category_is_not_counted_shown_or_allowed(  # type: ignore[no-untyped-def]
+    app_client, db, make_business, make_worker
+) -> None:
+    lat, lng = _location()
+    business = await make_business("Category Care")
+    worker = await make_worker("Hospitality Only", online=False)
+    await _place_worker(app_client, worker, lat, lng)
+    resp = await app_client.post(
+        BIZ, json=_create_body(lat, lng, category_slug="elder-care"), headers=business.headers
+    )
+    assert resp.status_code == 201, resp.text
+    booking_id = resp.json()["booking_id"]
+    await _pay(app_client, business, resp.json()["deposit_invoice"]["id"])
+
+    async def feed_ids() -> set[str]:
+        feed = await app_client.get(
+            f"{API}/worker/feed",
+            params={"lat": lat, "lng": lng, "shift_type": "live"},
+            headers=worker.headers,
+        )
+        assert feed.status_code == 200, feed.text
+        return {item["id"] for item in feed.json()["items"]}
+
+    state = (await app_client.get(f"{BIZ}/{booking_id}", headers=business.headers)).json()
+    assert state["search"]["available_workers"] == 0
+    assert booking_id not in await feed_ids()
+    blocked = await app_client.post(f"{WRK}/requests/{booking_id}/accept", headers=worker.headers)
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["code"] == "category_mismatch"
+
+    await db.execute(
+        "INSERT INTO worker_work_categories (worker_profile_id, category_id) "
+        "SELECT $1, id FROM work_categories WHERE slug = 'elder-care'",
+        worker.profile_id,
+    )
+    state = (await app_client.get(f"{BIZ}/{booking_id}", headers=business.headers)).json()
+    assert state["search"]["available_workers"] == 1
+    assert booking_id in await feed_ids()
+    accepted = await app_client.post(f"{WRK}/requests/{booking_id}/accept", headers=worker.headers)
+    assert accepted.status_code == 200, accepted.text

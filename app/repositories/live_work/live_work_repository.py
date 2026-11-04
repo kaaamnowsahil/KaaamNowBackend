@@ -36,6 +36,10 @@ async def insert_settings(
     changed_by_user_id: UUID | None,
     changed_by_label: str,
     notes: str,
+    search_timeout_minutes: int,
+    max_search_rounds: int,
+    retry_choice_minutes: int,
+    boost_options_minor: list[int],
 ) -> asyncpg.Record:
     version = await conn.fetchval(q.NEXT_SETTINGS_VERSION)
     await conn.execute(q.DEACTIVATE_SETTINGS)
@@ -51,6 +55,10 @@ async def insert_settings(
         changed_by_user_id,
         changed_by_label,
         notes,
+        search_timeout_minutes,
+        max_search_rounds,
+        retry_choice_minutes,
+        boost_options_minor,
     )
 
 
@@ -197,6 +205,12 @@ async def get_current_assignment(conn: asyncpg.Connection, shift_id: UUID) -> as
 
 async def list_assignments(conn: asyncpg.Connection, shift_id: UUID) -> list[asyncpg.Record]:
     return await conn.fetch(q.LIST_ASSIGNMENTS, shift_id)
+
+
+async def list_assignments_for_shifts(
+    conn: asyncpg.Connection, shift_ids: list[UUID]
+) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_ASSIGNMENTS_FOR_SHIFTS, shift_ids)
 
 
 async def get_worker_active_assignment_id(
@@ -387,6 +401,12 @@ async def list_extensions(conn: asyncpg.Connection, shift_id: UUID) -> list[asyn
     return await conn.fetch(q.LIST_EXTENSIONS, shift_id)
 
 
+async def list_extensions_for_shifts(
+    conn: asyncpg.Connection, shift_ids: list[UUID]
+) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_EXTENSIONS_FOR_SHIFTS, shift_ids)
+
+
 async def set_extension_status(
     conn: asyncpg.Connection, extension_id: UUID, status: str, now: datetime
 ) -> None:
@@ -469,6 +489,12 @@ async def list_shift_invoices(conn: asyncpg.Connection, shift_id: UUID) -> list[
     return await conn.fetch(q.LIST_SHIFT_INVOICES, shift_id)
 
 
+async def list_invoices_for_shifts(
+    conn: asyncpg.Connection, shift_ids: list[UUID]
+) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_INVOICES_FOR_SHIFTS, shift_ids)
+
+
 async def get_succeeded_payment(
     conn: asyncpg.Connection, invoice_id: UUID
 ) -> asyncpg.Record | None:
@@ -518,6 +544,12 @@ async def payment_refunded_minor(conn: asyncpg.Connection, payment_id: UUID) -> 
 
 async def list_refunds(conn: asyncpg.Connection, shift_id: UUID) -> list[asyncpg.Record]:
     return await conn.fetch(q.LIST_REFUNDS, shift_id)
+
+
+async def list_refunds_for_shifts(
+    conn: asyncpg.Connection, shift_ids: list[UUID]
+) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_REFUNDS_FOR_SHIFTS, shift_ids)
 
 
 async def lock_due_refunds(
@@ -602,3 +634,20 @@ async def admin_list_shift_refunds(
 
 async def admin_get_refund(conn: asyncpg.Connection, refund_id: UUID) -> asyncpg.Record | None:
     return await conn.fetchrow(q.ADMIN_GET_REFUND, refund_id)
+
+
+async def set_retry_offer(
+    conn: asyncpg.Connection, shift_id: UUID, expires_at: datetime | None
+) -> None:
+    await conn.execute(q.SET_RETRY_OFFER, shift_id, expires_at)
+
+
+async def apply_search_boost(conn: asyncpg.Connection, shift_id: UUID, boost_minor: int) -> None:
+    """Adds to the pay for the next search: the price snapshot keeps what was paid."""
+    await conn.execute(q.APPLY_SEARCH_BOOST, shift_id, boost_minor)
+    await conn.execute(q.BOOST_SHIFT_PAY, shift_id, boost_minor)
+    await conn.execute(q.RESET_UNTAKEN_DISPATCHES, shift_id)
+
+
+async def list_expired_retry_offers(conn: asyncpg.Connection, now: datetime) -> list[UUID]:
+    return [row["shift_id"] for row in await conn.fetch(q.LIST_EXPIRED_RETRY_OFFERS, now)]

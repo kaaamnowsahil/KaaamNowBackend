@@ -61,8 +61,7 @@ class FcmPushSender:
     """One HTTP v1 request per device (v1 has no multicast). Access tokens are minted from
     the service account and cached until shortly before expiry."""
 
-    def __init__(self, service_account_file: str, project_id: str) -> None:
-        account = json.loads(Path(service_account_file).read_text())
+    def __init__(self, account: dict[str, Any], project_id: str) -> None:
         self._client_email: str = account["client_email"]
         self._private_key: str = account["private_key"]
         self._token_uri: str = account.get("token_uri", GOOGLE_TOKEN_URL)
@@ -122,6 +121,7 @@ class FcmPushSender:
                                 "notification": {"title": title, "body": body},
                                 "data": payload_data,
                                 "android": {"priority": "high"},
+                                "webpush": {"headers": {"Urgency": "high"}},
                             }
                         },
                     )
@@ -183,6 +183,17 @@ def classify_fcm_error(response: httpx.Response) -> str:
 _fcm_sender: FcmPushSender | None = None
 
 
+def _service_account() -> dict[str, Any]:
+    settings = load_settings()
+    if settings.firebase_service_account_json:
+        return json.loads(settings.firebase_service_account_json)
+    if settings.firebase_service_account_file:
+        return json.loads(Path(settings.firebase_service_account_file).read_text())
+    raise RuntimeError(
+        "PUSH_PROVIDER=fcm needs FIREBASE_SERVICE_ACCOUNT_FILE or FIREBASE_SERVICE_ACCOUNT_JSON"
+    )
+
+
 def get_push_sender() -> PushSender:
     global _fcm_sender
     settings = load_settings()
@@ -191,11 +202,7 @@ def get_push_sender() -> PushSender:
         return ConsolePushSender()
     if provider == "fcm":
         if _fcm_sender is None:
-            if not settings.firebase_service_account_file:
-                raise RuntimeError("PUSH_PROVIDER=fcm needs FIREBASE_SERVICE_ACCOUNT_FILE")
-            _fcm_sender = FcmPushSender(
-                settings.firebase_service_account_file, settings.firebase_project_id
-            )
+            _fcm_sender = FcmPushSender(_service_account(), settings.firebase_project_id)
         return _fcm_sender
     raise RuntimeError(f"PUSH_PROVIDER={provider!r} is not implemented")
 

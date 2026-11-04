@@ -258,6 +258,11 @@ SELECT * FROM (
       AND ($4::varchar IS NULL OR s.shift_type = $4)
       AND ($5::varchar IS NULL OR wc.slug = $5)
       AND (
+          NOT EXISTS (SELECT 1 FROM worker_work_categories wwc WHERE wwc.worker_profile_id = $1)
+          OR EXISTS (SELECT 1 FROM worker_work_categories wwc
+                     WHERE wwc.worker_profile_id = $1 AND wwc.category_id = s.category_id)
+      )
+      AND (
           $16::varchar[] IS NULL
           OR EXISTS (
               SELECT 1
@@ -314,6 +319,13 @@ SELECT c.*, NULL::bigint AS earned_minor
 FROM ({WORKER_CARD_SELECT} WHERE ap.status = ANY($4::varchar[])) c
 ORDER BY c.my_applied_at DESC
 LIMIT $5 OFFSET $6
+"""
+
+# A Worker with no categories set matches every category (same rule as live dispatch).
+WORKER_MATCHES_CATEGORY = """
+SELECT NOT EXISTS (SELECT 1 FROM worker_work_categories WHERE worker_profile_id = $1)
+    OR EXISTS (SELECT 1 FROM worker_work_categories
+               WHERE worker_profile_id = $1 AND category_id = $2)
 """
 
 WORKER_HAS_OVERLAP = """

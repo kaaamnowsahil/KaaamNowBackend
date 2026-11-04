@@ -24,6 +24,7 @@ from app.constants.shifts.shift_route_strings import (
     DISPATCH_OFFERED,
     DISPATCH_WITHDRAWN,
     MSG_ALREADY_BOOKED,
+    MSG_CATEGORY_MISMATCH,
     MSG_LOCATION_STALE,
     MSG_NO_LIVE_OFFER,
     MSG_NOT_LIVE_SHIFT,
@@ -220,6 +221,10 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
                 raise bad_request("not_live_shift", MSG_NOT_LIVE_SHIFT)
             if shift["status"] != SHIFT_SEARCHING or shift["search_expires_at"] <= now:
                 raise conflict("shift_not_recruiting", MSG_SHIFT_NOT_RECRUITING)
+            if not await shift_repository.worker_matches_category(
+                conn, worker["id"], shift["category_id"]
+            ):
+                raise conflict("category_mismatch", MSG_CATEGORY_MISMATCH)
             seats = await shift_repository.count_seats(conn, shift_id)
             if seats >= shift["workers_required"]:
                 raise conflict("shift_full", MSG_SHIFT_FULL)

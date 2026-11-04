@@ -303,3 +303,37 @@ def completed_charge(
         worker_commission_minor=platform_fee(base, commission_pct),
         discount_minor=booking.discount_minor,
     )
+
+
+def billed_pricing(pricing: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The snapshot as billed: a search boost (``boost_minor``, added after nobody accepted) is
+    added to the rate or task price and the seat amounts are worked out again. Paid amounts
+    (deposit, seat share) must keep reading the original snapshot. Applying it twice is a no-op."""
+    boost = pricing.get("boost_minor") or 0
+    if not boost:
+        return pricing
+    billed = dict(pricing)
+    if pricing["pricing_mode"] == PRICING_TASK:
+        billed["task_price_minor"] = pricing["task_price_minor"] + boost
+        base = billed["task_price_minor"]
+    else:
+        billed["hourly_rate_minor"] = pricing["hourly_rate_minor"] + boost
+        base = pay_for_minutes(billed["hourly_rate_minor"], pricing["reserved_minutes"])
+    charge = charge_for_base(
+        base,
+        commission_pct=Decimal(pricing["commission_pct"]),
+        tax_pct=Decimal(pricing["tax_pct"]),
+        tax_base=pricing["tax_base"],
+        discount_minor=pricing["promo_discount_minor"],
+    )
+    billed.update(
+        base_amount_minor=charge.base_amount_minor,
+        commission_minor=charge.commission_minor,
+        taxable_minor=charge.taxable_minor,
+        tax_minor=charge.tax_minor,
+        total_minor=charge.total_minor,
+        worker_commission_minor=charge.worker_commission_minor,
+        worker_net_minor=charge.worker_net_minor,
+        boost_minor=0,
+    )
+    return billed

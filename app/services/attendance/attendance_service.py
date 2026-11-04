@@ -105,6 +105,9 @@ from app.utils.money import platform_fee, worker_commission
 from app.utils.references import new_numeric_code
 
 EARLY_END_PIN_LENGTH = 4
+MISSED_SHIFT_SWEEP_BATCH = 100
+# Older bookings predate the sweep (or an outage) and are left for an admin to review.
+MISSED_SHIFT_LOOKBACK = timedelta(hours=24)
 
 
 def recorded_minutes(ctx, checked_in_at, checked_out_at) -> int:  # type: ignore[no-untyped-def]
@@ -651,6 +654,47 @@ async def approve(
             return await build_assignment_detail(conn, assignment_id, user)
 
 
+async def _record_no_show(
+    conn: asyncpg.Connection,
+    ctx: asyncpg.Record,
+    *,
+    actor_user_id: UUID | None,
+    now: datetime,
+    body: str,
+) -> None:
+    """No-show on a locked booking: the worker no-show tier applies to scheduled shifts."""
+    assignment_id = ctx["id"]
+    await assignment_repository.set_status(conn, assignment_id, ASG_NO_SHOW)
+    if ctx["shift_type"] != SHIFT_LIVE:
+        shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
+        await cancellation_service.apply_seat(
+            conn,
+            shift=shift,
+            assignment_id=assignment_id,
+            worker_profile_id=ctx["worker_profile_id"],
+            worker_user_id=ctx["worker_user_id"],
+            quote=await cancellation_service.quote_assignment(
+                conn,
+                shift,
+                ctx["hourly_rate_minor"],
+                party=PARTY_WORKER,
+                event=EVENT_NO_SHOW,
+                now=now,
+            ),
+            actor_user_id=actor_user_id,
+            now=now,
+        )
+    await _complete_shift_if_done(conn, ctx["shift_id"], now)
+    await notify(
+        conn,
+        ctx["worker_user_id"],
+        KIND_NO_SHOW,
+        "Marked as no-show",
+        body,
+        {"shift_id": ctx["shift_id"], "assignment_id": assignment_id},
+    )
+
+
 async def mark_no_show(user: AuthenticatedUser, assignment_id: UUID) -> AssignmentDetail:
     settings = load_settings()
     now = utc_now()
@@ -664,33 +708,39 @@ async def mark_no_show(user: AuthenticatedUser, assignment_id: UUID) -> Assignme
                 raise conflict("assignment_state", MSG_ASSIGNMENT_STATE)
             if now < ctx["starts_at"] + timedelta(minutes=settings.no_show_grace_minutes):
                 raise conflict("no_show_too_early", MSG_NO_SHOW_TOO_EARLY)
-            await assignment_repository.set_status(conn, assignment_id, ASG_NO_SHOW)
-            if ctx["shift_type"] != SHIFT_LIVE:
-                shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
-                await cancellation_service.apply_seat(
-                    conn,
-                    shift=shift,
-                    assignment_id=assignment_id,
-                    worker_profile_id=ctx["worker_profile_id"],
-                    worker_user_id=ctx["worker_user_id"],
-                    quote=await cancellation_service.quote_assignment(
-                        conn,
-                        shift,
-                        ctx["hourly_rate_minor"],
-                        party=PARTY_WORKER,
-                        event=EVENT_NO_SHOW,
-                        now=now,
-                    ),
-                    actor_user_id=user.user_id,
-                    now=now,
-                )
-            await _complete_shift_if_done(conn, ctx["shift_id"], now)
-            await notify(
+            await _record_no_show(
                 conn,
-                ctx["worker_user_id"],
-                KIND_NO_SHOW,
-                "Marked as no-show",
-                f"You didn't check in for {ctx['job_title']}.",
-                {"shift_id": ctx["shift_id"], "assignment_id": assignment_id},
+                ctx,
+                actor_user_id=user.user_id,
+                now=now,
+                body=f"You didn't check in for {ctx['job_title']}.",
             )
             return await build_assignment_detail(conn, assignment_id, user)
+
+
+async def close_missed_shifts(pool: asyncpg.Pool) -> int:
+    """Sweep: a scheduled booking nobody checked in to before the shift ended is a no-show."""
+    now = utc_now()
+    changed = 0
+    async with pool.acquire() as conn:
+        for assignment_id in await assignment_repository.list_missed_scheduled(
+            conn, now, now - MISSED_SHIFT_LOOKBACK, MISSED_SHIFT_SWEEP_BATCH
+        ):
+            async with conn.transaction():
+                ctx = await assignment_repository.lock_context(conn, assignment_id)
+                if (
+                    ctx is None
+                    or ctx["shift_type"] == SHIFT_LIVE
+                    or ctx["status"] not in ASG_BOOKED_STATUSES
+                    or now <= effective_ends_at(ctx)
+                ):
+                    continue
+                await _record_no_show(
+                    conn,
+                    ctx,
+                    actor_user_id=None,
+                    now=now,
+                    body=f"You didn't check in for {ctx['job_title']} before it ended.",
+                )
+                changed += 1
+    return changed

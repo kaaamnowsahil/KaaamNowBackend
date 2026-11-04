@@ -34,6 +34,16 @@ class OverrideView(BaseModel):
     created_at: datetime
 
 
+class RestrictedWorker(BaseModel):
+    worker_profile_id: UUID
+    user_id: UUID
+    full_name: str
+    phone: str
+    banned_at: datetime | None
+    feed_limited_until: datetime | None
+    active_strikes: float
+
+
 class LedgerLine(BaseModel):
     """One money / reliability event on the booking, newest first."""
 

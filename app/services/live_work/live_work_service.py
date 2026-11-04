@@ -20,6 +20,7 @@ from app.constants.shifts.shift_route_strings import (
     SHIFT_CANCELLED,
     SHIFT_COMPLETED,
     SHIFT_DRAFT,
+    SHIFT_EXPIRED,
     SHIFT_LIVE,
 )
 from app.db.pool import get_pool
@@ -36,6 +37,7 @@ from app.schemas.live_work.live_work_schemas import (
     LiveExtensionCreate,
     LiveExtensionQuote,
     LivePriceBreakdown,
+    LiveRetryRequest,
     LiveWorkCreate,
     LiveWorkerDot,
     LiveWorkQuoteRequest,
@@ -55,6 +57,7 @@ from app.services.live_work.live_pricing import (
     LiveCharge,
     LiveRates,
     LiveTerms,
+    billed_pricing,
     booking_charge,
     extension_charge,
     extension_rate,
@@ -67,6 +70,7 @@ from app.services.live_work.live_work_views import (
     available_worker_map,
     build_business_state,
     cancel_reason,
+    load_booking_rows,
 )
 from app.services.notifications.notification_service import notify
 from app.services.profiles.profile_lookup import business_scope, require_postable_business
@@ -336,7 +340,8 @@ async def list_bookings(
         rows = await live_work_repository.list_business_bookings(
             conn, scope, active_only=active_only, limit=page_limit, offset=offset
         )
-        items = [await build_business_state(conn, r["shift_id"], now) for r in rows]
+        loaded = await load_booking_rows(conn, list(rows))
+        items = [await build_business_state(conn, r.booking["shift_id"], now, r) for r in loaded]
     return BusinessLiveBookingPage(items=items, limit=page_limit, offset=offset)
 
 
@@ -434,6 +439,7 @@ async def cancel(
             if plan.stage in ("before_payment", "before_acceptance"):
                 await promo_service.restore_for_booking(conn, shift_id, now)
             if plan.stage == "before_acceptance":
+                await live_work_repository.set_retry_offer(conn, shift_id, None)
                 refund_ids += await live_work_core.queue_split_refund(
                     conn,
                     shift_id,
@@ -617,8 +623,9 @@ async def _extension_quote(
         if e["status"] == "applied" and assignment_id in (None, e["assignment_id"])
     ]
     surcharge = Decimal(pricing["extension_surcharge_pct"])
+    rate = billed_pricing(pricing)["hourly_rate_minor"]
     charge = extension_charge(
-        pricing["hourly_rate_minor"],
+        rate,
         extra_minutes,
         surcharge_pct=surcharge,
         commission_pct=Decimal(pricing["commission_pct"]),
@@ -632,9 +639,9 @@ async def _extension_quote(
         original_total_minor=pricing["total_minor"],
         current_minutes=current_minutes,
         additional_minutes=extra_minutes,
-        base_rate_minor=pricing["hourly_rate_minor"],
+        base_rate_minor=rate,
         surcharge_pct=float(surcharge),
-        extension_rate_minor=extension_rate(pricing["hourly_rate_minor"], surcharge),
+        extension_rate_minor=extension_rate(rate, surcharge),
         additional_base_minor=charge.base_amount_minor,
         commission_pct=float(pricing["commission_pct"]),
         commission_minor=charge.commission_minor,
@@ -696,8 +703,9 @@ async def request_extension(
                     {"total_minor": ext_quote.additional_total_minor},
                 )
             surcharge = Decimal(pricing["extension_surcharge_pct"])
+            rate = billed_pricing(pricing)["hourly_rate_minor"]
             charge = extension_charge(
-                pricing["hourly_rate_minor"],
+                rate,
                 body.extra_minutes,
                 surcharge_pct=surcharge,
                 commission_pct=Decimal(pricing["commission_pct"]),
@@ -711,7 +719,7 @@ async def request_extension(
                         shift_id=shift_id,
                         assignment_id=assignment["id"],
                         extra_minutes=body.extra_minutes,
-                        hourly_rate_minor=pricing["hourly_rate_minor"],
+                        hourly_rate_minor=rate,
                         surcharge_pct=surcharge,
                         extension_rate_minor=ext_quote.extension_rate_minor,
                         commission_pct=Decimal(pricing["commission_pct"]),
@@ -817,4 +825,39 @@ async def reissue_completion_code(
             await _owned_booking(conn, user, shift_id)
             current = await _seat_for_action(conn, shift_id, assignment_id, (ASG_CHECKED_IN,))
             await completion_codes.reissue(conn, current["id"], shift_id)
+        return await build_business_state(conn, shift_id, utc_now())
+
+
+async def retry_search(
+    user: AuthenticatedUser, shift_id: UUID, body: LiveRetryRequest
+) -> BusinessLiveBooking:
+    """Nobody accepted: add to the pay and search again. Only the first payment is collected;
+    the extra pay is billed with the final bill."""
+    now = utc_now()
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            await _owned_booking(conn, user, shift_id)
+            shift = await shift_repository.lock_shift(conn, shift_id)
+            pricing = await live_work_repository.get_booking_pricing(conn, shift_id)
+            options = list(pricing["boost_options_minor"])
+            if body.boost_minor not in options:
+                choices = ", ".join(f"₹{amount / 100:g}" for amount in options)
+                raise field_errors({"boost_minor": f"Choose one of {choices}."})
+            offer = pricing["retry_offer_expires_at"]
+            if (
+                shift["status"] != SHIFT_EXPIRED
+                or offer is None
+                or offer <= now
+                or pricing["search_round"] >= pricing["max_search_rounds"]
+            ):
+                raise live_work_core.state_error({"stage": shift["status"]})
+            await live_work_repository.apply_search_boost(conn, shift_id, body.boost_minor)
+            await live_work_core.restart_search(
+                conn,
+                shift,
+                await live_work_repository.get_booking_pricing(conn, shift_id),
+                now,
+                user.user_id,
+                "live_work_search_retried",
+            )
         return await build_business_state(conn, shift_id, utc_now())

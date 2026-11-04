@@ -13,8 +13,9 @@ import asyncpg
 import httpx
 
 from app.db.pool import get_pool
+from app.services.attendance.attendance_service import close_missed_shifts
 from app.services.shifts.shift_sweeps import release_unfilled_seats
-from tests.integration.conftest import pay_deposit
+from tests.integration.conftest import NEAR_LAT, NEAR_LNG, pay_deposit
 
 API = "/api/v1"
 BOOKING = 54000
@@ -182,6 +183,36 @@ async def test_free_business_cancel_keeps_only_gateway(  # type: ignore[no-untyp
     assert preview["business_refund_minor"] == SEAT_TOTAL - GATEWAY
 
 
+async def test_sweep_marks_ended_bookings_without_check_in_as_no_show(  # type: ignore[no-untyped-def]
+    app_client, db, make_business, make_worker
+) -> None:
+    business = await make_business()
+    missed = await make_worker("Missed Worker", online=False)
+    running = await make_worker("Running Worker", online=False)
+    stale = await make_worker("Stale Worker", online=False)
+    _, (stale_id,) = await _booked_shift(
+        app_client, db, business, [stale], starts_in=timedelta(days=-3)
+    )
+    _, (missed_id,) = await _booked_shift(
+        app_client, db, business, [missed], starts_in=timedelta(hours=-6)
+    )
+    _, (running_id,) = await _booked_shift(
+        app_client, db, business, [running], starts_in=timedelta(hours=-1)
+    )
+
+    assert await close_missed_shifts(get_pool()) >= 1
+
+    status = "SELECT status FROM shift_assignments WHERE id = $1"
+    assert await db.fetchval(status, UUID(missed_id)) == "no_show"
+    assert await db.fetchval(status, UUID(running_id)) == "confirmed"
+    # Older than the 24-hour lookback: left for review, never fined or struck automatically.
+    assert await db.fetchval(status, UUID(stale_id)) == "confirmed"
+    assert await _balance(app_client, stale) == 0
+    assert await _balance(app_client, missed) == -(BOOKING // 2)
+    assert await _vouchers(db, business) == 1
+    assert await close_missed_shifts(get_pool()) == 0
+
+
 async def test_no_show_fee_strikes_and_ban(  # type: ignore[no-untyped-def]
     app_client, db, make_business, make_worker
 ) -> None:
@@ -222,6 +253,20 @@ async def test_no_show_fee_strikes_and_ban(  # type: ignore[no-untyped-def]
         headers=business.headers,
     )
     await pay_deposit(app_client, business, other.json()["id"])
+    feed = await app_client.get(
+        f"{API}/worker/feed",
+        params={"lat": NEAR_LAT, "lng": NEAR_LNG},
+        headers=worker.headers,
+    )
+    assert feed.status_code == 200, feed.text
+    assert feed.json()["items"] == []
+    peer = await make_worker("Peer Worker", online=False)
+    peer_feed = await app_client.get(
+        f"{API}/worker/feed",
+        params={"lat": NEAR_LAT, "lng": NEAR_LNG},
+        headers=peer.headers,
+    )
+    assert other.json()["id"] in {item["id"] for item in peer_feed.json()["items"]}
     blocked = await app_client.post(
         f"{API}/worker/shifts/{other.json()['id']}/applications", json={}, headers=worker.headers
     )

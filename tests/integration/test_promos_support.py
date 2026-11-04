@@ -255,3 +255,65 @@ async def test_emergency_ticket_and_admin_overrides(  # type: ignore[no-untyped-
         "revoke_voucher",
         "waive_worker_fee",
     ]
+
+
+async def test_banned_worker_sees_the_hold_and_admin_unban_restores_access(  # type: ignore[no-untyped-def]
+    app_client, db, make_business, make_worker
+) -> None:
+    business = await make_business()
+    worker = await make_worker("Held Worker", online=False)
+    admin = await _admin(app_client, db)
+    _, (assignment_id,) = await _booked_shift(
+        app_client, db, business, [worker], starts_in=timedelta(hours=-1)
+    )
+    await db.execute(
+        "INSERT INTO worker_strikes (worker_profile_id, weight, reason, expires_at) "
+        "VALUES ($1, 2.5, 'seed', now() + interval '30 days')",
+        worker.profile_id,
+    )
+    marked = await app_client.post(
+        f"{API}/business/assignments/{assignment_id}/no-show", headers=business.headers
+    )
+    assert marked.status_code == 200, marked.text
+
+    profile = (await app_client.get(f"{API}/me/profile", headers=worker.headers)).json()
+    assert profile["worker"]["banned_at"] is not None
+
+    hidden = await app_client.get(f"{API}/admin/workers/restricted", headers=business.headers)
+    assert hidden.status_code == 403, hidden.text
+    listed = await app_client.get(f"{API}/admin/workers/restricted", headers=admin.headers)
+    assert listed.status_code == 200, listed.text
+    row = next(r for r in listed.json() if r["worker_profile_id"] == str(worker.profile_id))
+    assert row["banned_at"] is not None
+    assert row["active_strikes"] == 3.5
+
+    unbanned = await app_client.post(
+        f"{API}/admin/bookings/{assignment_id}/overrides",
+        json={"action": "unban_worker", "reason": "Reviewed: the no-show was a mix-up"},
+        headers=admin.headers,
+    )
+    assert unbanned.status_code == 201, unbanned.text
+    profile = (await app_client.get(f"{API}/me/profile", headers=worker.headers)).json()
+    assert profile["worker"]["banned_at"] is None
+    assert profile["worker"]["feed_limited_until"] is None
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM worker_strikes WHERE worker_profile_id = $1 "
+            "AND voided_at IS NULL",
+            worker.profile_id,
+        )
+        == 0
+    )
+    assert await db.fetchval(
+        "SELECT count(*) FROM notifications WHERE user_id = $1 AND title = $2",
+        worker.user_id,
+        "Your account is active again",
+    )
+    listed = await app_client.get(f"{API}/admin/workers/restricted", headers=admin.headers)
+    assert str(worker.profile_id) not in {r["worker_profile_id"] for r in listed.json()}
+    again = await app_client.post(
+        f"{API}/admin/bookings/{assignment_id}/overrides",
+        json={"action": "unban_worker", "reason": "Reviewed: the no-show was a mix-up"},
+        headers=admin.headers,
+    )
+    assert again.status_code == 409, again.text
