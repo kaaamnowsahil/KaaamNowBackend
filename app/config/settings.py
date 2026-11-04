@@ -72,6 +72,8 @@ class KaaamNowSettings(BaseSettings):
     # Serverless hosts (Vercel) freeze idle processes, so the sweep runs inline on
     # incoming requests at most once per interval instead of in a background loop.
     request_sweep_enabled: bool
+    # Unset: interactive API docs are served everywhere except production.
+    api_docs_enabled: bool | None = None
 
     # --- Database ---
     database_url: str
@@ -229,6 +231,12 @@ class KaaamNowSettings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.env_profile == ENV_PROFILE_PROD
+
+    @property
+    def docs_enabled(self) -> bool:
+        if self.api_docs_enabled is not None:
+            return self.api_docs_enabled
+        return not self.is_production
 
     @property
     def razorpay_key_allowed(self) -> bool:

@@ -13,6 +13,7 @@ from app.exceptions.exception_handlers import register_exception_handlers
 from app.lifespan import api_lifespan
 from app.middleware.cors_setup import configure_cors
 from app.middleware.request_context import RequestContextMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.observability.logging import configure_application_logging
 from app.router import register_routes
 from app.services.background.background_sweep_loop import RequestSweepMiddleware
@@ -22,14 +23,19 @@ from app.services.users.sources.photo_storage import media_root, uses_local_medi
 def create_kaaamnow_api_application() -> FastAPI:
     configure_application_logging()
     settings = load_settings()
+    docs = settings.docs_enabled
     app = FastAPI(
         title=APP_TITLE,
         version=settings.app_version,
         lifespan=api_lifespan,
         swagger_ui_parameters={"persistAuthorization": True},
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
     )
     if settings.request_sweep_enabled:
         app.add_middleware(RequestSweepMiddleware, settings.background_sweep_interval_seconds)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
     configure_cors(app, settings)
     register_exception_handlers(app)

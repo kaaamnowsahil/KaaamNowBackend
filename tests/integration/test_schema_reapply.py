@@ -3,8 +3,11 @@ write; an unchanged schema is not re-applied."""
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
+from app.db.advisory_locks import SWEEP_ADVISORY_LOCK_KEY
 from app.db.bootstrap import bootstrap_database
 from app.db.pool import get_pool
 
@@ -39,6 +42,17 @@ async def test_reboot_keeps_working_with_every_ledger_entry_type(
         await db.execute(
             "DELETE FROM earning_ledger_entries WHERE worker_profile_id = $1", worker.profile_id
         )
+
+
+async def test_schema_waits_for_a_running_sweep(db) -> None:  # type: ignore[no-untyped-def]
+    assert await db.fetchval("SELECT pg_try_advisory_lock($1)", SWEEP_ADVISORY_LOCK_KEY)
+    try:
+        boot = asyncio.create_task(bootstrap_database(get_pool(), force=True))
+        await asyncio.sleep(0.5)
+        assert not boot.done()
+    finally:
+        await db.execute("SELECT pg_advisory_unlock($1)", SWEEP_ADVISORY_LOCK_KEY)
+    await asyncio.wait_for(boot, timeout=30)
 
 
 async def test_unchanged_schema_is_not_reapplied(db) -> None:  # type: ignore[no-untyped-def]

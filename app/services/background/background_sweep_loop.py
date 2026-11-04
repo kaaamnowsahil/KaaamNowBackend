@@ -15,12 +15,11 @@ from collections.abc import Awaitable, Callable
 import asyncpg
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.db.advisory_locks import SWEEP_ADVISORY_LOCK_KEY
 from app.db.pool import get_pool
 from app.observability.logging import get_logger, log_extra
 
 log = get_logger(__name__)
-
-_SWEEP_ADVISORY_LOCK_KEY = 7_420_002
 
 SweepJob = Callable[[asyncpg.Pool], Awaitable[int]]
 
@@ -90,7 +89,7 @@ async def run_sweep_once(pool: asyncpg.Pool) -> dict[str, int]:
 async def run_locked_sweep(pool: asyncpg.Pool) -> None:
     """Run one sweep unless another replica holds the sweep lock."""
     async with pool.acquire() as conn:
-        locked = await conn.fetchval("SELECT pg_try_advisory_lock($1)", _SWEEP_ADVISORY_LOCK_KEY)
+        locked = await conn.fetchval("SELECT pg_try_advisory_lock($1)", SWEEP_ADVISORY_LOCK_KEY)
         if not locked:
             return
         try:
@@ -100,7 +99,7 @@ async def run_locked_sweep(pool: asyncpg.Pool) -> None:
                 log.info("sweep", extra=log_extra(**changed))
         finally:
             try:
-                await conn.execute("SELECT pg_advisory_unlock($1)", _SWEEP_ADVISORY_LOCK_KEY)
+                await conn.execute("SELECT pg_advisory_unlock($1)", SWEEP_ADVISORY_LOCK_KEY)
             except BaseException:
                 # Pooled connections are not reset on release: never return one holding the lock.
                 conn.terminate()
