@@ -22,7 +22,10 @@ router = APIRouter(tags=[OPENAPI_TAG_HEALTH])
 @router.get(PATH_ROOT, summary=swagger_summary("Service info", SWAGGER_ROLE_PUBLIC))
 async def root() -> dict[str, str]:
     settings = load_settings()
-    return {"service": APP_TITLE, "version": settings.app_version, "docs": "/docs"}
+    info = {"service": APP_TITLE, "version": settings.app_version}
+    if settings.docs_enabled:
+        info["docs"] = "/docs"
+    return info
 
 
 @router.get(PATH_HEALTH, summary=swagger_summary("Health check", SWAGGER_ROLE_PUBLIC))

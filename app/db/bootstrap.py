@@ -8,14 +8,12 @@ from pathlib import Path
 import asyncpg
 
 from app.constants.application.application_constants import LOG_DATABASE_BOOTSTRAP_COMPLETE
+from app.db.advisory_locks import BOOTSTRAP_ADVISORY_LOCK_KEY, SWEEP_ADVISORY_LOCK_KEY
 from app.db.schema_apply_order import SCHEMA_SQL_RELATIVE_PATHS
 from app.observability.logging import get_logger, log_extra
 from app.paths import SEED_SQL, SQL_DIR
 
 log = get_logger(__name__)
-
-# Serialises concurrent boots (several API replicas starting at once).
-_BOOTSTRAP_ADVISORY_LOCK_KEY = 7_420_001
 
 
 async def _execute_sql_file(conn: asyncpg.Connection, path: Path) -> None:
@@ -70,7 +68,10 @@ async def bootstrap_database(pool: asyncpg.Pool, *, force: bool = False) -> None
             log.info(LOG_DATABASE_BOOTSTRAP_COMPLETE, extra=log_extra(files=0, unchanged=True))
             return
         async with conn.transaction():
-            await conn.execute("SELECT pg_advisory_xact_lock($1)", _BOOTSTRAP_ADVISORY_LOCK_KEY)
+            await conn.execute("SELECT pg_advisory_xact_lock($1)", BOOTSTRAP_ADVISORY_LOCK_KEY)
+            # Instances still running the previous deploy keep sweeping; waiting for their
+            # sweep (and blocking new ones) avoids deadlocks between sweep queries and DDL.
+            await conn.execute("SELECT pg_advisory_xact_lock($1)", SWEEP_ADVISORY_LOCK_KEY)
             for path in files:
                 await _execute_sql_file(conn, path)
             await conn.execute(_STATE_TABLE)

@@ -77,6 +77,33 @@ async def test_device_removal_is_owner_only(app_client: httpx.AsyncClient) -> No
     assert removed.status_code == 204
 
 
+async def test_notifications_are_private_to_their_owner(
+    app_client: httpx.AsyncClient, db: asyncpg.Connection
+) -> None:
+    owner = await login(app_client)
+    other = await login(app_client)
+    notification_id = await _notify(db, owner.user_id)
+
+    listed = await app_client.get("/api/v1/notifications", headers=other.headers)
+    assert all(item["id"] != str(notification_id) for item in listed.json()["items"])
+    stolen = await app_client.post(
+        f"/api/v1/notifications/{notification_id}/read", headers=other.headers
+    )
+    assert stolen.status_code == 404
+    await app_client.post("/api/v1/notifications/read-all", headers=other.headers)
+    assert (
+        await db.fetchval("SELECT read_at FROM notifications WHERE id = $1", notification_id)
+        is None
+    )
+
+    mine = await app_client.get("/api/v1/notifications", headers=owner.headers)
+    assert any(item["id"] == str(notification_id) for item in mine.json()["items"])
+    read = await app_client.post(
+        f"/api/v1/notifications/{notification_id}/read", headers=owner.headers
+    )
+    assert read.status_code == 200
+
+
 async def test_token_moves_to_the_account_that_registers_it_last(
     app_client: httpx.AsyncClient, db: asyncpg.Connection
 ) -> None:
