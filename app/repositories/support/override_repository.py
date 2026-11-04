@@ -70,6 +70,24 @@ WHERE assignment_id = $1 AND voided_at IS NULL
 RETURNING worker_profile_id
 """
 
+VOID_WORKER_STRIKES = """
+UPDATE worker_strikes SET voided_at = $2, voided_by_user_id = $3, void_reason = $4
+WHERE worker_profile_id = $1 AND voided_at IS NULL AND expires_at > $2
+"""
+
+LIST_RESTRICTED_WORKERS = """
+SELECT wp.id AS worker_profile_id, wp.user_id, u.full_name, u.phone, wp.banned_at,
+       wp.feed_limited_until,
+       (SELECT COALESCE(SUM(st.weight), 0) FROM worker_strikes st
+        WHERE st.worker_profile_id = wp.id AND st.voided_at IS NULL
+          AND st.expires_at > $1)::float8 AS active_strikes
+FROM worker_profiles wp
+JOIN users u ON u.id = wp.user_id
+WHERE wp.banned_at IS NOT NULL OR wp.feed_limited_until > $1
+ORDER BY wp.banned_at IS NULL, COALESCE(wp.banned_at, wp.feed_limited_until) DESC
+LIMIT $2
+"""
+
 LIFT_RESTRICTIONS = """
 UPDATE worker_profiles SET
     banned_at = CASE WHEN $2 THEN NULL ELSE banned_at END,
@@ -139,6 +157,18 @@ async def void_strike(
     conn: asyncpg.Connection, assignment_id: UUID, *, now: datetime, admin_id: UUID, reason: str
 ) -> UUID | None:
     return await conn.fetchval(VOID_STRIKE, assignment_id, now, admin_id, reason)
+
+
+async def void_worker_strikes(
+    conn: asyncpg.Connection, worker_profile_id: UUID, *, now: datetime, admin_id: UUID, reason: str
+) -> None:
+    await conn.execute(VOID_WORKER_STRIKES, worker_profile_id, now, admin_id, reason)
+
+
+async def list_restricted_workers(
+    conn: asyncpg.Connection, now: datetime, limit: int
+) -> list[asyncpg.Record]:
+    return await conn.fetch(LIST_RESTRICTED_WORKERS, now, limit)
 
 
 async def lift_restrictions(

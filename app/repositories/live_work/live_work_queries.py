@@ -13,9 +13,10 @@ DEACTIVATE_SETTINGS = "UPDATE live_pricing_settings SET is_active = false WHERE 
 INSERT_SETTINGS = """
 INSERT INTO live_pricing_settings (
     version, commission_pct, tax_pct, tax_label, tax_base, extension_surcharge_pct, is_active,
-    effective_from, changed_by_user_id, changed_by_label, notes
+    effective_from, changed_by_user_id, changed_by_label, notes, search_timeout_minutes,
+    max_search_rounds, retry_choice_minutes, boost_options_minor
 )
-VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *
 """
 INSERT_AUDIT = """
@@ -45,7 +46,17 @@ VALUES (
     $21, $22, $23, $24, $25
 )
 """
-GET_BOOKING_PRICING = "SELECT * FROM live_booking_pricing WHERE shift_id = $1"
+# The search + retry rules come from the settings version the booking was priced with.
+_SEARCH_RULES = (
+    "ls.search_timeout_minutes, ls.max_search_rounds, ls.retry_choice_minutes, "
+    "ls.boost_options_minor"
+)
+GET_BOOKING_PRICING = f"""
+SELECT p.*, {_SEARCH_RULES}
+FROM live_booking_pricing p
+JOIN live_pricing_settings ls ON ls.version = p.settings_version
+WHERE p.shift_id = $1
+"""
 FIND_BOOKING_BY_IDEMPOTENCY = """
 SELECT shift_id FROM live_booking_pricing WHERE business_profile_id = $1 AND idempotency_key = $2
 """
@@ -66,7 +77,7 @@ UPDATE shifts SET status = 'searching', starts_at = $2, ends_at = $3, search_rad
 WHERE id = $1
 """
 
-_BOOKING_SELECT = """
+_BOOKING_SELECT = f"""
 SELECT s.id AS shift_id, s.status AS shift_status, s.job_title, s.responsibilities,
        s.address_text, s.latitude, s.longitude, s.arrival_instructions, s.site_contact_name,
        s.workplace_name, s.starts_at, s.ends_at, s.search_started_at, s.search_expires_at,
@@ -79,12 +90,15 @@ SELECT s.id AS shift_id, s.status AS shift_status, s.job_title, s.responsibiliti
        p.taxable_minor, p.tax_minor, p.total_minor, p.worker_commission_minor,
        p.worker_net_minor, p.extension_surcharge_pct, p.promo_code, p.promo_discount_minor,
        p.pricing_mode, p.task_price_minor, p.workers_required,
+       p.boost_minor, p.search_round, p.retry_offer_expires_at,
+       {_SEARCH_RULES},
        s.workers_required AS open_seats,
        (SELECT count(*) FROM shift_assignments sa
         WHERE sa.shift_id = s.id AND sa.status <> 'cancelled')::int AS workers_filled
 FROM live_booking_pricing p
 JOIN shifts s ON s.id = p.shift_id
 JOIN business_profiles bp ON bp.id = s.business_profile_id
+JOIN live_pricing_settings ls ON ls.version = p.settings_version
 LEFT JOIN work_categories wc ON wc.id = s.category_id
 """
 GET_BOOKING = f"{_BOOKING_SELECT} WHERE p.shift_id = $1"
@@ -92,7 +106,8 @@ LIST_BUSINESS_BOOKINGS = f"""
 {_BOOKING_SELECT}
 WHERE s.business_profile_id = ANY($1::uuid[])
   AND ($2::boolean IS FALSE OR s.status IN ('awaiting_payment', 'searching', 'filled',
-                                             'in_progress'))
+                                             'in_progress')
+       OR (s.status = 'expired' AND p.retry_offer_expires_at > now()))
 ORDER BY s.created_at DESC
 LIMIT $3 OFFSET $4
 """
@@ -111,7 +126,7 @@ ORDER BY (a.status = 'cancelled'), a.confirmed_at DESC
 LIMIT 1
 """
 # Every seat of the booking: active first, then finished, then cancelled.
-LIST_ASSIGNMENTS = """
+_ASSIGNMENTS_SELECT = """
 SELECT a.*, wp.user_id AS worker_user_id, u.full_name, u.photo_url, wp.rating_avg,
        wp.rating_count, wp.completed_shift_count, wp.verification_status,
        ar.checked_in_at, ar.checked_out_at, ar.recorded_minutes, ar.approved_minutes
@@ -119,11 +134,16 @@ FROM shift_assignments a
 JOIN worker_profiles wp ON wp.id = a.worker_profile_id
 JOIN users u ON u.id = wp.user_id
 LEFT JOIN attendance_records ar ON ar.assignment_id = a.id
-WHERE a.shift_id = $1
+"""
+_ASSIGNMENTS_ORDER = """
 ORDER BY CASE WHEN a.status IN ('confirmed', 'en_route', 'checked_in') THEN 0
               WHEN a.status = 'cancelled' THEN 2 ELSE 1 END,
          a.confirmed_at
 """
+LIST_ASSIGNMENTS = f"{_ASSIGNMENTS_SELECT} WHERE a.shift_id = $1 {_ASSIGNMENTS_ORDER}"
+LIST_ASSIGNMENTS_FOR_SHIFTS = (
+    f"{_ASSIGNMENTS_SELECT} WHERE a.shift_id = ANY($1::uuid[]) {_ASSIGNMENTS_ORDER}"
+)
 GET_WORKER_ACTIVE_ASSIGNMENT = """
 SELECT a.id FROM shift_assignments a
 JOIN live_booking_pricing p ON p.shift_id = a.shift_id
@@ -249,6 +269,9 @@ GET_EXTENSION = "SELECT * FROM live_extensions WHERE id = $1"
 LOCK_EXTENSION = "SELECT * FROM live_extensions WHERE id = $1 FOR UPDATE"
 LOCK_EXTENSION_BY_INVOICE = "SELECT * FROM live_extensions WHERE invoice_id = $1 FOR UPDATE"
 LIST_EXTENSIONS = "SELECT * FROM live_extensions WHERE shift_id = $1 ORDER BY requested_at"
+LIST_EXTENSIONS_FOR_SHIFTS = """
+SELECT * FROM live_extensions WHERE shift_id = ANY($1::uuid[]) ORDER BY requested_at
+"""
 SET_EXTENSION_STATUS = """
 UPDATE live_extensions SET status = $2::varchar,
     responded_at = CASE WHEN $2::varchar IN ('awaiting_payment', 'declined') THEN $3
@@ -286,6 +309,9 @@ RETURNING id
 LIST_SHIFT_INVOICES = """
 SELECT * FROM shift_invoices WHERE shift_id = $1 ORDER BY issued_at, created_at
 """
+LIST_INVOICES_FOR_SHIFTS = """
+SELECT * FROM shift_invoices WHERE shift_id = ANY($1::uuid[]) ORDER BY issued_at, created_at
+"""
 GET_SUCCEEDED_PAYMENT = """
 SELECT * FROM payments WHERE invoice_id = $1 AND status = 'succeeded'
 """
@@ -306,6 +332,9 @@ ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING id
 """
 LIST_REFUNDS = "SELECT * FROM live_refunds WHERE shift_id = $1 ORDER BY created_at"
+LIST_REFUNDS_FOR_SHIFTS = """
+SELECT * FROM live_refunds WHERE shift_id = ANY($1::uuid[]) ORDER BY created_at
+"""
 REFUND_AMOUNT = "SELECT amount_minor FROM live_refunds WHERE id = $1"
 SUM_PAYMENT_REFUNDS = """
 SELECT COALESCE(SUM(amount_minor), 0) FROM live_refunds WHERE payment_id = $1
@@ -393,3 +422,36 @@ LIMIT $2 OFFSET $3
 ADMIN_COUNT_REFUNDS = "SELECT count(*) FROM live_refunds WHERE ($1::text IS NULL OR status = $1)"
 ADMIN_LIST_SHIFT_REFUNDS = f"{_ADMIN_REFUND_SELECT} WHERE r.shift_id = $1 ORDER BY r.created_at"
 ADMIN_GET_REFUND = f"{_ADMIN_REFUND_SELECT} WHERE r.id = $1"
+
+SET_RETRY_OFFER = """
+UPDATE live_booking_pricing SET retry_offer_expires_at = $2 WHERE shift_id = $1
+"""
+APPLY_SEARCH_BOOST = """
+UPDATE live_booking_pricing
+SET boost_minor = boost_minor + $2, search_round = search_round + 1, retry_offer_expires_at = NULL
+WHERE shift_id = $1
+"""
+BOOST_SHIFT_PAY = """
+UPDATE shifts
+SET hourly_rate_minor = CASE WHEN pricing_mode = 'task' THEN hourly_rate_minor
+                             ELSE hourly_rate_minor + $2 END,
+    task_price_minor = CASE WHEN pricing_mode = 'task' THEN task_price_minor + $2
+                            ELSE task_price_minor END,
+    updated_at = now()
+WHERE id = $1
+"""
+LIST_EXPIRED_RETRY_OFFERS = """
+SELECT p.shift_id FROM live_booking_pricing p
+JOIN shifts s ON s.id = p.shift_id
+WHERE p.retry_offer_expires_at IS NOT NULL AND p.retry_offer_expires_at <= $1
+  AND s.status = 'expired'
+"""
+
+RESET_UNTAKEN_DISPATCHES = """
+DELETE FROM live_dispatches d
+WHERE d.shift_id = $1 AND d.status <> 'accepted'
+  AND NOT EXISTS (
+      SELECT 1 FROM shift_assignments a
+      WHERE a.shift_id = d.shift_id AND a.worker_profile_id = d.worker_profile_id
+  )
+"""

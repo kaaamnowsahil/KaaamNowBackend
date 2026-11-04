@@ -1,11 +1,12 @@
-"""Live column metadata for registered admin resources (cached, short TTL).
+"""Live column metadata for registered admin resources (cached).
 
 A resource is only exposed when its table exists, and only columns that exist in
-``information_schema`` are ever read or written.
+the database catalog are ever read or written.
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import Final
@@ -135,6 +136,20 @@ class ResolvedResource:
 
 _cache: dict[str, dict[str, ColumnInfo]] = {}
 _loaded_at: float = 0.0
+_refresh_locks: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+
+
+def _refresh_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _refresh_locks.get(loop)
+    if lock is None:
+        _refresh_locks.clear()
+        lock = _refresh_locks[loop] = asyncio.Lock()
+    return lock
+
+
+def _stale() -> bool:
+    return not _cache or time.monotonic() - _loaded_at > SCHEMA_CACHE_TTL_SECONDS
 
 
 async def _refresh() -> None:
@@ -156,14 +171,16 @@ async def _refresh() -> None:
 
 
 async def _tables() -> dict[str, dict[str, ColumnInfo]]:
-    if not _cache or time.monotonic() - _loaded_at > SCHEMA_CACHE_TTL_SECONDS:
-        await _refresh()
+    if _stale():
+        async with _refresh_lock():
+            if _stale():
+                await _refresh()
     return _cache
 
 
 def invalidate_schema_cache() -> None:
     global _loaded_at
-    _loaded_at = 0.0
+    _loaded_at = float("-inf")
 
 
 async def resolve(name: str) -> ResolvedResource | None:

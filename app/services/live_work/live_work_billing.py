@@ -30,7 +30,7 @@ from app.constants.shifts.shift_route_strings import PRICING_TASK
 from app.repositories.billing import billing_repository
 from app.repositories.live_work import live_work_repository
 from app.services.billing.settlement import release_invoice_earnings
-from app.services.live_work.live_pricing import LiveCharge, taxable_amount
+from app.services.live_work.live_pricing import LiveCharge, billed_pricing, taxable_amount
 from app.services.live_work.live_pricing_settings_service import tax_base_description
 from app.utils.references import INVOICE_REFERENCE_PREFIX, new_reference
 
@@ -279,6 +279,7 @@ async def create_final_invoice(
     """Final bill against what was already paid. Releases worker earnings when covered."""
     refund_due = max(paid_minor - charge.total_minor, 0)
     settled = charge.total_minor <= paid_minor
+    billed = billed_pricing(pricing)
     invoice_id = await _insert(
         conn,
         pricing,
@@ -289,7 +290,7 @@ async def create_final_invoice(
             assignment_id,
             description,
             minutes,
-            pricing["task_price_minor"] if _is_task(pricing) else pricing["hourly_rate_minor"],
+            billed["task_price_minor"] if _is_task(pricing) else billed["hourly_rate_minor"],
         ),
         now=now,
         deposit_applied=paid_minor,

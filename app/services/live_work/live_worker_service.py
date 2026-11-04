@@ -43,6 +43,7 @@ from app.security.authenticated_user import AuthenticatedUser
 from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.live_work import live_refund_service, live_work_billing, live_work_core
+from app.services.live_work.live_pricing import billed_pricing
 from app.services.live_work.live_work_service import cancel_preview_view
 from app.services.live_work.live_work_views import build_worker_state, cancel_reason
 from app.services.notifications.notification_service import notify
@@ -86,7 +87,9 @@ async def list_requests(user: AuthenticatedUser) -> list[WorkerLiveRequest]:
         for offer in await live_work_repository.list_open_offers_for_worker(
             conn, worker["id"], now
         ):
-            booking = await live_work_repository.get_booking(conn, offer["shift_id"])
+            booking = billed_pricing(
+                await live_work_repository.get_booking(conn, offer["shift_id"])
+            )
             items.append(
                 WorkerLiveRequest(
                     booking_id=offer["shift_id"],

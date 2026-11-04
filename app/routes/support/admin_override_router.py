@@ -12,6 +12,7 @@ from app.constants.support.support_route_strings import (
     OPENAPI_TAG_ADMIN_SUPPORT,
     PATH_BOOKING_LEDGER,
     PATH_BOOKING_OVERRIDES,
+    PATH_RESTRICTED_WORKERS,
     PATH_SUPPORT_TICKET_STATUS,
 )
 from app.dependencies import RequireVerificationRead, RequireVerificationWrite
@@ -19,6 +20,7 @@ from app.schemas.support.support_schemas import (
     BookingLedger,
     OverrideRequest,
     OverrideView,
+    RestrictedWorker,
     SupportTicketStatusUpdate,
     SupportTicketView,
 )
@@ -46,6 +48,15 @@ async def apply_override(
     assignment_id: UUID, body: OverrideRequest, admin: RequireVerificationWrite
 ) -> OverrideView:
     return await override_service.apply_override(admin, assignment_id, body)
+
+
+@router.get(
+    PATH_RESTRICTED_WORKERS,
+    response_model=list[RestrictedWorker],
+    summary=swagger_summary("Banned or limited workers", SWAGGER_ROLE_ADMIN),
+)
+async def restricted_workers(_: RequireVerificationRead) -> list[RestrictedWorker]:
+    return await override_service.list_restricted_workers()
 
 
 @router.post(

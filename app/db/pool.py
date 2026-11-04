@@ -38,6 +38,14 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
         )
 
 
+async def _keep_session(conn: asyncpg.Connection) -> None:
+    """Release hook. asyncpg has already rolled back any open transaction and dropped listeners;
+    the default server-side reset (RESET ALL, advisory unlock, UNLISTEN) would cost one more
+    round trip per request. Pooled connections never change session settings, and the one
+    session-level advisory lock (background sweep) is released or the connection terminated."""
+    return None
+
+
 async def create_pool(dsn: str | None = None) -> asyncpg.Pool:
     global _pool
     if _pool is not None:
@@ -52,6 +60,7 @@ async def create_pool(dsn: str | None = None) -> asyncpg.Pool:
         timeout=settings.db_connect_timeout_seconds,
         max_inactive_connection_lifetime=settings.db_max_idle_seconds,
         init=_init_connection,
+        reset=_keep_session,
     )
     log.info(LOG_DATABASE_CONNECTED, extra=log_extra(dsn=redact_database_url(target)))
     return _pool

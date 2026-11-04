@@ -41,6 +41,7 @@ from app.repositories.shifts.shift_queries import (
     SET_SHIFT_WINDOW,
     UPDATE_DRAFT_SHIFT,
     WORKER_HAS_OVERLAP,
+    WORKER_MATCHES_CATEGORY,
 )
 from app.utils.money import FeeRates
 
@@ -394,6 +395,12 @@ async def list_my_application_shifts(
     return await conn.fetch(
         MY_APPLICATION_SHIFTS, worker_profile_id, latitude, longitude, statuses, limit, offset
     )
+
+
+async def worker_matches_category(
+    conn: asyncpg.Connection, worker_profile_id: UUID, category_id: UUID
+) -> bool:
+    return bool(await conn.fetchval(WORKER_MATCHES_CATEGORY, worker_profile_id, category_id))
 
 
 async def worker_has_overlap(

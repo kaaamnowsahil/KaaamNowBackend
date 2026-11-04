@@ -209,6 +209,9 @@ MSG_ALREADY_BOOKED: Final[str] = "You are already booked on this shift."
 MSG_OVERLAPPING_SHIFT: Final[str] = "You already have a shift at this time."
 MSG_WORKER_UNAVAILABLE: Final[str] = "This worker is already booked for another shift at this time."
 MSG_TOO_FAR_FROM_SHIFT: Final[str] = "You are outside this shift's search radius."
+MSG_CATEGORY_MISMATCH: Final[str] = (
+    "This work is not in your work categories. Add it to your profile to take this shift."
+)
 MSG_SHIFT_BEYOND_MAX_DISTANCE: Final[str] = (
     "You're too far from this shift (more than {km:g} km). Try finding shifts nearby."
 )

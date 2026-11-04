@@ -24,6 +24,7 @@ from app.repositories.shifts.assignment_queries import (
     LIST_EXTENSION_PROMPTS_DUE,
     LIST_EXTENSIONS,
     LIST_MESSAGES,
+    LIST_MISSED_SCHEDULED,
     LIST_ROSTER,
     LIST_SHIFT_ASSIGNMENTS,
     LIST_WORKER_USER_IDS_FOR_SHIFT,
@@ -233,3 +234,11 @@ async def mark_extension_prompted(
     conn: asyncpg.Connection, assignment_ids: list[UUID], now: datetime
 ) -> None:
     await conn.execute(MARK_EXTENSION_PROMPTED, assignment_ids, now)
+
+
+async def list_missed_scheduled(
+    conn: asyncpg.Connection, ended_before: datetime, ended_after: datetime, limit: int
+) -> list[UUID]:
+    """Scheduled bookings still booked after the shift ended: nobody checked in."""
+    rows = await conn.fetch(LIST_MISSED_SCHEDULED, ended_before, limit, ended_after)
+    return [row["id"] for row in rows]

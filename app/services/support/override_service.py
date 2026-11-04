@@ -21,6 +21,7 @@ from app.constants.support.support_route_strings import (
     MSG_NOTHING_TO_WAIVE,
     MSG_REFUND_AMOUNT,
     MSG_WORKER_NOT_RESTRICTED,
+    RESTRICTED_WORKERS_LIMIT,
     WAIVABLE_ENTRY_TYPES,
 )
 from app.db.pool import get_pool
@@ -32,6 +33,7 @@ from app.schemas.support.support_schemas import (
     LedgerLine,
     OverrideRequest,
     OverrideView,
+    RestrictedWorker,
 )
 from app.security.authenticated_user import AuthenticatedUser
 from app.services.cancellations import cancellation_service
@@ -195,6 +197,35 @@ async def _refund_business(
     return amount
 
 
+async def _unban_worker(
+    conn: asyncpg.Connection, booking: asyncpg.Record, admin: AuthenticatedUser, reason: str
+) -> None:
+    """Lift the hold and clear the active strikes, so the next strike doesn't re-ban at once."""
+    if not await override_repository.lift_restrictions(
+        conn, booking["worker_profile_id"], unban=True, unlimit=True
+    ):
+        raise conflict("worker_not_restricted", MSG_WORKER_NOT_RESTRICTED)
+    await override_repository.void_worker_strikes(
+        conn, booking["worker_profile_id"], now=utc_now(), admin_id=admin.user_id, reason=reason
+    )
+    await notify(
+        conn,
+        booking["worker_user_id"],
+        KIND_BOOKING_ADJUSTED,
+        "Your account is active again",
+        "Support reviewed your account. You can find and accept shifts again.",
+        {"worker_profile_id": booking["worker_profile_id"]},
+    )
+
+
+async def list_restricted_workers() -> list[RestrictedWorker]:
+    async with get_pool().acquire() as conn:
+        rows = await override_repository.list_restricted_workers(
+            conn, utc_now(), RESTRICTED_WORKERS_LIMIT
+        )
+    return [RestrictedWorker.model_validate(dict(r)) for r in rows]
+
+
 async def apply_override(
     admin: AuthenticatedUser, assignment_id: UUID, body: OverrideRequest
 ) -> OverrideView:
@@ -208,10 +239,7 @@ async def apply_override(
             elif body.action == ACTION_VOID_STRIKE:
                 await _void_strike(conn, booking, admin, reason)
             elif body.action == ACTION_UNBAN_WORKER:
-                if not await override_repository.lift_restrictions(
-                    conn, booking["worker_profile_id"], unban=True, unlimit=True
-                ):
-                    raise conflict("worker_not_restricted", MSG_WORKER_NOT_RESTRICTED)
+                await _unban_worker(conn, booking, admin, reason)
             elif body.action == ACTION_REVOKE_VOUCHER:
                 if not await override_repository.deactivate_booking_voucher(conn, assignment_id):
                     raise conflict("no_voucher", MSG_NO_VOUCHER)

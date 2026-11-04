@@ -218,6 +218,23 @@ and the first Worker to accept is booked (several Workers can be booked on one r
 - Extra time is asked by the Business, accepted by the Worker and paid separately at
   **130%** of the hourly rate.
 
+### No Worker accepted: search again
+
+- A search that ends with nobody accepting gives the Business **10 minutes** to choose:
+  - **Get refund:** full refund (a free cancel before acceptance), or
+  - **Search again:** add **₹10, ₹20 or ₹30** to the pay — per hour for hourly work, on the
+    task price for task work — and a new search starts.
+- At most **3 searches** per booking. Add-ons stack (e.g. +₹10 then +₹20 = +₹30).
+- The Business pays **once**, upfront, at the original price. The add-on, with the 4%
+  platform charge and 2% tax on it, is **billed on the final bill** (a pending balance paid at
+  the end). Workers see the raised pay on the request and receive it minus 4%.
+- **Automatic full refund** ("No Worker nearby") when the 3rd search ends with nobody
+  accepting, or when the Business doesn't choose within 10 minutes.
+- The search time (30 min), searches per booking (3), time to choose (10 min) and add-on
+  amounts (₹10/₹20/₹30) are admin settings ("Live Work Pricing & Charges"), versioned with the
+  rates: a booking keeps the rules of the version it was priced with. When admin changes them,
+  update the Terms and FAQ too.
+
 ### Codes
 
 - **Arrival code** (shown to the Business): the Worker enters it on arrival → work starts.
@@ -232,7 +249,7 @@ and the first Worker to accept is booked (several Workers can be booked on one r
 | Business cancels before any Worker accepts | Free, full refund | — |
 | Business cancels after a Worker accepted, before the arrival code is entered | Free — full refund | Not paid |
 | Worker cancels after accepting | Not charged; we look for another Worker | Worker cancel tier "less than 2h" from §5 (₹149 + ½ strike) |
-| No Worker found in time | Full refund | — |
+| No Worker found in time | Choose: full refund, or raise the pay and search again (below) | — |
 
 ### After the work started
 

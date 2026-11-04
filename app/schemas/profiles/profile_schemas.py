@@ -180,6 +180,12 @@ class WorkerProfileResponse(BaseModel):
     rating_avg: float
     rating_count: int
     completed_shift_count: int
+    banned_at: datetime | None = Field(
+        default=None, description="Account on hold: no new shifts until support lifts it."
+    )
+    feed_limited_until: datetime | None = Field(
+        default=None, description="Fewer shifts in the feed until then (strikes)."
+    )
 
 
 class WorkerProfilePatch(_CoordinatesPair, _AccountPreferences):

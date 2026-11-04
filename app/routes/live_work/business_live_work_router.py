@@ -20,6 +20,7 @@ from app.constants.live_work.live_work_route_strings import (
     PATH_BOOKING_EXTENSION_CANCEL,
     PATH_BOOKING_EXTENSION_QUOTE,
     PATH_BOOKING_EXTENSIONS,
+    PATH_BOOKING_RETRY,
     PATH_BOOKING_WORKER_CANCEL,
     PATH_BOOKING_WORKER_CANCEL_PREVIEW,
     PATH_BOOKINGS,
@@ -35,6 +36,7 @@ from app.schemas.live_work.live_work_schemas import (
     LiveExtensionCreate,
     LiveExtensionQuote,
     LivePriceBreakdown,
+    LiveRetryRequest,
     LiveWorkCreate,
     LiveWorkQuoteRequest,
 )
@@ -121,6 +123,17 @@ async def cancel(
     booking_id: UUID, body: LiveCancelRequest, user: RequireShiftsWrite
 ) -> BusinessLiveBooking:
     return await live_work_service.cancel(user, booking_id, body)
+
+
+@router.post(
+    PATH_BOOKING_RETRY,
+    response_model=BusinessLiveBooking,
+    summary=swagger_summary("Add to the pay and search again", SWAGGER_ROLE_BUSINESS),
+)
+async def retry_search(
+    booking_id: UUID, body: LiveRetryRequest, user: RequireShiftsWrite
+) -> BusinessLiveBooking:
+    return await live_work_service.retry_search(user, booking_id, body)
 
 
 @router.get(

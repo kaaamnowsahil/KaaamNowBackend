@@ -11,6 +11,8 @@ OPENAPI_TAG_ADMIN_SUPPORT: Final[str] = "admin - support"
 
 PATH_BOOKING_LEDGER: Final[str] = "/bookings/{assignment_id}/ledger"
 PATH_BOOKING_OVERRIDES: Final[str] = "/bookings/{assignment_id}/overrides"
+PATH_RESTRICTED_WORKERS: Final[str] = "/workers/restricted"
+RESTRICTED_WORKERS_LIMIT: Final[int] = 200
 
 ACTION_WAIVE_WORKER_FEE: Final[str] = "waive_worker_fee"
 ACTION_VOID_STRIKE: Final[str] = "void_strike"

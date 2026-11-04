@@ -94,6 +94,8 @@ async def feed(
         lat, lng = await _worker_point(conn, worker, latitude, longitude)
         if lat is None or lng is None:
             raise bad_request("location_required", MSG_WORKER_LOCATION_REQUIRED)
+        if worker["banned_at"] is not None:
+            return FeedPage(items=[], limit=0, offset=offset)
         now = utc_now()
         if worker["feed_limited_until"] is not None and worker["feed_limited_until"] > now:
             page_limit = max(min(page_limit, settings.limited_feed_size - offset), 0)

@@ -101,20 +101,21 @@ async def test_fcm_send_reports_each_device_outcome(
             "net": httpx.ConnectError("down"),  # type: ignore[dict-item]
         },
     )
-    sender = factory.FcmPushSender(str(service_account), "")
+    sender = factory.FcmPushSender(json.loads(service_account.read_text()), "")
     result = await sender.send(
         ["good", "gone", "busy", "net"], title="Hi", body="There", data={"kind": "k", "x": None}
     )
     assert result == factory.PushResult(delivered=1, invalid_tokens=("gone",), retryable=True)
     assert sent[0]["data"] == {"kind": "k"}
     assert sent[0]["notification"] == {"title": "Hi", "body": "There"}
+    assert sent[0]["webpush"] == {"headers": {"Urgency": "high"}}
 
 
 async def test_fcm_never_reports_sent_when_every_device_fails(
     service_account: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _mock_client(monkeypatch, {"gone": _fcm_error(404, "UNREGISTERED")})
-    result = await factory.FcmPushSender(str(service_account), "p").send(
+    result = await factory.FcmPushSender(json.loads(service_account.read_text()), "p").send(
         ["gone"], title="T", body="B", data={}
     )
     assert result.delivered == 0 and result.invalid_tokens == ("gone",)
@@ -134,7 +135,7 @@ async def test_fcm_auth_failure_is_retryable_not_sent(
             **kwargs,
         ),
     )
-    result = await factory.FcmPushSender(str(service_account), "p").send(
+    result = await factory.FcmPushSender(json.loads(service_account.read_text()), "p").send(
         ["t"], title="T", body="B", data={}
     )
     assert result == factory.PushResult(retryable=True)
@@ -154,6 +155,7 @@ def test_fcm_without_credentials_fails_startup(
     monkeypatch.setattr(factory, "_fcm_sender", None)
     monkeypatch.setattr(settings, "push_provider", "fcm")
     monkeypatch.setattr(settings, "firebase_service_account_file", "")
+    monkeypatch.setattr(settings, "firebase_service_account_json", "")
     with pytest.raises(RuntimeError, match="FIREBASE_SERVICE_ACCOUNT_FILE"):
         factory.push_delivery_status()
 
@@ -176,6 +178,22 @@ def test_fcm_with_valid_credentials_is_reported(
     monkeypatch.setattr(settings, "push_provider", "fcm")
     monkeypatch.setattr(settings, "firebase_service_account_file", str(service_account))
     assert factory.push_delivery_status() == "fcm"
+
+
+def test_fcm_credentials_can_come_from_an_env_json(
+    monkeypatch: pytest.MonkeyPatch, service_account: Path
+) -> None:
+    settings = load_settings()
+    monkeypatch.setattr(factory, "_fcm_sender", None)
+    monkeypatch.setattr(settings, "push_provider", "fcm")
+    monkeypatch.setattr(settings, "firebase_service_account_file", "")
+    monkeypatch.setattr(settings, "firebase_service_account_json", service_account.read_text())
+    assert factory.push_delivery_status() == "fcm"
+
+    monkeypatch.setattr(factory, "_fcm_sender", None)
+    monkeypatch.setattr(settings, "firebase_service_account_json", "{not json")
+    with pytest.raises(RuntimeError, match="could not be loaded"):
+        factory.push_delivery_status()
 
 
 def test_unknown_push_provider_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:

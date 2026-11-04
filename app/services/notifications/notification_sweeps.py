@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+from typing import Any
+
 import asyncpg
 
 from app.constants.notifications.notification_route_strings import (
     PUSH_BATCH_SIZE,
+    PUSH_MAX_AGE_SECONDS,
     PUSH_MAX_ATTEMPTS,
 )
 from app.repositories.notifications import notification_repository
@@ -14,13 +18,28 @@ from app.services.notifications.sources.push_sender_factory import get_push_send
 from app.utils.clock import utc_now
 
 
+def _stale(created_at: datetime, data: dict[str, Any], now: datetime) -> bool:
+    expires_at = data.get("expires_at")
+    if isinstance(expires_at, str):
+        try:
+            if datetime.fromisoformat(expires_at) <= now:
+                return True
+        except (TypeError, ValueError):
+            pass
+    return now - created_at > timedelta(seconds=PUSH_MAX_AGE_SECONDS)
+
+
 async def deliver_pending_pushes(pool: asyncpg.Pool) -> int:
     sender = get_push_sender()
     async with pool.acquire() as conn:
         async with conn.transaction():
             rows = await notification_repository.claim_pending_pushes(conn, PUSH_BATCH_SIZE)
             sent, skipped, failed, retry = [], [], [], []
+            started = utc_now()
             for row in rows:
+                if _stale(row["created_at"], dict(row["data"] or {}), started):
+                    skipped.append(row["id"])
+                    continue
                 devices = await user_repository.list_active_push_tokens(conn, row["user_id"])
                 if not devices:
                     skipped.append(row["id"])
