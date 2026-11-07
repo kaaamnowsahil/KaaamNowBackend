@@ -607,6 +607,78 @@ async def test_worker_force_cancel_is_not_paid_and_refunds_in_full(  # type: ign
     assert voucher is not None
 
 
+async def test_worker_who_never_arrives_is_a_no_show_and_business_is_refunded(  # type: ignore[no-untyped-def]
+    app_client, make_business, make_worker, db
+) -> None:
+    business = await make_business()
+    worker = await make_worker("Never Arrives")
+    lat, lng = _location()
+    await _place_worker(app_client, worker, lat, lng)
+    booking, job = await _accepted(app_client, business, worker, lat, lng)
+    travel = await app_client.post(
+        f"{WRK}/bookings/{job['assignment_id']}/start-travel", headers=worker.headers
+    )
+    assert travel.status_code == 200, travel.text
+
+    await run_sweep_once(get_pool())
+    still = await db.fetchval(
+        "SELECT status FROM shift_assignments WHERE id = $1", UUID(job["assignment_id"])
+    )
+    assert still == "en_route"
+
+    await db.execute(
+        "UPDATE shifts SET starts_at = now() - interval '1 day', "
+        "ends_at = now() - interval '1 day' + make_interval(mins => $2) WHERE id = $1",
+        UUID(booking["booking_id"]),
+        MINUTES,
+    )
+    await run_sweep_once(get_pool())
+
+    state = (
+        await app_client.get(f"{BIZ}/{booking['booking_id']}", headers=business.headers)
+    ).json()
+    assert state["status"] == "cancelled"
+    assert all(r["status"] == "processed" for r in state["refunds"])
+    assert sum(r["amount_minor"] for r in state["refunds"]) == TOTAL
+    assert (
+        await db.fetchval(
+            "SELECT status FROM shift_assignments WHERE id = $1", UUID(job["assignment_id"])
+        )
+        == "no_show"
+    )
+    charge = await db.fetchrow(
+        "SELECT event, fee_minor, strike_weight, voucher_promo_id FROM cancellation_charges "
+        "WHERE assignment_id = $1",
+        UUID(job["assignment_id"]),
+    )
+    assert charge["event"] == "no_show"
+    assert charge["fee_minor"] == min(BASE // 2, 39900)
+    assert charge["strike_weight"] == 1
+    assert charge["voucher_promo_id"] is not None
+    assert await _ledger(db, job["assignment_id"]) == {"cancellation_fee": -charge["fee_minor"]}
+    upcoming = (
+        await app_client.get(
+            f"{API}/worker/my-shifts", params={"tab": "upcoming"}, headers=worker.headers
+        )
+    ).json()
+    assert all(i["shift"]["id"] != booking["booking_id"] for i in upcoming["items"])
+    kinds = await db.fetch(
+        "SELECT user_id, kind FROM notifications WHERE data->>'assignment_id' = $1",
+        job["assignment_id"],
+    )
+    assert (worker.user_id, "no_show") in {(r["user_id"], r["kind"]) for r in kinds}
+    assert (business.user_id, "shift_cancelled") in {(r["user_id"], r["kind"]) for r in kinds}
+
+    await run_sweep_once(get_pool())
+    assert (
+        await db.fetchval(
+            "SELECT count(*) FROM cancellation_charges WHERE assignment_id = $1",
+            UUID(job["assignment_id"]),
+        )
+        == 1
+    )
+
+
 async def test_business_force_cancel_pays_in_full_and_worker_gets_share(  # type: ignore[no-untyped-def]
     app_client, make_business, make_worker, db
 ) -> None:

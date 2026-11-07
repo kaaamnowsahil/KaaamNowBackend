@@ -32,6 +32,7 @@ def _jobs() -> list[tuple[str, SweepJob]]:
     from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
     from app.services.live_work.live_work_sweeps import (
         cancel_unpaid_bookings,
+        close_unarrived_seats,
         complete_overdue_bookings,
         expire_extensions,
         process_refunds,
@@ -59,6 +60,7 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         ("live_work_unpaid", cancel_unpaid_bookings),
         ("live_work_extensions", expire_extensions),
         ("live_work_overdue", complete_overdue_bookings),
+        ("live_work_unarrived", close_unarrived_seats),
         ("expire_selection_confirmations", expire_selection_confirmations),
         ("release_unfilled_seats", release_unfilled_seats),
         ("prompt_extensions", prompt_extensions),

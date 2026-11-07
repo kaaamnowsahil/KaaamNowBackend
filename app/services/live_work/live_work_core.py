@@ -38,6 +38,7 @@ from app.config.settings import load_settings
 from app.constants.billing.billing_route_strings import INVOICE_KIND_DEPOSIT
 from app.constants.notifications.notification_route_strings import (
     KIND_EXTENSION_ANSWERED,
+    KIND_NO_SHOW,
     KIND_SHIFT_CANCELLED,
     KIND_SHIFT_ENDED,
     KIND_WORKER_CHECKED_OUT,
@@ -48,6 +49,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_OUT,
     ASG_CONFIRMED,
     ASG_EN_ROUTE,
+    ASG_NO_SHOW,
     END_BUSINESS_STOPPED,
     END_COMPLETED,
     END_SCHEDULED,
@@ -69,6 +71,7 @@ from app.services.attendance import completion_codes
 from app.services.cancellations import cancellation_service
 from app.services.cancellations.cancellation_rules import (
     EVENT_CANCEL,
+    EVENT_NO_SHOW,
     EVENT_WALK_OFF,
     PARTY_BUSINESS,
     PARTY_WORKER,
@@ -695,6 +698,76 @@ async def worker_walk_off(
     return refund_ids
 
 
+async def worker_no_show(
+    conn: asyncpg.Connection,
+    *,
+    shift: asyncpg.Record,
+    pricing: asyncpg.Record,
+    assignment: asyncpg.Record,
+    now: datetime,
+) -> list[UUID | None]:
+    """The Worker accepted but never entered the arrival code before the booking ended: the
+    worker no-show tier applies (§5), the Business is refunded in full and gets a voucher."""
+    policy = await cancellation_service.load_policy(conn)
+    tier = pick_tier(policy, PARTY_WORKER, EVENT_NO_SHOW, Decimal(0))
+    base = pricing["base_amount_minor"]
+    paid = await seat_paid(conn, pricing, assignment["id"])
+    quote = SeatQuote(
+        party=PARTY_WORKER,
+        event=EVENT_NO_SHOW,
+        hours_before=Decimal(0),
+        booking_minor=base,
+        fee_minor=tier_fee(tier, base),
+        worker_compensation_minor=0,
+        business_refund_minor=paid,
+        business_retained_minor=0,
+        strike_weight=tier.strike_weight if tier else Decimal(0),
+        business_voucher=True,
+        policy_version=policy.version,
+    )
+    await assignment_repository.set_status(conn, assignment["id"], ASG_NO_SHOW)
+    await cancellation_service.apply_seat(
+        conn,
+        shift=shift,
+        assignment_id=assignment["id"],
+        worker_profile_id=assignment["worker_profile_id"],
+        worker_user_id=assignment["worker_user_id"],
+        quote=quote,
+        actor_user_id=None,
+        now=now,
+    )
+    await close_open_extensions(conn, shift["id"], now, assignment["id"])
+    refund_ids = await release_seat(
+        conn,
+        shift,
+        pricing,
+        assignment["id"],
+        paid,
+        live_refund_service.REASON_WORKER_NO_SHOW,
+        None,
+        now,
+    )
+    data = {"shift_id": shift["id"], "assignment_id": assignment["id"], "live_work": True}
+    await notify(
+        conn,
+        assignment["worker_user_id"],
+        KIND_NO_SHOW,
+        "Marked as no-show",
+        f"You didn't enter the arrival code for {shift['job_title']} before it ended.",
+        data,
+    )
+    await notify(
+        conn,
+        await business_user_id(conn, shift),
+        KIND_SHIFT_CANCELLED,
+        "Your Worker didn't arrive",
+        f"{shift['job_title']} · you get a full refund and no platform charge on your next "
+        "booking.",
+        data,
+    )
+    return refund_ids
+
+
 async def business_force_stop(
     conn: asyncpg.Connection,
     *,
@@ -852,7 +925,7 @@ async def release_seat(
     if open_seats:
         await live_work_repository.set_shift_workers_required(conn, shift["id"], open_seats)
     seats = await live_work_repository.list_assignments(conn, shift["id"])
-    taken = sum(1 for a in seats if a["status"] != "cancelled")
+    taken = sum(1 for a in seats if a["status"] not in ("cancelled", ASG_NO_SHOW))
     searching = shift["status"] == SHIFT_SEARCHING
     if not taken and not (searching and open_seats):
         refund_ids += await queue_split_refund(

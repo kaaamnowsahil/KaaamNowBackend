@@ -375,6 +375,16 @@ JOIN attendance_records ar ON ar.assignment_id = a.id
 WHERE p.pricing_mode = 'hourly'
   AND ar.checked_in_at + make_interval(mins => p.reserved_minutes + a.extended_minutes) < $1
 """
+# Seats a Worker accepted but never entered the arrival code for, after the booking ended.
+LIST_UNARRIVED_SEATS = """
+SELECT a.id AS assignment_id, a.shift_id
+FROM live_booking_pricing p
+JOIN shifts s ON s.id = p.shift_id
+JOIN shift_assignments a ON a.shift_id = s.id AND a.status IN ('confirmed', 'en_route')
+WHERE s.ends_at + make_interval(mins => a.extended_minutes) < $1
+ORDER BY s.ends_at
+LIMIT $2
+"""
 
 # --- admin -----------------------------------------------------------------------------
 
