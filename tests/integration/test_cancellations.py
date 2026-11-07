@@ -213,6 +213,12 @@ async def test_sweep_marks_ended_bookings_without_check_in_as_no_show(  # type: 
     assert await db.fetchval(strikes, UUID(missed_id)) == 1
     assert await _balance(app_client, missed) == -(BOOKING // 2)
     assert await _vouchers(db, business) == 2
+    missed_tab = (
+        await app_client.get(
+            f"{API}/worker/my-shifts", params={"tab": "missed"}, headers=stale.headers
+        )
+    ).json()
+    assert [i["assignment_status"] for i in missed_tab["items"]] == ["no_show"]
     assert await close_missed_shifts(get_pool()) == 0
 
 

@@ -662,6 +662,14 @@ async def test_worker_who_never_arrives_is_a_no_show_and_business_is_refunded(  
         )
     ).json()
     assert all(i["shift"]["id"] != booking["booking_id"] for i in upcoming["items"])
+    missed = (
+        await app_client.get(
+            f"{API}/worker/my-shifts", params={"tab": "missed"}, headers=worker.headers
+        )
+    ).json()
+    assert [(i["shift"]["id"], i["assignment_status"]) for i in missed["items"]] == [
+        (booking["booking_id"], "no_show")
+    ]
     kinds = await db.fetch(
         "SELECT user_id, kind FROM notifications WHERE data->>'assignment_id' = $1",
         job["assignment_id"],

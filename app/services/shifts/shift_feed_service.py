@@ -23,6 +23,7 @@ from app.constants.shifts.shift_route_strings import (
     ASG_CHECKED_OUT,
     ASG_CONFIRMED,
     ASG_EN_ROUTE,
+    ASG_NO_SHOW,
     DISPATCH_WITHDRAWN,
     MSG_SHIFT_NOT_FOUND,
     SHIFT_LIVE,
@@ -50,6 +51,7 @@ _ASSIGNMENT_TABS: dict[str, tuple[list[str], bool]] = {
     "upcoming": ([ASG_CONFIRMED, ASG_EN_ROUTE], False),
     "active": ([ASG_CHECKED_IN], False),
     "completed": ([ASG_CHECKED_OUT, ASG_APPROVED], True),
+    "missed": ([ASG_NO_SHOW, ASG_CANCELLED], True),
 }
 _APPLICATION_TAB_STATUSES = [
     APP_APPLIED,

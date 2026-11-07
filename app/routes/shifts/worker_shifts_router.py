@@ -101,7 +101,7 @@ async def feed(
 )
 async def my_shifts(
     user: RequireWorkRead,
-    tab: Literal["upcoming", "active", "completed", "applications"] = "upcoming",
+    tab: Literal["upcoming", "active", "completed", "missed", "applications"] = "upcoming",
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
     lat: float | None = Query(default=None, ge=-90, le=90),
