@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -106,7 +107,8 @@ from app.utils.references import new_numeric_code
 
 EARLY_END_PIN_LENGTH = 4
 MISSED_SHIFT_SWEEP_BATCH = 100
-# Older bookings predate the sweep (or an outage) and are left for an admin to review.
+# Older bookings predate the sweep (or an outage): closed and refunded, but the Worker isn't
+# fined or struck for them.
 MISSED_SHIFT_LOOKBACK = timedelta(hours=24)
 
 
@@ -661,26 +663,30 @@ async def _record_no_show(
     actor_user_id: UUID | None,
     now: datetime,
     body: str,
+    penalise: bool = True,
 ) -> None:
     """No-show on a locked booking: the worker no-show tier applies to scheduled shifts."""
     assignment_id = ctx["id"]
     await assignment_repository.set_status(conn, assignment_id, ASG_NO_SHOW)
     if ctx["shift_type"] != SHIFT_LIVE:
         shift = await shift_repository.lock_shift(conn, ctx["shift_id"])
+        quote = await cancellation_service.quote_assignment(
+            conn,
+            shift,
+            ctx["hourly_rate_minor"],
+            party=PARTY_WORKER,
+            event=EVENT_NO_SHOW,
+            now=now,
+        )
+        if not penalise:
+            quote = replace(quote, fee_minor=0, strike_weight=Decimal(0))
         await cancellation_service.apply_seat(
             conn,
             shift=shift,
             assignment_id=assignment_id,
             worker_profile_id=ctx["worker_profile_id"],
             worker_user_id=ctx["worker_user_id"],
-            quote=await cancellation_service.quote_assignment(
-                conn,
-                shift,
-                ctx["hourly_rate_minor"],
-                party=PARTY_WORKER,
-                event=EVENT_NO_SHOW,
-                now=now,
-            ),
+            quote=quote,
             actor_user_id=actor_user_id,
             now=now,
         )
@@ -724,7 +730,7 @@ async def close_missed_shifts(pool: asyncpg.Pool) -> int:
     changed = 0
     async with pool.acquire() as conn:
         for assignment_id in await assignment_repository.list_missed_scheduled(
-            conn, now, now - MISSED_SHIFT_LOOKBACK, MISSED_SHIFT_SWEEP_BATCH
+            conn, now, MISSED_SHIFT_SWEEP_BATCH
         ):
             async with conn.transaction():
                 ctx = await assignment_repository.lock_context(conn, assignment_id)
@@ -741,6 +747,7 @@ async def close_missed_shifts(pool: asyncpg.Pool) -> int:
                     actor_user_id=None,
                     now=now,
                     body=f"You didn't check in for {ctx['job_title']} before it ended.",
+                    penalise=effective_ends_at(ctx) >= now - MISSED_SHIFT_LOOKBACK,
                 )
                 changed += 1
     return changed
