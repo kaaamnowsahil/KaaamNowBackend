@@ -593,6 +593,12 @@ async def list_overdue_active_seats(
     return await conn.fetch(q.LIST_OVERDUE_ACTIVE_SEATS, ended_before)
 
 
+async def list_unarrived_seats(
+    conn: asyncpg.Connection, ended_before: datetime, limit: int
+) -> list[asyncpg.Record]:
+    return await conn.fetch(q.LIST_UNARRIVED_SEATS, ended_before, limit)
+
+
 # --- admin -----------------------------------------------------------------------------
 
 

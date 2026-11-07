@@ -35,6 +35,7 @@ REASON_LATE_PAYMENT = "payment_after_booking_closed"
 REASON_EXTENSION_VOID = "extension_not_applied"
 REASON_UNFILLED_SEATS = "unfilled_seats"
 REASON_SEAT_RELEASED = "seat_released"
+REASON_WORKER_NO_SHOW = "worker_no_show"
 REASON_UNWORKED_TIME = "finished_early_unworked_time"
 
 

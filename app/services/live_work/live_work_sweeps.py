@@ -132,6 +132,40 @@ async def complete_overdue_bookings(pool: asyncpg.Pool) -> int:
     return changed
 
 
+UNARRIVED_SEAT_BATCH = 50
+
+
+async def close_unarrived_seats(pool: asyncpg.Pool) -> int:
+    """A Worker accepted but never entered the arrival code before the booking (+ grace)
+    ended: a no-show, and the Business is refunded."""
+    now = utc_now()
+    cutoff = now - timedelta(seconds=load_settings().live_auto_complete_grace_seconds)
+    changed = 0
+    async with pool.acquire() as conn:
+        for seat in await live_work_repository.list_unarrived_seats(
+            conn, cutoff, UNARRIVED_SEAT_BATCH
+        ):
+            async with conn.transaction():
+                shift = await shift_repository.lock_shift(conn, seat["shift_id"])
+                assignment = await assignment_repository.lock_context(conn, seat["assignment_id"])
+                if assignment is None or assignment["status"] not in (
+                    live_work_core.BEFORE_START_SEAT_STATUSES
+                ):
+                    continue
+                if shift["ends_at"] + timedelta(minutes=assignment["extended_minutes"]) >= cutoff:
+                    continue
+                refund_ids = await live_work_core.worker_no_show(
+                    conn,
+                    shift=shift,
+                    pricing=await live_work_repository.get_booking_pricing(conn, shift["id"]),
+                    assignment=assignment,
+                    now=now,
+                )
+            await live_refund_service.process_refunds(refund_ids)
+            changed += 1
+    return changed
+
+
 async def process_refunds(pool: asyncpg.Pool) -> int:
     return await live_refund_service.process_due_refunds(pool)
 
