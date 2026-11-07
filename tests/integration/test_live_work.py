@@ -997,3 +997,37 @@ async def test_worker_outside_category_is_not_counted_shown_or_allowed(  # type:
     assert booking_id in await feed_ids()
     accepted = await app_client.post(f"{WRK}/requests/{booking_id}/accept", headers=worker.headers)
     assert accepted.status_code == 200, accepted.text
+
+
+async def test_offered_worker_cannot_accept_once_location_is_off(  # type: ignore[no-untyped-def]
+    app_client, db, make_business, make_worker
+) -> None:
+    lat, lng = _location()
+    business = await make_business("Location Check Cafe")
+    worker = await make_worker("Map Off", online=False)
+    await _place_worker(app_client, worker, lat, lng)
+    booking_id = (await _searching(app_client, business, lat, lng))["booking_id"]
+    requests = await app_client.get(f"{WRK}/requests", headers=worker.headers)
+    assert booking_id in {item["booking_id"] for item in requests.json()}, requests.text
+    url = f"{WRK}/requests/{booking_id}/accept"
+
+    await db.execute(
+        "UPDATE worker_locations SET recorded_at = now() - interval '3 minutes' "
+        "WHERE worker_profile_id = $1",
+        worker.profile_id,
+    )
+    stale = await app_client.post(url, headers=worker.headers)
+    assert stale.status_code == 400, stale.text
+    assert stale.json()["code"] == "location_stale"
+
+    await _place_worker(app_client, worker, lat, lng)
+    await db.execute(
+        "UPDATE worker_profiles SET is_available = false WHERE id = $1", worker.profile_id
+    )
+    offline = await app_client.post(url, headers=worker.headers)
+    assert offline.status_code == 400, offline.text
+    assert offline.json()["code"] == "location_stale"
+
+    await _place_worker(app_client, worker, lat, lng)
+    accepted = await app_client.post(url, headers=worker.headers)
+    assert accepted.status_code == 200, accepted.text

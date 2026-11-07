@@ -174,6 +174,7 @@ MIN_SHIFT_MINUTES: Final[int] = 60
 MAX_SHIFT_HOURS: Final[int] = 16
 MAX_SCHEDULE_AHEAD_DAYS: Final[int] = 60
 LIVE_START_TOLERANCE_MINUTES: Final[int] = 30
+LIVE_ACCEPT_LOCATION_MAX_AGE_SECONDS: Final[int] = 120
 TRAVEL_OPENS_HOURS_BEFORE: Final[int] = 3
 MESSAGES_PAGE_LIMIT: Final[int] = 200
 SCHEDULED_NOTIFY_BATCH_SIZE: Final[int] = 500
@@ -222,7 +223,7 @@ MSG_SHIFT_BEYOND_MAX_DISTANCE: Final[str] = (
     "You're too far from this shift (more than {km:g} km). Try finding shifts nearby."
 )
 MSG_SHIFT_LOCATION_REQUIRED: Final[str] = "Pick the shift address on the map before saving."
-MSG_LOCATION_STALE: Final[str] = "Your location is out of date. Go online again."
+MSG_LOCATION_STALE: Final[str] = "Turn on your location and go Live to accept Live Work."
 MSG_APPLICATION_NOT_FOUND: Final[str] = "Application not found."
 MSG_APPLICATION_EXISTS: Final[str] = "You have already applied to this shift."
 MSG_REAPPLY_LIMIT: Final[str] = "You can't apply again to this shift."

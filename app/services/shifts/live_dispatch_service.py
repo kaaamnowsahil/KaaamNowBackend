@@ -23,6 +23,7 @@ from app.constants.shifts.shift_route_strings import (
     DISPATCH_EXPIRED,
     DISPATCH_OFFERED,
     DISPATCH_WITHDRAWN,
+    LIVE_ACCEPT_LOCATION_MAX_AGE_SECONDS,
     MSG_ALREADY_BOOKED,
     MSG_CATEGORY_MISMATCH,
     MSG_LOCATION_STALE,
@@ -193,9 +194,11 @@ async def list_live_requests(user: AuthenticatedUser) -> list[LiveRequestItem]:
 async def _eligible_distance(
     conn: asyncpg.Connection, worker: asyncpg.Record, shift: asyncpg.Record, now: datetime
 ) -> float:
+    """A Worker accepts only while Live with location on: a recent fix inside the search radius."""
     settings = load_settings()
     location = await profile_repository.get_worker_location(conn, worker["id"])
-    fresh_since = now - timedelta(seconds=settings.location_freshness_seconds)
+    max_age = min(settings.location_freshness_seconds, LIVE_ACCEPT_LOCATION_MAX_AGE_SECONDS)
+    fresh_since = now - timedelta(seconds=max_age)
     if location is None or location["recorded_at"] < fresh_since or not worker["is_available"]:
         raise bad_request("location_stale", MSG_LOCATION_STALE)
     distance = haversine_km(
@@ -239,6 +242,7 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
                 and dispatch["status"] == DISPATCH_OFFERED
                 and dispatch["expires_at"] > now
             )
+            distance = await _eligible_distance(conn, worker, shift, now)
             if offer_live:
                 await dispatch_repository.set_status(conn, dispatch["id"], DISPATCH_ACCEPTED, now)
                 dispatch_id = dispatch["id"]
@@ -251,7 +255,6 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
                     DISPATCH_EXPIRED,
                 ):
                     raise conflict("no_live_offer", MSG_NO_LIVE_OFFER)
-                distance = await _eligible_distance(conn, worker, shift, now)
                 dispatch_id = await dispatch_repository.upsert_accepted(
                     conn,
                     shift_id=shift_id,
