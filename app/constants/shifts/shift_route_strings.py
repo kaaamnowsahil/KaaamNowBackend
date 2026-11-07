@@ -159,7 +159,13 @@ END_COMPLETED: Final[str] = "completed"
 PRICING_HOURLY: Final[str] = "hourly"
 PRICING_TASK: Final[str] = "task"
 
-MY_SHIFTS_TABS: Final[tuple[str, ...]] = ("upcoming", "active", "completed", "applications")
+MY_SHIFTS_TABS: Final[tuple[str, ...]] = (
+    "upcoming",
+    "active",
+    "completed",
+    "missed",
+    "applications",
+)
 DASHBOARD_TABS: Final[tuple[str, ...]] = ("live", "scheduled")
 FEED_SORTS: Final[tuple[str, ...]] = ("distance", "starts_at", "pay")
 

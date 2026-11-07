@@ -546,7 +546,7 @@ class MyShiftItem(BaseModel):
 
 
 class MyShiftsPage(BaseModel):
-    tab: Literal["upcoming", "active", "completed", "applications"]
+    tab: Literal["upcoming", "active", "completed", "missed", "applications"]
     items: list[MyShiftItem]
     limit: int
     offset: int
