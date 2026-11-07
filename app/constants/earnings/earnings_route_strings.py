@@ -31,6 +31,17 @@ ENTRY_WITHDRAWAL_REVERSAL: Final[str] = "withdrawal_reversal"
 WD_PROCESSING: Final[str] = "processing"
 WD_PAID: Final[str] = "paid"
 WD_FAILED: Final[str] = "failed"
+WD_OPEN_STATUSES: Final[tuple[str, ...]] = ("initiated", "processing")
+
+PAYOUT_PROVIDER_MANUAL: Final[str] = "manual"
+PAYOUT_PROOF_STORAGE_FOLDER: Final[str] = "payout-proofs"
+WITHDRAWAL_RESOURCE: Final[str] = "withdrawals"
+PATH_ADMIN_WITHDRAWAL_PAID: Final[str] = "/withdrawals/{withdrawal_id}/mark-paid"
+PATH_ADMIN_WITHDRAWAL_REJECT: Final[str] = "/withdrawals/{withdrawal_id}/reject"
+MSG_WITHDRAWAL_NOT_OPEN: Final[str] = "This withdrawal is already paid or failed."
+MSG_WITHDRAWAL_NOT_MANUAL: Final[str] = (
+    "This withdrawal is paid by the payout provider, not manually."
+)
 
 MSG_PAYOUT_ACCOUNT_NOT_FOUND: Final[str] = "Payout account not found."
 MSG_PAYOUT_ACCOUNT_FIELDS: Final[str] = "Fill in the details for the selected payout method."
