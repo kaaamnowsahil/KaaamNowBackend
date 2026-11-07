@@ -205,11 +205,14 @@ async def test_sweep_marks_ended_bookings_without_check_in_as_no_show(  # type: 
     status = "SELECT status FROM shift_assignments WHERE id = $1"
     assert await db.fetchval(status, UUID(missed_id)) == "no_show"
     assert await db.fetchval(status, UUID(running_id)) == "confirmed"
-    # Older than the 24-hour lookback: left for review, never fined or struck automatically.
-    assert await db.fetchval(status, UUID(stale_id)) == "confirmed"
+    # Older than the 24-hour lookback: still closed, but never fined or struck automatically.
+    assert await db.fetchval(status, UUID(stale_id)) == "no_show"
     assert await _balance(app_client, stale) == 0
+    strikes = "SELECT count(*) FROM worker_strikes WHERE assignment_id = $1"
+    assert await db.fetchval(strikes, UUID(stale_id)) == 0
+    assert await db.fetchval(strikes, UUID(missed_id)) == 1
     assert await _balance(app_client, missed) == -(BOOKING // 2)
-    assert await _vouchers(db, business) == 1
+    assert await _vouchers(db, business) == 2
     assert await close_missed_shifts(get_pool()) == 0
 
 

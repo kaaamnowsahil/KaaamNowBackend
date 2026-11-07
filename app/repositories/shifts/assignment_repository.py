@@ -237,8 +237,8 @@ async def mark_extension_prompted(
 
 
 async def list_missed_scheduled(
-    conn: asyncpg.Connection, ended_before: datetime, ended_after: datetime, limit: int
+    conn: asyncpg.Connection, ended_before: datetime, limit: int
 ) -> list[UUID]:
     """Scheduled bookings still booked after the shift ended: nobody checked in."""
-    rows = await conn.fetch(LIST_MISSED_SCHEDULED, ended_before, limit, ended_after)
+    rows = await conn.fetch(LIST_MISSED_SCHEDULED, ended_before, limit)
     return [row["id"] for row in rows]
