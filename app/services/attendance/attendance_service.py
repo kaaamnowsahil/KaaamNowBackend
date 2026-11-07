@@ -695,7 +695,7 @@ async def _record_no_show(
         conn,
         ctx["worker_user_id"],
         KIND_NO_SHOW,
-        "Marked as no-show",
+        "Shift missed",
         body,
         {"shift_id": ctx["shift_id"], "assignment_id": assignment_id},
     )

@@ -752,7 +752,7 @@ async def worker_no_show(
         conn,
         assignment["worker_user_id"],
         KIND_NO_SHOW,
-        "Marked as no-show",
+        "Shift missed",
         f"You didn't enter the arrival code for {shift['job_title']} before it ended.",
         data,
     )

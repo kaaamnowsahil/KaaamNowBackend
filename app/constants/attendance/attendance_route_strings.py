@@ -30,7 +30,9 @@ MSG_CHECK_IN_TOO_FAR: Final[str] = "You need to be at the workplace to check in.
 MSG_CHECK_IN_CODE: Final[str] = "That check-in code is not correct. Ask the site contact."
 MSG_NOT_CHECKED_IN: Final[str] = "You are not checked in to this shift."
 MSG_NOT_CHECKED_OUT: Final[str] = "The worker has not checked out yet."
-MSG_NO_SHOW_TOO_EARLY: Final[str] = "You can mark a no-show 30 minutes after the shift starts."
+MSG_NO_SHOW_TOO_EARLY: Final[str] = (
+    "You can mark the Worker as not arrived 30 minutes after the shift starts."
+)
 MSG_APPROVED_MINUTES_TOO_HIGH: Final[str] = (
     "Approved time cannot exceed the booked time plus extensions."
 )
