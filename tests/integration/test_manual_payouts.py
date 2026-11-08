@@ -234,3 +234,51 @@ async def test_admin_sets_the_minimum_withdrawal(  # type: ignore[no-untyped-def
         assert (await app_client.get(effective_url, headers=worker.headers)).status_code == 403
     finally:
         await db.execute("DELETE FROM payout_settings")
+
+
+async def test_worker_adds_and_removes_upi_qr(app_client: httpx.AsyncClient, make_worker) -> None:  # type: ignore[no-untyped-def]
+    worker = await make_worker("Gita", online=False)
+    other = await make_worker("Mira", online=False)
+    account = await app_client.post(
+        f"{API}/worker/payout-accounts",
+        json={"account_type": "upi", "upi_id": "gita@okaxis"},
+        headers=worker.headers,
+    )
+    assert account.status_code == 201, account.text
+    assert account.json()["upi_qr_url"] is None
+    qr_url = f"{API}/worker/payout-accounts/{account.json()['id']}/qr"
+
+    not_image = await app_client.put(
+        qr_url, files={"file": ("qr.png", b"hello", "image/png")}, headers=worker.headers
+    )
+    assert not_image.status_code == 400
+    not_mine = await app_client.put(
+        qr_url, files={"file": ("qr.png", PNG, "image/png")}, headers=other.headers
+    )
+    assert not_mine.status_code == 404
+
+    added = await app_client.put(
+        qr_url, files={"file": ("qr.png", PNG, "image/png")}, headers=worker.headers
+    )
+    assert added.status_code == 200, added.text
+    assert "/upi-qr/" in added.json()["upi_qr_url"]
+
+    same_upi = await app_client.patch(
+        f"{API}/worker/payout-accounts/{account.json()['id']}",
+        json={"upi_id": "gita@okaxis", "account_holder_name": "Gita"},
+        headers=worker.headers,
+    )
+    assert same_upi.json()["upi_qr_url"] == added.json()["upi_qr_url"]
+    new_upi = await app_client.patch(
+        f"{API}/worker/payout-accounts/{account.json()['id']}",
+        json={"upi_id": "gita@ybl"},
+        headers=worker.headers,
+    )
+    assert new_upi.json()["upi_qr_url"] is None, "an old QR must not point at a new UPI ID"
+
+    await app_client.put(
+        qr_url, files={"file": ("qr.png", PNG, "image/png")}, headers=worker.headers
+    )
+    removed = await app_client.delete(qr_url, headers=worker.headers)
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["upi_qr_url"] is None

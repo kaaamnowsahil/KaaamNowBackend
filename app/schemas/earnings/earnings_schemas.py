@@ -109,6 +109,7 @@ class PayoutAccountResponse(BaseModel):
     is_default: bool
     is_verified: bool = False
     verified_at: datetime | None = None
+    upi_qr_url: str | None = None
     created_at: datetime
 
 

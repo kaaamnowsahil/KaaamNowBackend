@@ -33,6 +33,7 @@ from app.repositories.earnings.earnings_queries import (
     LOCK_WORKER_LEDGER,
     PENDING_PAY,
     SET_DEFAULT_ACCOUNT,
+    SET_PAYOUT_ACCOUNT_QR,
     SET_WITHDRAWAL_PROCESSING,
     SETTLE_WITHDRAWAL,
     UPDATE_PAYOUT_ACCOUNT,
@@ -286,3 +287,9 @@ async def assignment_net(
 async def get_min_withdrawal(conn: asyncpg.Connection) -> int | None:
     """The admin-set minimum, or ``None`` while no admin has saved one."""
     return await conn.fetchval(GET_MIN_WITHDRAWAL)
+
+
+async def set_payout_account_qr(
+    conn: asyncpg.Connection, account_id: UUID, worker_profile_id: UUID, url: str | None
+) -> asyncpg.Record | None:
+    return await conn.fetchrow(SET_PAYOUT_ACCOUNT_QR, account_id, worker_profile_id, url)

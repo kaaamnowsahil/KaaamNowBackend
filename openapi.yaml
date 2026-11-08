@@ -1850,6 +1850,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/withdrawals/{withdrawal_id}/mark-paid:
+    post:
+      tags:
+      - admin - support
+      summary: Mark a manual withdrawal paid with the payment screenshot · Admin
+      operationId: mark_withdrawal_paid_api_v1_admin_withdrawals__withdrawal_id__mark_paid_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: withdrawal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Withdrawal Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_mark_withdrawal_paid_api_v1_admin_withdrawals__withdrawal_id__mark_paid_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualPayoutView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/withdrawals/{withdrawal_id}/reject:
+    post:
+      tags:
+      - admin - support
+      summary: Reject a manual withdrawal and return the money to the worker · Admin
+      operationId: reject_withdrawal_api_v1_admin_withdrawals__withdrawal_id__reject_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: withdrawal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Withdrawal Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualPayoutReject'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualPayoutView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/admin/live-work/pricing:
     get:
       tags:
@@ -2131,6 +2201,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminSearchRadius'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/settings/payouts:
+    get:
+      tags:
+      - admin - data
+      summary: Withdrawal rules in effect · Admin
+      description: Edit them through the audited `payout_settings` resource.
+      operationId: payout_settings_api_v1_admin_settings_payouts_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPayoutSettings'
       security:
       - HTTPBearer: []
   /api/v1/admin/{resource}/export.csv:
@@ -4383,6 +4469,7 @@ paths:
           - upcoming
           - active
           - completed
+          - missed
           - applications
           type: string
           default: upcoming
@@ -5896,6 +5983,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/worker/payout-accounts/{account_id}/qr:
+    put:
+      tags:
+      - earnings
+      summary: Upload UPI QR code — JPEG, PNG or WebP · Worker
+      operationId: upload_upi_qr_api_v1_worker_payout_accounts__account_id__qr_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Account Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_upi_qr_api_v1_worker_payout_accounts__account_id__qr_put'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutAccountResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - earnings
+      summary: Remove UPI QR code · Worker
+      operationId: remove_upi_qr_api_v1_worker_payout_accounts__account_id__qr_delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutAccountResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/worker/withdrawals:
     post:
       tags:
@@ -7296,6 +7446,24 @@ components:
       - platform_fees_minor
       - payments_succeeded_minor
       title: AdminMetricsOverview
+    AdminPayoutSettings:
+      properties:
+        min_withdrawal_minor:
+          type: integer
+          title: Min Withdrawal Minor
+        source:
+          type: string
+          enum:
+          - admin
+          - default
+          title: Source
+      type: object
+      required:
+      - min_withdrawal_minor
+      - source
+      title: AdminPayoutSettings
+      description: Withdrawal rules in effect now; ``source`` = ``default`` until
+        an admin saves them.
     AdminRecordPage:
       properties:
         items:
@@ -8006,6 +8174,23 @@ components:
       required:
       - is_available
       title: AvailabilityResponse
+    Body_mark_withdrawal_paid_api_v1_admin_withdrawals__withdrawal_id__mark_paid_post:
+      properties:
+        proof:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Proof
+        utr:
+          anyOf:
+          - type: string
+            maxLength: 40
+            pattern: ^\s*[A-Za-z0-9]*\s*$
+          - type: 'null'
+          title: Utr
+      type: object
+      required:
+      - proof
+      title: Body_mark_withdrawal_paid_api_v1_admin_withdrawals__withdrawal_id__mark_paid_post
     Body_upload_business_logo_api_v1_me_businesses__business_profile_id__logo_post:
       properties:
         file:
@@ -8026,6 +8211,16 @@ components:
       required:
       - file
       title: Body_upload_profile_image_api_v1_me_profile_image_post
+    Body_upload_upi_qr_api_v1_worker_payout_accounts__account_id__qr_put:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_upi_qr_api_v1_worker_payout_accounts__account_id__qr_put
     BookingLedger:
       properties:
         assignment_id:
@@ -9696,6 +9891,10 @@ components:
         this_month_minor:
           type: integer
           title: This Month Minor
+        this_month_shifts:
+          type: integer
+          title: This Month Shifts
+          default: 0
         completed_shifts:
           type: integer
           title: Completed Shifts
@@ -11920,6 +12119,57 @@ components:
           title: Is Active
       type: object
       title: LookupUpdate
+    ManualPayoutReject:
+      properties:
+        reason:
+          type: string
+          maxLength: 200
+          minLength: 5
+          title: Reason
+      type: object
+      required:
+      - reason
+      title: ManualPayoutReject
+    ManualPayoutView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - initiated
+          - processing
+          - paid
+          - failed
+          title: Status
+        failure_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Reason
+        payout_utr:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Payout Utr
+        proof_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Proof Url
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+      type: object
+      required:
+      - id
+      - status
+      title: ManualPayoutView
     MeResponse:
       properties:
         id:
@@ -12136,6 +12386,7 @@ components:
           - upcoming
           - active
           - completed
+          - missed
           - applications
           title: Tab
         items:
@@ -12851,6 +13102,11 @@ components:
             format: date-time
           - type: 'null'
           title: Verified At
+        upi_qr_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Upi Qr Url
         created_at:
           type: string
           format: date-time
@@ -15209,6 +15465,11 @@ components:
           - type: string
           - type: 'null'
           title: Failure Reason
+        payout_utr:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Payout Utr
         initiated_at:
           type: string
           format: date-time

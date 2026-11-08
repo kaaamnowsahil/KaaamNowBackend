@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS payout_accounts (
 -- Set by admin after a penny-drop / UPI name check (app "Verified" badge).
 ALTER TABLE payout_accounts ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE payout_accounts ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+-- Worker's UPI QR screenshot; the admin scans it to pay a manual withdrawal.
+ALTER TABLE payout_accounts ADD COLUMN IF NOT EXISTS upi_qr_url TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS payout_accounts_one_default_uid
     ON payout_accounts (worker_profile_id) WHERE is_default AND is_active;

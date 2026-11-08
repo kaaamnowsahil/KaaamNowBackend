@@ -26,6 +26,7 @@ from app.constants.earnings.earnings_route_strings import (
     MSG_WITHDRAWAL_MIN,
     MSG_WITHDRAWAL_NOT_FOUND,
     RECENT_ENTRIES_LIMIT,
+    UPI_QR_STORAGE_FOLDER,
 )
 from app.db.pool import get_pool
 from app.exceptions.api_errors import ApiError, bad_request, conflict, not_found
@@ -51,6 +52,11 @@ from app.services.earnings.sources.payout_provider_factory import (
     get_payout_provider,
 )
 from app.services.profiles.profile_lookup import require_worker_profile
+from app.services.users.sources.photo_storage import (
+    delete_images,
+    get_photo_storage,
+    validate_image,
+)
 from app.utils.clock import utc_now
 from app.utils.references import WITHDRAWAL_REFERENCE_PREFIX, new_reference
 
@@ -86,6 +92,7 @@ def _account_response(row: asyncpg.Record) -> PayoutAccountResponse:
         is_default=row["is_default"],
         is_verified=row["is_verified"],
         verified_at=row["verified_at"],
+        upi_qr_url=row["upi_qr_url"],
         created_at=row["created_at"],
     )
 
@@ -244,6 +251,40 @@ async def update_payout_account(
                 await earnings_repository.clear_default_account(conn, worker["id"])
                 await earnings_repository.set_default_account(conn, account_id, worker["id"])
             row = await earnings_repository.get_payout_account(conn, account_id, worker["id"])
+    if current["upi_qr_url"] and row["upi_qr_url"] is None:
+        await delete_images([current["upi_qr_url"]])
+    return _account_response(row)
+
+
+async def set_upi_qr(
+    user: AuthenticatedUser, account_id: UUID, content_type: str, data: bytes
+) -> PayoutAccountResponse:
+    """Attach the Worker's UPI QR screenshot to their UPI account (replaces any earlier one)."""
+    extension = validate_image(content_type, data)
+    async with get_pool().acquire() as conn:
+        worker = await require_worker_profile(conn, user.user_id)
+        current = await earnings_repository.get_payout_account(conn, account_id, worker["id"])
+        if current is None:
+            raise not_found("payout_account_not_found", MSG_PAYOUT_ACCOUNT_NOT_FOUND)
+        if current["account_type"] != "upi":
+            raise bad_request("payout_account_fields", MSG_PAYOUT_ACCOUNT_FIELDS)
+        url = await get_photo_storage().save(UPI_QR_STORAGE_FOLDER, data, extension)
+        row = await earnings_repository.set_payout_account_qr(conn, account_id, worker["id"], url)
+    if row is None:
+        await delete_images([url])
+        raise not_found("payout_account_not_found", MSG_PAYOUT_ACCOUNT_NOT_FOUND)
+    await delete_images([current["upi_qr_url"]])
+    return _account_response(row)
+
+
+async def remove_upi_qr(user: AuthenticatedUser, account_id: UUID) -> PayoutAccountResponse:
+    async with get_pool().acquire() as conn:
+        worker = await require_worker_profile(conn, user.user_id)
+        current = await earnings_repository.get_payout_account(conn, account_id, worker["id"])
+        if current is None:
+            raise not_found("payout_account_not_found", MSG_PAYOUT_ACCOUNT_NOT_FOUND)
+        row = await earnings_repository.set_payout_account_qr(conn, account_id, worker["id"], None)
+    await delete_images([current["upi_qr_url"]])
     return _account_response(row)
 
 

@@ -14,6 +14,8 @@ PATH_EARNINGS_ENTRIES: Final[str] = "/earnings/entries"
 PATH_PAYOUT_ACCOUNTS: Final[str] = "/payout-accounts"
 PATH_PAYOUT_ACCOUNT: Final[str] = "/payout-accounts/{account_id}"
 PATH_PAYOUT_ACCOUNT_DEFAULT: Final[str] = "/payout-accounts/{account_id}/default"
+PATH_PAYOUT_ACCOUNT_QR: Final[str] = "/payout-accounts/{account_id}/qr"
+UPI_QR_STORAGE_FOLDER: Final[str] = "upi-qr"
 PATH_WITHDRAWALS: Final[str] = "/withdrawals"
 PATH_WITHDRAWAL: Final[str] = "/withdrawals/{withdrawal_id}"
 

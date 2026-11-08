@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, UploadFile, status
 
+from app.config.settings import load_settings
 from app.constants.application.application_common import SWAGGER_ROLE_WORKER, swagger_summary
 from app.constants.earnings.earnings_route_strings import (
     OPENAPI_TAG_EARNINGS,
@@ -13,6 +14,7 @@ from app.constants.earnings.earnings_route_strings import (
     PATH_EARNINGS_ENTRIES,
     PATH_PAYOUT_ACCOUNT,
     PATH_PAYOUT_ACCOUNT_DEFAULT,
+    PATH_PAYOUT_ACCOUNT_QR,
     PATH_PAYOUT_ACCOUNTS,
     PATH_WITHDRAWAL,
     PATH_WITHDRAWALS,
@@ -104,6 +106,27 @@ async def update_account(
 )
 async def remove_account(account_id: UUID, user: RequireEarningsWrite) -> None:
     await earnings_service.remove_payout_account(user, account_id)
+
+
+@router.put(
+    PATH_PAYOUT_ACCOUNT_QR,
+    response_model=PayoutAccountResponse,
+    summary=swagger_summary("Upload UPI QR code — JPEG, PNG or WebP", SWAGGER_ROLE_WORKER),
+)
+async def upload_upi_qr(
+    account_id: UUID, user: RequireEarningsWrite, file: UploadFile = File(...)
+) -> PayoutAccountResponse:
+    data = await file.read(load_settings().max_photo_bytes + 1)
+    return await earnings_service.set_upi_qr(user, account_id, file.content_type or "", data)
+
+
+@router.delete(
+    PATH_PAYOUT_ACCOUNT_QR,
+    response_model=PayoutAccountResponse,
+    summary=swagger_summary("Remove UPI QR code", SWAGGER_ROLE_WORKER),
+)
+async def remove_upi_qr(account_id: UUID, user: RequireEarningsWrite) -> PayoutAccountResponse:
+    return await earnings_service.remove_upi_qr(user, account_id)
 
 
 @router.post(

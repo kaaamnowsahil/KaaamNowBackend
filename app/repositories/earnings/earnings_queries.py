@@ -105,7 +105,7 @@ WHERE e.worker_profile_id = $1 AND e.assignment_id = $2
 
 _ACCOUNT_COLUMNS = """
 id, account_type, upi_id, paytm_phone, bank_account_number, bank_ifsc, account_holder_name,
-is_default, is_verified, verified_at, created_at
+is_default, is_verified, verified_at, upi_qr_url, created_at
 """
 
 LIST_PAYOUT_ACCOUNTS = f"""
@@ -142,6 +142,8 @@ UPDATE payout_accounts SET
     account_holder_name = COALESCE($7, account_holder_name),
     is_verified = CASE WHEN $8::boolean THEN false ELSE is_verified END,
     verified_at = CASE WHEN $8::boolean THEN NULL ELSE verified_at END,
+    upi_qr_url = CASE WHEN $3::text IS DISTINCT FROM upi_id AND $3 IS NOT NULL
+        THEN NULL ELSE upi_qr_url END,
     updated_at = now()
 WHERE id = $1 AND worker_profile_id = $2 AND is_active
 RETURNING {_ACCOUNT_COLUMNS}
@@ -219,3 +221,9 @@ WHERE id = $1
 """
 
 GET_MIN_WITHDRAWAL = "SELECT min_withdrawal_minor FROM payout_settings WHERE singleton"
+
+SET_PAYOUT_ACCOUNT_QR = f"""
+UPDATE payout_accounts SET upi_qr_url = $3, updated_at = now()
+WHERE id = $1 AND worker_profile_id = $2 AND is_active
+RETURNING {_ACCOUNT_COLUMNS}
+"""
