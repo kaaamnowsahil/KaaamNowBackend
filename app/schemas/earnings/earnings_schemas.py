@@ -65,6 +65,7 @@ class EarningsSummary(BaseModel):
     in_flight_withdrawals_minor: int
     lifetime_minor: int
     this_month_minor: int
+    this_month_shifts: int = 0
     completed_shifts: int
     min_withdrawal_minor: int
     recent: list[LedgerEntry]

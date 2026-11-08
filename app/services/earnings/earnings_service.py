@@ -126,6 +126,7 @@ async def get_summary(user: AuthenticatedUser) -> EarningsSummary:
         in_flight_withdrawals_minor=in_flight,
         lifetime_minor=totals["lifetime_minor"],
         this_month_minor=totals["this_month_minor"],
+        this_month_shifts=totals["this_month_shifts"],
         completed_shifts=worker["completed_shift_count"],
         min_withdrawal_minor=settings.min_withdrawal_minor,
         recent=[LedgerEntry.model_validate(dict(r)) for r in recent],

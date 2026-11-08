@@ -54,7 +54,10 @@ SELECT
     )), 0) AS lifetime_minor,
     COALESCE(SUM(amount_minor) FILTER (WHERE entry_type IN (
         'shift_earning', 'commission', 'cancellation_compensation', 'promo_credit'
-    ) AND created_at >= $2), 0) AS this_month_minor
+    ) AND created_at >= $2), 0) AS this_month_minor,
+    COUNT(*) FILTER (
+        WHERE entry_type = 'shift_earning' AND created_at >= $2
+    ) AS this_month_shifts
 FROM earning_ledger_entries WHERE worker_profile_id = $1
 """
 

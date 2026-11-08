@@ -387,6 +387,22 @@ async def test_live_flow_end_to_end(app_client, db, make_business, make_worker) 
     assert summary["available_minor"] == 43200  # Rs 450 - 4% commission
     assert summary["lifetime_minor"] == 43200
     assert summary["completed_shifts"] == 1
+    assert summary["this_month_shifts"] == 1
+    await db.execute(
+        "INSERT INTO earning_ledger_entries "
+        "(worker_profile_id, entry_type, amount_minor, currency, description, created_at) "
+        "VALUES ($1, 'shift_earning', 100, 'INR', 'Older shift', "
+        "date_trunc('month', now()) - interval '1 day')",
+        worker.profile_id,
+    )
+    summary = (await app_client.get(f"{API}/worker/earnings", headers=worker.headers)).json()
+    assert summary["this_month_shifts"] == 1
+    assert summary["this_month_minor"] == 43200
+    await db.execute(
+        "DELETE FROM earning_ledger_entries WHERE worker_profile_id = $1 "
+        "AND description = 'Older shift'",
+        worker.profile_id,
+    )
     ledger = (
         await app_client.get(f"{API}/worker/earnings/entries", headers=worker.headers)
     ).json()["items"]
