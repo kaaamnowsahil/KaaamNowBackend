@@ -79,3 +79,10 @@ class AdminSearchRadius(BaseModel):
     feed_radius_km: float
     worker_max_shift_distance_km: float
     source: Literal["admin", "default"]
+
+
+class AdminPayoutSettings(BaseModel):
+    """Withdrawal rules in effect now; ``source`` = ``default`` until an admin saves them."""
+
+    min_withdrawal_minor: int
+    source: Literal["admin", "default"]

@@ -32,6 +32,7 @@ from app.exceptions.api_errors import ApiError, bad_request, conflict, not_found
 from app.pagination import clamp_page_limit
 from app.repositories.cancellations import cancellation_repository
 from app.repositories.earnings import earnings_repository
+from app.schemas.admin.admin_schemas import AdminPayoutSettings
 from app.schemas.earnings.earnings_schemas import (
     EarningsSummary,
     LedgerEntry,
@@ -105,6 +106,20 @@ def _withdrawal_response(row: asyncpg.Record) -> WithdrawalResponse:
     )
 
 
+async def min_withdrawal_minor(conn: asyncpg.Connection) -> tuple[int, str]:
+    """→ (minimum, source): the admin setting, else the MIN_WITHDRAWAL_MINOR default."""
+    admin_value = await earnings_repository.get_min_withdrawal(conn)
+    if admin_value is not None:
+        return admin_value, "admin"
+    return load_settings().min_withdrawal_minor, "default"
+
+
+async def effective_payout_settings() -> AdminPayoutSettings:
+    async with get_pool().acquire() as conn:
+        minimum, source = await min_withdrawal_minor(conn)
+    return AdminPayoutSettings(min_withdrawal_minor=minimum, source=source)
+
+
 def _month_start(now: datetime) -> datetime:
     return datetime(now.year, now.month, 1, tzinfo=UTC)
 
@@ -118,6 +133,7 @@ async def get_summary(user: AuthenticatedUser) -> EarningsSummary:
         in_flight = await earnings_repository.in_flight_withdrawals(conn, worker["id"])
         recent = await earnings_repository.list_ledger(conn, worker["id"], RECENT_ENTRIES_LIMIT, 0)
         reliability = await _reliability(conn, worker)
+        minimum, _ = await min_withdrawal_minor(conn)
     return EarningsSummary(
         currency=settings.default_currency,
         available_minor=totals["available_minor"],
@@ -128,7 +144,7 @@ async def get_summary(user: AuthenticatedUser) -> EarningsSummary:
         this_month_minor=totals["this_month_minor"],
         this_month_shifts=totals["this_month_shifts"],
         completed_shifts=worker["completed_shift_count"],
-        min_withdrawal_minor=settings.min_withdrawal_minor,
+        min_withdrawal_minor=minimum,
         recent=[LedgerEntry.model_validate(dict(r)) for r in recent],
         reliability=reliability,
     )
@@ -272,11 +288,10 @@ async def create_withdrawal(user: AuthenticatedUser, body: WithdrawalCreate) -> 
                 ):
                     raise conflict("idempotency_mismatch", MSG_IDEMPOTENCY_MISMATCH)
                 return _withdrawal_response(existing)
-            if body.amount_minor < settings.min_withdrawal_minor:
+            minimum, _ = await min_withdrawal_minor(conn)
+            if body.amount_minor < minimum:
                 raise bad_request(
-                    "withdrawal_below_min",
-                    MSG_WITHDRAWAL_MIN,
-                    {"min_withdrawal_minor": settings.min_withdrawal_minor},
+                    "withdrawal_below_min", MSG_WITHDRAWAL_MIN, {"min_withdrawal_minor": minimum}
                 )
             account = await earnings_repository.get_payout_account(
                 conn, body.payout_account_id, worker["id"]

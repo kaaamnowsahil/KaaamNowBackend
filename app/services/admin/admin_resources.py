@@ -86,6 +86,12 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         read_only=frozenset({"singleton"}),
         audited=True,
     ),
+    _resource(
+        "payout_settings",
+        operations=frozenset({OP_CREATE, OP_UPDATE}),
+        read_only=frozenset({"singleton"}),
+        audited=True,
+    ),
     # Profiles
     _resource(
         "worker_profiles",

@@ -19,6 +19,7 @@ SCHEMA_SQL_RELATIVE_PATHS: Final[tuple[str, ...]] = (
     "tables/platform_fee_policies.sql",
     "tables/cancellation_policies.sql",
     "tables/search_radius_settings.sql",
+    "tables/payout_settings.sql",
     # Identity
     "tables/users.sql",
     "tables/user_roles.sql",

@@ -15,6 +15,7 @@ from app.repositories.earnings.earnings_queries import (
     DEACTIVATE_PAYOUT_ACCOUNT,
     EARNINGS_SUMMARY,
     FINISH_WITHDRAWAL,
+    GET_MIN_WITHDRAWAL,
     GET_PAYOUT_ACCOUNT,
     GET_WITHDRAWAL,
     GET_WITHDRAWAL_BY_KEY,
@@ -280,3 +281,8 @@ async def assignment_net(
 ) -> int | None:
     """What the Worker took home for one job (pay − platform charge), or None if not paid."""
     return await conn.fetchval(ASSIGNMENT_NET, worker_profile_id, assignment_id)
+
+
+async def get_min_withdrawal(conn: asyncpg.Connection) -> int | None:
+    """The admin-set minimum, or ``None`` while no admin has saved one."""
+    return await conn.fetchval(GET_MIN_WITHDRAWAL)

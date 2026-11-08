@@ -173,3 +173,64 @@ async def test_provider_withdrawals_cannot_be_settled_manually(  # type: ignore[
     )
     assert paid.status_code == 409
     assert paid.json()["code"] == "withdrawal_not_manual"
+
+
+async def test_admin_sets_the_minimum_withdrawal(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_worker, manual_payouts
+) -> None:
+    admin = await _admin(app_client, db)
+    effective_url = f"{API}/admin/settings/payouts"
+    default = load_settings().min_withdrawal_minor
+    worker, too_small = await _request(app_client, db, make_worker, 100)
+    try:
+        effective = await app_client.get(effective_url, headers=admin.headers)
+        assert effective.json() == {"min_withdrawal_minor": default, "source": "default"}
+        assert too_small.status_code == 400, too_small.text
+        assert too_small.json()["code"] == "withdrawal_below_min"
+
+        out_of_range = await app_client.post(
+            f"{API}/admin/payout_settings",
+            json={"min_withdrawal_minor": 99, "notes": "too low"},
+            headers=admin.headers,
+        )
+        assert out_of_range.status_code == 400, out_of_range.text
+        created = await app_client.post(
+            f"{API}/admin/payout_settings",
+            json={"min_withdrawal_minor": 100, "notes": "Allow ₹1 withdrawals"},
+            headers=admin.headers,
+        )
+        assert created.status_code == 201, created.text
+        effective = await app_client.get(effective_url, headers=admin.headers)
+        assert effective.json() == {"min_withdrawal_minor": 100, "source": "admin"}
+        assert (await _summary(app_client, worker))["min_withdrawal_minor"] == 100
+
+        account_id = (
+            await app_client.get(f"{API}/worker/payout-accounts", headers=worker.headers)
+        ).json()[0]["id"]
+        allowed = await app_client.post(
+            f"{API}/worker/withdrawals",
+            json={
+                "payout_account_id": account_id,
+                "amount_minor": 100,
+                "idempotency_key": "one-rupee",
+            },
+            headers=worker.headers,
+        )
+        assert allowed.status_code == 201, allowed.text
+
+        raised = await app_client.patch(
+            f"{API}/admin/payout_settings/{created.json()['id']}",
+            json={"min_withdrawal_minor": 500000, "notes": "₹5,000 minimum"},
+            headers=admin.headers,
+        )
+        assert raised.status_code == 200, raised.text
+        assert (await _summary(app_client, worker))["min_withdrawal_minor"] == 500000
+        assert (
+            await db.fetchval(
+                "SELECT count(*) FROM admin_audit_log WHERE resource = 'payout_settings'"
+            )
+            == 2
+        )
+        assert (await app_client.get(effective_url, headers=worker.headers)).status_code == 403
+    finally:
+        await db.execute("DELETE FROM payout_settings")

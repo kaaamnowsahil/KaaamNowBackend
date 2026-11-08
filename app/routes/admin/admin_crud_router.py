@@ -18,6 +18,7 @@ from app.constants.admin.admin_route_strings import (
     HEADER_CONTENT_DISPOSITION,
     OPENAPI_TAG_ADMIN_DATA,
     PATH_ADMIN_METRICS_OVERVIEW,
+    PATH_ADMIN_PAYOUT_SETTINGS,
     PATH_ADMIN_RECORD,
     PATH_ADMIN_RESOURCE,
     PATH_ADMIN_RESOURCE_EXPORT,
@@ -30,6 +31,7 @@ from app.constants.application.application_common import SWAGGER_ROLE_ADMIN, swa
 from app.dependencies import RequireVerificationRead, RequireVerificationWrite
 from app.schemas.admin.admin_schemas import (
     AdminMetricsOverview,
+    AdminPayoutSettings,
     AdminRecord,
     AdminRecordPage,
     AdminResourceList,
@@ -37,6 +39,7 @@ from app.schemas.admin.admin_schemas import (
 )
 from app.services.admin import admin_crud_service, admin_metrics_service
 from app.services.catalog import catalog_service
+from app.services.earnings import earnings_service
 
 router = APIRouter(prefix=ADMIN_CRUD_ROUTE_PREFIX, tags=[OPENAPI_TAG_ADMIN_DATA])
 
@@ -73,6 +76,16 @@ async def metrics_overview(_: RequireVerificationRead) -> AdminMetricsOverview:
 )
 async def search_radius(_: RequireVerificationRead) -> AdminSearchRadius:
     return await catalog_service.effective_search_radii()
+
+
+@router.get(
+    PATH_ADMIN_PAYOUT_SETTINGS,
+    response_model=AdminPayoutSettings,
+    summary=swagger_summary("Withdrawal rules in effect", SWAGGER_ROLE_ADMIN),
+    description="Edit them through the audited `payout_settings` resource.",
+)
+async def payout_settings(_: RequireVerificationRead) -> AdminPayoutSettings:
+    return await earnings_service.effective_payout_settings()
 
 
 @router.get(

@@ -217,3 +217,5 @@ SET status = $2, failure_reason = $3, proof_url = $4, payout_utr = $5,
     settled_by_user_id = $6, completed_at = $7, updated_at = now()
 WHERE id = $1
 """
+
+GET_MIN_WITHDRAWAL = "SELECT min_withdrawal_minor FROM payout_settings WHERE singleton"
