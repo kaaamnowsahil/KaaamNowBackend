@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from app.repositories.shifts.category_matching import worker_category_clause
+
 # $1/$2 shift lat/lng, $3 radius km, $4 require verified, $5 fresh since, $6/$7 bbox deltas,
 # $8 shift id, $9 business user id, $10 category id, $11 shift starts_at, $12 ends_at, $13 limit.
-LIST_DISPATCH_CANDIDATES = """
+LIST_DISPATCH_CANDIDATES = f"""
 SELECT wp.id AS worker_profile_id, wp.user_id,
        kn_haversine_km($1, $2, wl.latitude, wl.longitude) AS distance_km
 FROM worker_profiles wp
@@ -19,11 +21,7 @@ WHERE wp.is_available
   AND NOT EXISTS (
       SELECT 1 FROM live_dispatches d WHERE d.shift_id = $8 AND d.worker_profile_id = wp.id
   )
-  AND (
-      NOT EXISTS (SELECT 1 FROM worker_work_categories c WHERE c.worker_profile_id = wp.id)
-      OR EXISTS (SELECT 1 FROM worker_work_categories c
-                 WHERE c.worker_profile_id = wp.id AND c.category_id = $10)
-  )
+  AND {worker_category_clause("wp.id", "$10")}
   AND NOT EXISTS (
       SELECT 1 FROM shift_assignments sa JOIN shifts s ON s.id = sa.shift_id
       WHERE sa.worker_profile_id = wp.id
@@ -37,7 +35,7 @@ LIMIT $13
 # Scheduled posting alert: verified workers whose live or home location is within radius.
 # $1/$2 shift lat/lng, $3 radius km, $4 require verified, $5/$6 bbox deltas, $7 business user id,
 # $8 category id, $9 limit.
-LIST_WORKERS_NEAR_SCHEDULED = """
+LIST_WORKERS_NEAR_SCHEDULED = f"""
 SELECT w.user_id FROM (
     SELECT wp.id, wp.user_id,
            COALESCE(wl.latitude, wp.latitude) AS lat,
@@ -51,11 +49,7 @@ SELECT w.user_id FROM (
 WHERE w.lat BETWEEN $1::float8 - $5::float8 AND $1::float8 + $5::float8
   AND w.lng BETWEEN $2::float8 - $6::float8 AND $2::float8 + $6::float8
   AND kn_haversine_km($1::float8, $2::float8, w.lat, w.lng) <= $3::float8
-  AND (
-      NOT EXISTS (SELECT 1 FROM worker_work_categories c WHERE c.worker_profile_id = w.id)
-      OR EXISTS (SELECT 1 FROM worker_work_categories c
-                 WHERE c.worker_profile_id = w.id AND c.category_id = $8)
-  )
+  AND {worker_category_clause("w.id", "$8")}
 LIMIT $9
 """
 

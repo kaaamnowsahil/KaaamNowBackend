@@ -9,6 +9,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.repositories.shifts.category_matching import MATCH_WORKER_CATEGORIES
 from app.repositories.shifts.shift_queries import (
     CANCEL_SHIFT,
     CONVERT_TO_SCHEDULED,
@@ -400,6 +401,8 @@ async def list_my_application_shifts(
 async def worker_matches_category(
     conn: asyncpg.Connection, worker_profile_id: UUID, category_id: UUID
 ) -> bool:
+    if not MATCH_WORKER_CATEGORIES:
+        return True
     return bool(await conn.fetchval(WORKER_MATCHES_CATEGORY, worker_profile_id, category_id))
 
 

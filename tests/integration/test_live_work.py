@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from app.db.pool import get_pool
+from app.repositories.shifts.category_matching import MATCH_WORKER_CATEGORIES
 from app.services.background.background_sweep_loop import run_sweep_once
 from tests.integration.conftest import Actor, live_completion_code
 from tests.integration.test_admin_crud import _admin
@@ -957,6 +958,7 @@ async def test_admin_pricing_settings_audit_and_snapshots(  # type: ignore[no-un
         assert restored.status_code == 200, restored.text
 
 
+@pytest.mark.skipif(not MATCH_WORKER_CATEGORIES, reason="worker category matching is off")
 async def test_worker_outside_category_is_not_counted_shown_or_allowed(  # type: ignore[no-untyped-def]
     app_client, db, make_business, make_worker
 ) -> None:

@@ -3,6 +3,8 @@ refunds, availability and the admin monitor."""
 
 from __future__ import annotations
 
+from app.repositories.shifts.category_matching import worker_category_clause
+
 SETTINGS_LOCK_KEY = 7_420_101
 
 # --- pricing settings ------------------------------------------------------------------
@@ -196,7 +198,7 @@ SELECT * FROM live_dispatches WHERE shift_id = $1 AND worker_profile_id = $2
 # inside the radius, matching category (or no categories), not banned, not already busy.
 # $1/$2 lat/lng, $3 radius km, $4 require verified, $5 fresh since, $6/$7 bbox deltas,
 # $8 category id (NULL = any), $9 business user id, $10 now.
-_AVAILABLE_WORKERS_FROM = """
+_AVAILABLE_WORKERS_FROM = f"""
 FROM worker_profiles wp
 JOIN worker_locations wl ON wl.worker_profile_id = wp.id
 WHERE wp.is_available
@@ -207,12 +209,7 @@ WHERE wp.is_available
   AND wl.longitude BETWEEN $2::float8 - $7::float8 AND $2::float8 + $7::float8
   AND kn_haversine_km($1::float8, $2::float8, wl.latitude, wl.longitude) <= $3::float8
   AND wp.user_id <> $9
-  AND (
-      $8::uuid IS NULL
-      OR NOT EXISTS (SELECT 1 FROM worker_work_categories c WHERE c.worker_profile_id = wp.id)
-      OR EXISTS (SELECT 1 FROM worker_work_categories c
-                 WHERE c.worker_profile_id = wp.id AND c.category_id = $8)
-  )
+  AND ($8::uuid IS NULL OR {worker_category_clause("wp.id", "$8")})
   AND NOT EXISTS (
       SELECT 1 FROM shift_assignments sa JOIN shifts s ON s.id = sa.shift_id
       WHERE sa.worker_profile_id = wp.id

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.repositories.shifts.category_matching import worker_category_clause
+
 SEAT_STATUSES_SQL = "('confirmed', 'en_route', 'checked_in', 'checked_out', 'approved')"
 
 _BOOKED_COUNT = f"""
@@ -257,11 +259,7 @@ SELECT * FROM (
       AND bp.user_id <> $12
       AND ($4::varchar IS NULL OR s.shift_type = $4)
       AND ($5::varchar IS NULL OR wc.slug = $5)
-      AND (
-          NOT EXISTS (SELECT 1 FROM worker_work_categories wwc WHERE wwc.worker_profile_id = $1)
-          OR EXISTS (SELECT 1 FROM worker_work_categories wwc
-                     WHERE wwc.worker_profile_id = $1 AND wwc.category_id = s.category_id)
-      )
+      AND {worker_category_clause("$1", "s.category_id")}
       AND (
           $16::varchar[] IS NULL
           OR EXISTS (
@@ -322,11 +320,7 @@ LIMIT $5 OFFSET $6
 """
 
 # A Worker with no categories set matches every category (same rule as live dispatch).
-WORKER_MATCHES_CATEGORY = """
-SELECT NOT EXISTS (SELECT 1 FROM worker_work_categories WHERE worker_profile_id = $1)
-    OR EXISTS (SELECT 1 FROM worker_work_categories
-               WHERE worker_profile_id = $1 AND category_id = $2)
-"""
+WORKER_MATCHES_CATEGORY = f"SELECT {worker_category_clause('$1', '$2')}"
 
 WORKER_HAS_OVERLAP = """
 SELECT EXISTS (
