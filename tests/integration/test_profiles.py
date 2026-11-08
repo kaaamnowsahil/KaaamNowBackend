@@ -174,6 +174,35 @@ async def test_business_logo_is_separate_from_personal_photo(
     assert second.json()["account"]["photo_url"] == personal
 
 
+async def test_signup_selfie_sets_personal_photo_for_every_role(
+    app_client: httpx.AsyncClient,
+    make_business,
+    make_worker,  # type: ignore[no-untyped-def]
+) -> None:
+    for actor in (await make_worker(online=False), await make_business()):
+        first = await app_client.post(
+            f"{API}/me/selfie",
+            files={"file": ("selfie", JPEG, "image/jpeg")},
+            headers=actor.headers,
+        )
+        assert first.status_code == 200, first.text
+        first_photo = first.json()["account"]["photo_url"]
+        assert "/avatars/" in first_photo and _stored_file(first_photo).is_file()
+        if first.json()["business"] is not None:
+            assert first.json()["business"]["logo_url"] is None
+
+        second = await app_client.post(
+            f"{API}/me/selfie", files={"file": ("selfie", PNG, "image/png")}, headers=actor.headers
+        )
+        second_photo = second.json()["account"]["photo_url"]
+        assert second_photo != first_photo and not _stored_file(first_photo).exists()
+
+    rejected = await app_client.post(
+        f"{API}/me/selfie", files={"file": ("x", b"<svg/>", "image/png")}, headers=actor.headers
+    )
+    assert rejected.status_code == 400
+
+
 async def test_preferences_patch_for_every_role(
     app_client: httpx.AsyncClient,
     make_business,

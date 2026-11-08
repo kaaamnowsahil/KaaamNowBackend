@@ -192,15 +192,30 @@ async def upload_my_profile_image(
     if profile_type == PROFILE_TYPE_BUSINESS:
         await _replace_logo(primary["id"], data, extension)
     else:
-        url = await get_photo_storage().save(AVATAR_STORAGE_FOLDER, data, extension)
-        try:
-            async with get_pool().acquire() as conn:
-                previous = await user_repository.replace_photo_url(conn, user.user_id, url)
-        except BaseException:
-            await delete_images([url])
-            raise
-        await delete_images([previous])
+        await _replace_photo(user.user_id, data, extension)
     return await get_my_profile(user)
+
+
+async def upload_my_selfie(
+    user: AuthenticatedUser, content_type: str, data: bytes
+) -> MyProfileResponse:
+    """Replace the caller's personal photo (signup selfie) whatever the active role."""
+    extension = validate_image(content_type, data)
+    async with get_pool().acquire() as conn:
+        await _resolve_caller(conn, user, ACTION_WRITE)
+    await _replace_photo(user.user_id, data, extension)
+    return await get_my_profile(user)
+
+
+async def _replace_photo(user_id: UUID, data: bytes, extension: str) -> None:
+    url = await get_photo_storage().save(AVATAR_STORAGE_FOLDER, data, extension)
+    try:
+        async with get_pool().acquire() as conn:
+            previous = await user_repository.replace_photo_url(conn, user_id, url)
+    except BaseException:
+        await delete_images([url])
+        raise
+    await delete_images([previous])
 
 
 async def _replace_logo(business_profile_id: UUID, data: bytes, extension: str) -> None:

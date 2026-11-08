@@ -11,6 +11,7 @@ OPENAPI_TAG_ME: Final[str] = "me"
 
 PATH_PROFILE: Final[str] = "/profile"
 PATH_PROFILE_IMAGE: Final[str] = "/profile/image"
+PATH_SELFIE: Final[str] = "/selfie"
 PATH_AVAILABILITY: Final[str] = "/availability"
 PATH_LOCATION: Final[str] = "/location"
 PATH_WORKER_BY_ID: Final[str] = "/workers/{worker_profile_id}"

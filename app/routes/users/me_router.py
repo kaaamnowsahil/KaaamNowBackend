@@ -34,6 +34,7 @@ from app.constants.users.user_route_strings import (
     PATH_PROFILE,
     PATH_PROFILE_IMAGE,
     PATH_ROLES,
+    PATH_SELFIE,
     PATH_TERMS,
     PATH_TERMS_ACCEPT,
     PATH_WORKER_BY_ID,
@@ -107,6 +108,19 @@ async def upload_profile_image(
 ) -> MyProfileResponse:
     data = await file.read(load_settings().max_photo_bytes + 1)
     return await profile_service.upload_my_profile_image(user, file.content_type or "", data)
+
+
+@router.post(
+    PATH_SELFIE,
+    response_model=MyProfileResponse,
+    summary=swagger_summary(
+        "Upload my personal photo / selfie (never the business logo) — JPEG, PNG or WebP",
+        SWAGGER_ROLE_ANY_USER,
+    ),
+)
+async def upload_selfie(user: CurrentUser, file: UploadFile = File(...)) -> MyProfileResponse:
+    data = await file.read(load_settings().max_photo_bytes + 1)
+    return await profile_service.upload_my_selfie(user, file.content_type or "", data)
 
 
 @router.get(
