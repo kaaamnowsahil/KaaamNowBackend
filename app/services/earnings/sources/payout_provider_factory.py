@@ -7,6 +7,9 @@ a bank rejection so the reversal path can be exercised. In production no money m
 ``razorpayx`` sends real RazorpayX payouts (UPI to a VPA, IMPS to a bank account) from
 ``RAZORPAYX_ACCOUNT_NUMBER`` with the Razorpay key pair. Paytm wallets are not a RazorpayX
 fund-account type, so those withdrawals are refused before any money leaves.
+
+``manual`` sends nothing: the withdrawal waits as ``processing`` until an admin pays it outside
+the app and marks it paid with a payment screenshot, or rejects it (the debit is reversed).
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import httpx
 
 from app.config.settings import load_settings
 from app.constants.application.application_constants import MSG_RAZORPAY_LIVE_KEYS_DISABLED
+from app.constants.earnings.earnings_route_strings import PAYOUT_PROVIDER_MANUAL
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,18 @@ class FakePayoutProvider:
         if load_settings().is_production:
             return PayoutStatus("processing")
         return PayoutStatus("paid")
+
+
+class ManualPayoutProvider:
+    name = PAYOUT_PROVIDER_MANUAL
+
+    async def create_payout(
+        self, *, reference: str, amount_minor: int, account: dict[str, str | None]
+    ) -> str:
+        return f"manual_{reference}"
+
+    async def fetch_status(self, provider_payout_id: str) -> PayoutStatus:
+        return PayoutStatus("processing")
 
 
 _RAZORPAYX_FAILED = frozenset({"failed", "reversed", "rejected", "cancelled"})
@@ -171,4 +187,6 @@ def get_payout_provider(name: str | None = None) -> PayoutProvider:
         return FakePayoutProvider()
     if provider == "razorpayx":
         return RazorpayXPayoutProvider()
+    if provider == PAYOUT_PROVIDER_MANUAL:
+        return ManualPayoutProvider()
     raise RuntimeError(f"PAYOUT_PROVIDER={provider!r} is not implemented")

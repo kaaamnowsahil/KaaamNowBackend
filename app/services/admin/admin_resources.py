@@ -136,8 +136,9 @@ ADMIN_RESOURCES: Final[tuple[AdminResource, ...]] = (
         searchable=("upi_id", "paytm_phone", "account_holder_name", "bank_ifsc"),
         soft_delete=True,
     ),
-    # Withdrawals move only through the earnings service and payout-provider sweep, which
-    # keep the append-only ledger (and failure reversals) consistent with the status.
+    # Withdrawals move only through the earnings service, the payout-provider sweep and the
+    # manual-payout admin actions, which keep the append-only ledger (and failure reversals)
+    # consistent with the status.
     _resource(
         "withdrawals",
         operations=READ_ONLY_OPS,

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.constants.earnings.earnings_route_strings import (
     BANK_ACCOUNT_PATTERN,
@@ -128,8 +128,30 @@ class WithdrawalResponse(BaseModel):
     payout_account_id: UUID
     payout_display: str
     failure_reason: str | None = None
+    payout_utr: str | None = None
     initiated_at: datetime
     completed_at: datetime | None = None
+
+
+class ManualPayoutView(BaseModel):
+    id: UUID
+    status: Literal["initiated", "processing", "paid", "failed"]
+    failure_reason: str | None = None
+    payout_utr: str | None = None
+    proof_url: str | None = None
+    completed_at: datetime | None = None
+
+
+class ManualPayoutReject(BaseModel):
+    reason: str = Field(min_length=5, max_length=200)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 5:
+            raise ValueError("Give a reason of at least 5 characters.")
+        return value
 
 
 class WithdrawalPage(BaseModel):

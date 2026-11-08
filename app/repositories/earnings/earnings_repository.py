@@ -33,6 +33,7 @@ from app.repositories.earnings.earnings_queries import (
     PENDING_PAY,
     SET_DEFAULT_ACCOUNT,
     SET_WITHDRAWAL_PROCESSING,
+    SETTLE_WITHDRAWAL,
     UPDATE_PAYOUT_ACCOUNT,
 )
 
@@ -248,6 +249,30 @@ async def finish_withdrawal(
     now: datetime,
 ) -> None:
     await conn.execute(FINISH_WITHDRAWAL, withdrawal_id, status, failure_reason, now)
+
+
+async def settle_withdrawal(
+    conn: asyncpg.Connection,
+    withdrawal_id: UUID,
+    *,
+    status: str,
+    failure_reason: str | None,
+    proof_url: str | None,
+    payout_utr: str | None,
+    settled_by_user_id: UUID,
+    now: datetime,
+) -> None:
+    """Admin-recorded outcome of a manual payout."""
+    await conn.execute(
+        SETTLE_WITHDRAWAL,
+        withdrawal_id,
+        status,
+        failure_reason,
+        proof_url,
+        payout_utr,
+        settled_by_user_id,
+        now,
+    )
 
 
 async def assignment_net(

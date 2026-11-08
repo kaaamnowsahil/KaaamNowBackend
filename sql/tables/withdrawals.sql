@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     CONSTRAINT withdrawals_amount_chk CHECK (amount_minor > 0)
 );
 
+-- Manual payouts: an admin pays outside the app and records the proof here.
+ALTER TABLE withdrawals
+    ADD COLUMN IF NOT EXISTS proof_url TEXT,
+    ADD COLUMN IF NOT EXISTS payout_utr VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS settled_by_user_id UUID;
+
 CREATE INDEX IF NOT EXISTS withdrawals_worker_idx ON withdrawals (worker_profile_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS withdrawals_in_flight_idx ON withdrawals (status)
     WHERE status IN ('initiated', 'processing');

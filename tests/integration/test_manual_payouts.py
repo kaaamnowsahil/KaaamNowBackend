@@ -1,0 +1,175 @@
+"""Manual payouts: the worker requests, an admin pays outside the app and marks it paid with a
+screenshot, or rejects it and the amount goes back to the worker's balance."""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+import asyncpg
+import httpx
+import pytest
+
+from app.config.settings import load_settings
+from app.db.pool import get_pool
+from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
+from tests.integration.test_admin_crud import _admin
+
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
+API = "/api/v1"
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+SEED = 50000
+
+
+@pytest.fixture
+def manual_payouts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(load_settings(), "payout_provider", "manual")
+
+
+async def _request(app_client: httpx.AsyncClient, db: asyncpg.Connection, make_worker, amount: int):  # type: ignore[no-untyped-def]
+    worker = await make_worker("Sita", online=False)
+    await db.execute(
+        "INSERT INTO earning_ledger_entries (worker_profile_id, entry_type, amount_minor, currency,"
+        " description) VALUES ($1, 'shift_earning', $2, 'INR', 'seed')",
+        worker.profile_id,
+        SEED,
+    )
+    account = await app_client.post(
+        f"{API}/worker/payout-accounts",
+        json={"account_type": "upi", "upi_id": "sita@okaxis"},
+        headers=worker.headers,
+    )
+    assert account.status_code == 201, account.text
+    created = await app_client.post(
+        f"{API}/worker/withdrawals",
+        json={
+            "payout_account_id": account.json()["id"],
+            "amount_minor": amount,
+            "idempotency_key": f"manual-{amount}",
+        },
+        headers=worker.headers,
+    )
+    return worker, created
+
+
+async def _summary(app_client: httpx.AsyncClient, worker) -> dict:  # type: ignore[no-untyped-def]
+    return (await app_client.get(f"{API}/worker/earnings", headers=worker.headers)).json()
+
+
+async def _kinds(db: asyncpg.Connection, user_id: UUID) -> list[tuple[str, str]]:
+    rows = await db.fetch(
+        "SELECT kind, body FROM notifications WHERE user_id = $1 AND kind LIKE 'withdrawal%'",
+        user_id,
+    )
+    return [(r["kind"], r["body"]) for r in rows]
+
+
+async def test_admin_marks_a_manual_withdrawal_paid_with_a_screenshot(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_worker, manual_payouts
+) -> None:
+    worker, created = await _request(app_client, db, make_worker, 20000)
+    assert created.status_code == 201, created.text
+    withdrawal = created.json()
+    assert withdrawal["status"] == "processing"
+    summary = await _summary(app_client, worker)
+    assert summary["available_minor"] == SEED - 20000
+    assert summary["in_flight_withdrawals_minor"] == 20000
+
+    await advance_processing_withdrawals(get_pool())
+    url = f"{API}/worker/withdrawals/{withdrawal['id']}"
+    assert (await app_client.get(url, headers=worker.headers)).json()["status"] == "processing"
+
+    paid_url = f"{API}/admin/withdrawals/{withdrawal['id']}/mark-paid"
+    proof = {"proof": ("proof.png", PNG, "image/png")}
+    assert (await app_client.post(paid_url, files=proof, headers=worker.headers)).status_code == 403
+    admin = await _admin(app_client, db)
+    missing = await app_client.post(paid_url, data={"utr": "1"}, headers=admin.headers)
+    assert missing.status_code == 422
+    wrong = await app_client.post(
+        paid_url, files={"proof": ("p.gif", PNG, "image/gif")}, headers=admin.headers
+    )
+    assert wrong.status_code == 400
+
+    paid = await app_client.post(
+        paid_url, files=proof, data={"utr": " 412345678901 "}, headers=admin.headers
+    )
+    assert paid.status_code == 200, paid.text
+    body = paid.json()
+    assert body["status"] == "paid"
+    assert body["payout_utr"] == "412345678901"
+    assert body["proof_url"]
+
+    seen = (await app_client.get(url, headers=worker.headers)).json()
+    assert (seen["status"], seen["payout_utr"]) == ("paid", "412345678901")
+    summary = await _summary(app_client, worker)
+    assert summary["available_minor"] == SEED - 20000
+    assert summary["in_flight_withdrawals_minor"] == 0
+    kinds = await _kinds(db, worker.user_id)
+    assert [k for k, _ in kinds] == ["withdrawal_paid"]
+    assert "UTR 412345678901" in kinds[0][1]
+    audit = await db.fetchval(
+        "SELECT count(*) FROM admin_audit_log WHERE resource = 'withdrawals' AND record_id = $1",
+        withdrawal["id"],
+    )
+    assert audit == 1
+
+    again = await app_client.post(paid_url, files=proof, headers=admin.headers)
+    assert again.status_code == 409
+    reject = await app_client.post(
+        f"{API}/admin/withdrawals/{withdrawal['id']}/reject",
+        json={"reason": "Changed my mind"},
+        headers=admin.headers,
+    )
+    assert reject.status_code == 409
+
+
+async def test_admin_rejects_a_manual_withdrawal_and_the_money_returns(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_worker, manual_payouts
+) -> None:
+    worker, created = await _request(app_client, db, make_worker, 15000)
+    withdrawal_id = created.json()["id"]
+    admin = await _admin(app_client, db)
+    reject_url = f"{API}/admin/withdrawals/{withdrawal_id}/reject"
+    short = await app_client.post(reject_url, json={"reason": "  no "}, headers=admin.headers)
+    assert short.status_code == 422
+
+    rejected = await app_client.post(
+        reject_url, json={"reason": "UPI ID is not valid"}, headers=admin.headers
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "failed"
+    assert rejected.json()["failure_reason"] == "UPI ID is not valid"
+    summary = await _summary(app_client, worker)
+    assert summary["available_minor"] == SEED
+    assert summary["in_flight_withdrawals_minor"] == 0
+    reversal = await db.fetchval(
+        "SELECT amount_minor FROM earning_ledger_entries"
+        " WHERE withdrawal_id = $1 AND entry_type = 'withdrawal_reversal'",
+        UUID(withdrawal_id),
+    )
+    assert reversal == 15000
+    assert [k for k, _ in await _kinds(db, worker.user_id)] == ["withdrawal_failed"]
+
+
+async def test_worker_cannot_withdraw_more_than_available(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_worker, manual_payouts
+) -> None:
+    worker, created = await _request(app_client, db, make_worker, SEED + 1)
+    assert created.status_code == 409
+    assert created.json()["code"] == "insufficient_balance"
+    assert (await _summary(app_client, worker))["available_minor"] == SEED
+
+
+async def test_provider_withdrawals_cannot_be_settled_manually(  # type: ignore[no-untyped-def]
+    app_client, db: asyncpg.Connection, make_worker, monkeypatch
+) -> None:
+    monkeypatch.setattr(load_settings(), "payout_provider", "fake")
+    _, created = await _request(app_client, db, make_worker, 10000)
+    admin = await _admin(app_client, db)
+    paid = await app_client.post(
+        f"{API}/admin/withdrawals/{created.json()['id']}/mark-paid",
+        files={"proof": ("proof.png", PNG, "image/png")},
+        headers=admin.headers,
+    )
+    assert paid.status_code == 409
+    assert paid.json()["code"] == "withdrawal_not_manual"

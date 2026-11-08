@@ -99,6 +99,7 @@ def _withdrawal_response(row: asyncpg.Record) -> WithdrawalResponse:
         payout_account_id=row["payout_account_id"],
         payout_display=payout_display(row),
         failure_reason=row["failure_reason"],
+        payout_utr=row["payout_utr"],
         initiated_at=row["initiated_at"],
         completed_at=row["completed_at"],
     )

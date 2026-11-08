@@ -163,7 +163,7 @@ LOCK_WORKER_LEDGER = "SELECT pg_advisory_xact_lock(hashtext($1::text))"
 _WITHDRAWAL_SELECT = """
 SELECT w.id, w.worker_profile_id, w.payout_account_id, w.amount_minor, w.currency, w.status,
        w.reference, w.idempotency_key, w.provider, w.provider_payout_id, w.failure_reason,
-       w.initiated_at, w.completed_at,
+       w.initiated_at, w.completed_at, w.payout_utr,
        pa.account_type, pa.upi_id, pa.paytm_phone, pa.bank_account_number, pa.bank_ifsc
 FROM withdrawals w JOIN payout_accounts pa ON pa.id = w.payout_account_id
 """
@@ -192,7 +192,9 @@ WHERE id = $1
 """
 
 LIST_IN_FLIGHT_WITHDRAWALS = """
-SELECT id FROM withdrawals WHERE status IN ('initiated', 'processing') ORDER BY initiated_at
+SELECT id FROM withdrawals
+WHERE status IN ('initiated', 'processing') AND provider <> 'manual'
+ORDER BY initiated_at
 LIMIT $1
 """
 
@@ -203,5 +205,12 @@ WHERE w.id = $1 FOR UPDATE OF w
 
 FINISH_WITHDRAWAL = """
 UPDATE withdrawals SET status = $2, failure_reason = $3, completed_at = $4, updated_at = now()
+WHERE id = $1
+"""
+
+SETTLE_WITHDRAWAL = """
+UPDATE withdrawals
+SET status = $2, failure_reason = $3, proof_url = $4, payout_utr = $5,
+    settled_by_user_id = $6, completed_at = $7, updated_at = now()
 WHERE id = $1
 """
