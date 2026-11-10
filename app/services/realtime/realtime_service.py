@@ -22,6 +22,7 @@ from app.constants.realtime.realtime_constants import (
     CLOSE_POLICY_VIOLATION,
     CLOSE_RECONNECT,
     CLOSE_UNAUTHORIZED,
+    HANDSHAKE_PROTOCOL,
     MESSAGE_AUTH,
     MESSAGE_CHANGED,
     MESSAGE_PING,
@@ -54,6 +55,20 @@ async def identify(token: str) -> UUID | None:
         if ROLE_WORKER not in user.roles:
             return None
         return await realtime_repository.worker_profile_id(conn, user.user_id)
+
+
+def handshake_token(websocket: WebSocket) -> str | None:
+    """Browsers offer subprotocols `[HANDSHAKE_PROTOCOL, <access token>]`, so the token arrives
+    with the upgrade request (still never in the URL). Vercel does not deliver messages the client
+    sends on a Python socket, so a first-message token never arrives there."""
+    offered = [
+        value.strip()
+        for value in websocket.headers.get("sec-websocket-protocol", "").split(",")
+        if value.strip()
+    ]
+    if len(offered) == 2 and offered[0] == HANDSHAKE_PROTOCOL:
+        return offered[1]
+    return None
 
 
 async def _authenticate(websocket: WebSocket) -> UUID | None:
@@ -99,9 +114,10 @@ async def serve(websocket: WebSocket, realtime_hub: RealtimeHub = hub) -> None:
     if not origin_allowed(websocket.headers.get("origin"), load_settings().cors_origin):
         await websocket.close(code=CLOSE_POLICY_VIOLATION)
         return
-    await websocket.accept()
+    token = handshake_token(websocket)
+    await websocket.accept(subprotocol=HANDSHAKE_PROTOCOL if token else None)
     try:
-        worker_profile_id = await _authenticate(websocket)
+        worker_profile_id = await (identify(token) if token else _authenticate(websocket))
     except (AuthenticationError, TimeoutError, ValueError, KeyError, AttributeError):
         with contextlib.suppress(*_CLIENT_GONE):
             await websocket.close(code=CLOSE_UNAUTHORIZED)

@@ -15,6 +15,7 @@ from fastapi import WebSocketDisconnect
 from app.constants.realtime.realtime_constants import (
     CLOSE_POLICY_VIOLATION,
     CLOSE_UNAUTHORIZED,
+    HANDSHAKE_PROTOCOL,
     NOTIFY_CHANNEL,
     NOTIFY_LIVE_PREFIX,
     NOTIFY_SHIFTS,
@@ -168,8 +169,13 @@ def test_origin_rules() -> None:
 
 
 class _FakeSocket:
-    def __init__(self, *messages: object, origin: str | None = ALLOWED) -> None:
+    def __init__(
+        self, *messages: object, origin: str | None = ALLOWED, protocols: str | None = None
+    ) -> None:
         self.headers = {"origin": origin} if origin else {}
+        if protocols is not None:
+            self.headers["sec-websocket-protocol"] = protocols
+        self.subprotocol: str | None = None
         self.incoming: asyncio.Queue[dict] = asyncio.Queue()
         for message in messages:
             self.incoming.put_nowait({"type": "websocket.receive", "text": json.dumps(message)})
@@ -177,8 +183,9 @@ class _FakeSocket:
         self.accepted = False
         self.closed: int | None = None
 
-    async def accept(self) -> None:
+    async def accept(self, subprotocol: str | None = None) -> None:
         self.accepted = True
+        self.subprotocol = subprotocol
 
     async def receive(self) -> dict:
         return await self.incoming.get()
@@ -275,3 +282,43 @@ async def test_forwards_changes_and_unsubscribes_when_the_client_leaves(
     socket.leave()
     await asyncio.wait_for(session, 1)
     assert hub.removed == hub.subscriptions
+
+
+async def test_token_offered_in_the_handshake_needs_no_first_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker_id = uuid4()
+    seen: list[str] = []
+
+    async def accept(token: str) -> UUID | None:
+        seen.append(token)
+        return worker_id
+
+    monkeypatch.setattr(realtime_service, "identify", accept)
+    socket, hub = _FakeSocket(protocols=f"{HANDSHAKE_PROTOCOL}, good.jwt-token"), _FakeHub()
+    session = asyncio.create_task(realtime_service.serve(socket, hub))  # type: ignore[arg-type]
+
+    await _until(lambda: socket.sent == [{"type": "ready"}])
+    assert socket.subprotocol == HANDSHAKE_PROTOCOL
+    assert seen == ["good.jwt-token"] and hub.subscriptions[0].worker_profile_id == worker_id
+    socket.leave()
+    await asyncio.wait_for(session, 1)
+
+
+async def test_bad_handshake_token_closes_without_subscribing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def reject(_token: str) -> UUID | None:
+        raise AuthenticationError("invalid")
+
+    monkeypatch.setattr(realtime_service, "identify", reject)
+    socket, hub = _FakeSocket(protocols=f"{HANDSHAKE_PROTOCOL}, bad"), _FakeHub()
+    await realtime_service.serve(socket, hub)  # type: ignore[arg-type]
+    assert socket.closed == CLOSE_UNAUTHORIZED
+    assert hub.subscriptions == [] and socket.sent == []
+
+
+@pytest.mark.parametrize("protocols", ["", "other, token", f"{HANDSHAKE_PROTOCOL}", "a, b, c"])
+def test_handshake_token_needs_exactly_our_protocol_and_a_token(protocols: str) -> None:
+    socket = _FakeSocket(protocols=protocols)
+    assert realtime_service.handshake_token(socket) is None  # type: ignore[arg-type]

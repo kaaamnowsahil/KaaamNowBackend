@@ -8,6 +8,8 @@ from app.constants.application.application_common import API_V1
 
 PATH_REALTIME: Final[str] = f"{API_V1}/realtime"
 
+# Subprotocol offered alongside the access token during the upgrade (browser clients).
+HANDSHAKE_PROTOCOL: Final[str] = "kaaamnow.v1"
 # Client -> server
 MESSAGE_AUTH: Final[str] = "auth"
 # Server -> client
