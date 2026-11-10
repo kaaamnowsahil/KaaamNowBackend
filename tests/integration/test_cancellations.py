@@ -13,7 +13,7 @@ import asyncpg
 import httpx
 
 from app.db.pool import get_pool
-from app.services.attendance.attendance_service import close_missed_shifts
+from app.services.attendance.attendance_service import close_finished_shifts, close_missed_shifts
 from app.services.shifts.shift_sweeps import release_unfilled_seats
 from tests.integration.conftest import NEAR_LAT, NEAR_LNG, pay_deposit
 
@@ -220,6 +220,48 @@ async def test_sweep_marks_ended_bookings_without_check_in_as_no_show(  # type: 
     ).json()
     assert [i["assignment_status"] for i in missed_tab["items"]] == ["no_show"]
     assert await close_missed_shifts(get_pool()) == 0
+
+
+async def test_shift_nobody_worked_expires_instead_of_staying_upcoming(  # type: ignore[no-untyped-def]
+    app_client, db, make_business, make_worker
+) -> None:
+    business = await make_business()
+    missed = await make_worker("Expired Shift Worker", online=False)
+    legacy = await make_worker("Legacy Shift Worker", online=False)
+    worked = await make_worker("Worked Shift Worker", online=False)
+    running = await make_worker("Upcoming Shift Worker", online=False)
+    missed_shift, _ = await _booked_shift(
+        app_client, db, business, [missed], starts_in=timedelta(hours=-6)
+    )
+    legacy_shift, (legacy_id,) = await _booked_shift(
+        app_client, db, business, [legacy], starts_in=timedelta(hours=-6)
+    )
+    worked_shift, (worked_id,) = await _booked_shift(
+        app_client, db, business, [worked], starts_in=timedelta(hours=-6)
+    )
+    running_shift, _ = await _booked_shift(
+        app_client, db, business, [running], starts_in=timedelta(hours=-1)
+    )
+    # Left behind by the older no-show flow: every seat closed, shift still "filled".
+    set_seat = "UPDATE shift_assignments SET status = $2 WHERE id = $1"
+    await db.execute(set_seat, UUID(legacy_id), "no_show")
+    await db.execute(set_seat, UUID(worked_id), "checked_out")
+
+    await close_missed_shifts(get_pool())
+    shift_status = "SELECT status FROM shifts WHERE id = $1"
+    assert await db.fetchval(shift_status, UUID(missed_shift)) == "expired"
+    assert await db.fetchval(shift_status, UUID(legacy_shift)) == "filled"
+
+    assert await close_finished_shifts(get_pool()) >= 2
+    assert await db.fetchval(shift_status, UUID(legacy_shift)) == "expired"
+    assert await db.fetchval(shift_status, UUID(worked_shift)) == "completed"
+    assert await db.fetchval(shift_status, UUID(running_shift)) == "filled"
+    reason = (
+        "SELECT reason FROM shift_status_history WHERE shift_id = $1 "
+        "ORDER BY created_at DESC LIMIT 1"
+    )
+    assert await db.fetchval(reason, UUID(legacy_shift)) == "nobody_worked"
+    assert await close_finished_shifts(get_pool()) == 0
 
 
 async def test_no_show_fee_strikes_and_ban(  # type: ignore[no-untyped-def]

@@ -27,7 +27,10 @@ _task: asyncio.Task[None] | None = None
 
 
 def _jobs() -> list[tuple[str, SweepJob]]:
-    from app.services.attendance.attendance_service import close_missed_shifts
+    from app.services.attendance.attendance_service import (
+        close_finished_shifts,
+        close_missed_shifts,
+    )
     from app.services.billing.billing_sweeps import expire_stale_payments
     from app.services.earnings.earnings_sweeps import advance_processing_withdrawals
     from app.services.live_work.live_work_sweeps import (
@@ -65,6 +68,7 @@ def _jobs() -> list[tuple[str, SweepJob]]:
         ("release_unfilled_seats", release_unfilled_seats),
         ("prompt_extensions", prompt_extensions),
         ("close_missed_shifts", close_missed_shifts),
+        ("close_finished_shifts", close_finished_shifts),
         ("close_scheduled_recruiting", close_scheduled_recruiting),
         ("expire_stale_payments", expire_stale_payments),
         ("live_work_retry_refunds", refund_unanswered_retries),

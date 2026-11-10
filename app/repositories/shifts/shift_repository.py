@@ -32,6 +32,7 @@ from app.repositories.shifts.shift_queries import (
     LIST_LIVE_SEARCHES_TO_REFRESH,
     LIST_OPEN_SCHEDULED_APPLY_CLOSED,
     LIST_OPEN_SCHEDULED_PAST_START,
+    LIST_STARTED_SHIFTS_WITHOUT_ACTIVE_SEATS,
     LIST_TIMED_OUT_LIVE_SEARCHES,
     LOCK_SHIFT,
     MY_APPLICATION_SHIFTS,
@@ -444,6 +445,13 @@ async def list_open_scheduled_apply_closed(
 ) -> list[UUID]:
     """Open scheduled shifts that start within the apply cut-off but haven't started."""
     return [r["id"] for r in await conn.fetch(LIST_OPEN_SCHEDULED_APPLY_CLOSED, closes_before, now)]
+
+
+async def list_started_shifts_without_active_seats(
+    conn: asyncpg.Connection, now: datetime, active_statuses: list[str], limit: int
+) -> list[UUID]:
+    rows = await conn.fetch(LIST_STARTED_SHIFTS_WITHOUT_ACTIVE_SEATS, now, active_statuses, limit)
+    return [r["id"] for r in rows]
 
 
 async def list_open_scheduled_past_start(conn: asyncpg.Connection, now: datetime) -> list[UUID]:

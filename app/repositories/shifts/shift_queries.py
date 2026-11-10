@@ -360,6 +360,18 @@ SELECT id FROM shifts
 WHERE shift_type = 'scheduled' AND status = 'open' AND starts_at <= $1 AND starts_at > $2
 """
 
+# Started scheduled shifts still open for business with nobody left booked, travelling or working.
+LIST_STARTED_SHIFTS_WITHOUT_ACTIVE_SEATS = """
+SELECT s.id FROM shifts s
+WHERE s.shift_type = 'scheduled' AND s.status IN ('filled', 'in_progress') AND s.starts_at <= $1
+  AND NOT EXISTS (
+      SELECT 1 FROM shift_assignments a
+      WHERE a.shift_id = s.id AND a.status = ANY($2::varchar[])
+  )
+ORDER BY s.starts_at
+LIMIT $3
+"""
+
 LIST_OPEN_SCHEDULED_PAST_START = """
 SELECT id FROM shifts
 WHERE shift_type = 'scheduled' AND status IN ('open', 'awaiting_payment') AND starts_at <= $1

@@ -54,6 +54,7 @@ from app.constants.shifts.shift_route_strings import (
     MSG_ASSIGNMENT_NOT_FOUND,
     MSG_ASSIGNMENT_STATE,
     SHIFT_COMPLETED,
+    SHIFT_EXPIRED,
     SHIFT_FILLED,
     SHIFT_IN_PROGRESS,
     SHIFT_LIVE,
@@ -214,25 +215,41 @@ async def check_in(
             return await build_assignment_detail(conn, assignment_id, user)
 
 
-async def _complete_shift_if_done(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> None:
-    """An in-progress shift is completed once nobody is still booked, travelling or working.
-    Hours approval and the final invoice still happen on the completed shift."""
+async def _complete_shift_if_done(conn: asyncpg.Connection, shift_id: UUID, now: datetime) -> bool:
+    """A started shift closes once nobody is still booked, travelling or working.
+    - in progress: completed; hours approval and the final invoice still happen on it
+    - filled (nobody ever checked in, e.g. every Worker was a no-show): expired, so it no longer
+      shows as upcoming with a Cancel button
+    """
     shift = await shift_repository.lock_shift(conn, shift_id)
-    if shift is None or shift["status"] != SHIFT_IN_PROGRESS:
-        return
+    if shift is None:
+        return False
+    if shift["status"] == SHIFT_IN_PROGRESS:
+        target, reason = SHIFT_COMPLETED, "all_workers_finished"
+    elif shift["status"] == SHIFT_FILLED and shift["shift_type"] != SHIFT_LIVE:
+        if shift["starts_at"] > now:
+            return False
+        worked = await assignment_repository.count_in(
+            conn, shift_id, [ASG_CHECKED_OUT, ASG_APPROVED]
+        )
+        target = SHIFT_COMPLETED if worked else SHIFT_EXPIRED
+        reason = "all_workers_finished" if worked else "nobody_worked"
+    else:
+        return False
     active = await assignment_repository.count_in(
         conn, shift_id, [*ASG_BOOKED_STATUSES, ASG_CHECKED_IN]
     )
     if active:
-        return
+        return False
     await shift_repository.set_status(
         conn,
         shift_id,
-        from_status=SHIFT_IN_PROGRESS,
-        to_status=SHIFT_COMPLETED,
+        from_status=shift["status"],
+        to_status=target,
         now=now,
-        reason="all_workers_finished",
+        reason=reason,
     )
+    return True
 
 
 async def _finish(
@@ -750,4 +767,19 @@ async def close_missed_shifts(pool: asyncpg.Pool) -> int:
                     penalise=effective_ends_at(ctx) >= now - MISSED_SHIFT_LOOKBACK,
                 )
                 changed += 1
+    return changed
+
+
+async def close_finished_shifts(pool: asyncpg.Pool) -> int:
+    """Sweep: a started scheduled shift with nobody left booked or working is closed, including
+    shifts left open by older versions of the no-show flow."""
+    now = utc_now()
+    changed = 0
+    async with pool.acquire() as conn:
+        for shift_id in await shift_repository.list_started_shifts_without_active_seats(
+            conn, now, [*ASG_BOOKED_STATUSES, ASG_CHECKED_IN], MISSED_SHIFT_SWEEP_BATCH
+        ):
+            async with conn.transaction():
+                if await _complete_shift_if_done(conn, shift_id, now):
+                    changed += 1
     return changed
