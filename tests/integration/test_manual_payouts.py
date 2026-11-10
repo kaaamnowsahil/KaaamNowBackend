@@ -176,8 +176,9 @@ async def test_provider_withdrawals_cannot_be_settled_manually(  # type: ignore[
 
 
 async def test_admin_sets_the_minimum_withdrawal(  # type: ignore[no-untyped-def]
-    app_client, db: asyncpg.Connection, make_worker, manual_payouts
+    app_client, db: asyncpg.Connection, make_worker, manual_payouts, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(load_settings(), "min_withdrawal_minor", 10000)
     admin = await _admin(app_client, db)
     effective_url = f"{API}/admin/settings/payouts"
     default = load_settings().min_withdrawal_minor

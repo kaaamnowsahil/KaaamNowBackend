@@ -650,8 +650,9 @@ async def test_apply_rejects_clash_and_closes_2h_before(  # type: ignore[no-unty
 
 
 async def test_withdrawals_paid_failed_and_idempotent(  # type: ignore[no-untyped-def]
-    app_client, db: asyncpg.Connection, make_worker
+    app_client, db: asyncpg.Connection, make_worker, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(load_settings(), "min_withdrawal_minor", 10000)
     worker = await make_worker("Sita", online=False)
     await db.execute(
         "INSERT INTO earning_ledger_entries (worker_profile_id, entry_type, amount_minor, currency,"

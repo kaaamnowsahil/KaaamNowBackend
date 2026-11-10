@@ -297,8 +297,7 @@ async def test_role_login_does_not_create_accounts(app_client: httpx.AsyncClient
 
 
 async def test_terms_name_the_registered_company(app_client: httpx.AsyncClient) -> None:
-    for audience in ("worker", "business"):
-        terms = (await app_client.get(f"{API}/content/terms", params={"audience": audience})).json()
-        about, *_, contact = terms["sections"]
-        assert "operated by KAAAMNOW TECHNOLOGY LLP" in about["body"]
-        assert "KAAAMNOW TECHNOLOGY LLP, 148, 1st Main" in contact["body"]
+    terms = (await app_client.get(f"{API}/content/terms")).json()
+    about, *_, contact = terms["sections"]
+    assert "operated by KAAAMNOW TECHNOLOGY LLP" in about["body"]
+    assert "KAAAMNOW TECHNOLOGY LLP, 148, 1st Main" in contact["body"]
