@@ -106,10 +106,14 @@ async def run_locked_sweep(pool: asyncpg.Pool) -> None:
         finally:
             try:
                 await conn.execute("SELECT pg_advisory_unlock($1)", SWEEP_ADVISORY_LOCK_KEY)
-            except BaseException:
+            except BaseException as exc:
                 # Pooled connections are not reset on release: never return one holding the lock.
-                conn.terminate()
-                raise
+                with contextlib.suppress(asyncpg.InterfaceError):
+                    conn.terminate()
+                # A dead connection already dropped its session-level lock.
+                if not isinstance(exc, (asyncpg.InterfaceError, asyncpg.PostgresConnectionError)):
+                    raise
+                log.warning("sweep unlock skipped: connection lost")
 
 
 async def _loop(pool: asyncpg.Pool, interval_seconds: int) -> None:
