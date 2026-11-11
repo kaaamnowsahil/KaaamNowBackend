@@ -109,6 +109,8 @@ async def test_fcm_send_reports_each_device_outcome(
     assert sent[0]["data"] == {"kind": "k"}
     assert sent[0]["notification"] == {"title": "Hi", "body": "There"}
     assert sent[0]["webpush"] == {"headers": {"Urgency": "high"}}
+    assert sent[0]["apns"]["payload"]["aps"]["sound"] == "default"
+    assert sent[0]["android"]["notification"]["sound"] == "default"
 
 
 async def test_fcm_never_reports_sent_when_every_device_fails(

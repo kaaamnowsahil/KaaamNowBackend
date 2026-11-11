@@ -120,7 +120,15 @@ class FcmPushSender:
                                 "token": device,
                                 "notification": {"title": title, "body": body},
                                 "data": payload_data,
-                                "android": {"priority": "high"},
+                                "android": {
+                                    "priority": "high",
+                                    "notification": {"sound": "default"},
+                                },
+                                # iOS shows a background push silently unless aps names a sound.
+                                "apns": {
+                                    "headers": {"apns-priority": "10"},
+                                    "payload": {"aps": {"sound": "default"}},
+                                },
                                 "webpush": {"headers": {"Urgency": "high"}},
                             }
                         },
