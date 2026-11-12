@@ -87,6 +87,7 @@ async def expire_selection_confirmations(pool: asyncpg.Pool) -> int:
                     "Selection expired",
                     f"You didn't confirm {row['job_title']} in time.",
                     {"shift_id": row["shift_id"], "application_id": row["id"]},
+                    audience="worker",
                 )
                 await notify(
                     conn,
@@ -95,6 +96,7 @@ async def expire_selection_confirmations(pool: asyncpg.Pool) -> int:
                     "A selected worker didn't confirm",
                     f"Pick another applicant for {row['job_title']}.",
                     {"shift_id": row["shift_id"], "application_id": row["id"]},
+                    audience="business",
                 )
     return len(rows)
 
@@ -135,6 +137,7 @@ async def release_unfilled_seats(pool: asyncpg.Pool) -> int:
                     "Shift closed",
                     f"{shift['job_title']} is no longer recruiting.",
                     {"shift_id": shift_id},
+                    audience="worker",
                 )
                 released = await cancellation_service.release_unfilled(conn, shift, unfilled, now)
                 if not seats:
@@ -205,6 +208,7 @@ async def close_scheduled_recruiting(pool: asyncpg.Pool) -> int:
                     "Shift closed",
                     f"{shift['job_title']} is no longer recruiting.",
                     {"shift_id": shift_id},
+                    audience="worker",
                 )
                 if not seats:
                     business = await profile_repository.get_business_profile(

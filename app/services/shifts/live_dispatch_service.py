@@ -6,6 +6,7 @@ Figma: "Finding workers nearby", worker "New request nearby · Accept within 04:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -42,6 +43,7 @@ from app.constants.shifts.shift_route_strings import (
 )
 from app.db.pool import get_pool
 from app.exceptions.api_errors import bad_request, conflict, not_found
+from app.repositories.live_work import live_work_repository
 from app.repositories.profiles import profile_repository
 from app.repositories.shifts import assignment_repository, dispatch_repository, shift_repository
 from app.schemas.shifts.assignment_schemas import AssignmentDetail
@@ -97,13 +99,20 @@ async def dispatch_round(conn: asyncpg.Connection, shift: asyncpg.Record, now: d
     )
     offered_set = set(offered)
     user_ids = [c["user_id"] for c in candidates if c["worker_profile_id"] in offered_set]
+    offer_data: dict[str, Any] = {
+        "shift_id": shift["id"],
+        "expires_at": expires_at.isoformat(),
+    }
+    if await live_work_repository.is_live_work(conn, shift["id"]):
+        offer_data["live_offer"] = "live_work"
     await notify_many(
         conn,
         user_ids,
         KIND_LIVE_REQUEST,
         f"New request nearby: {shift['job_title']}",
         "Accept quickly — first come, first served.",
-        {"shift_id": shift["id"], "expires_at": expires_at.isoformat()},
+        offer_data,
+        audience="worker",
     )
     return len(offered)
 
@@ -292,13 +301,15 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
 
             business_user_id = await _business_user_id(conn, shift["business_profile_id"])
             worker_name = worker["full_name"] or "A worker"
+            live = await live_work_repository.is_live_work(conn, shift_id)
+            accepted = {"shift_id": shift_id, "assignment_id": assignment_id, "live_work": live}
             await notify(
                 conn,
                 business_user_id,
                 KIND_LIVE_ACCEPTED,
                 f"{worker_name} accepted your shift",
                 f"{shift['job_title']} · {seats + 1} of {shift['workers_required']} booked",
-                {"shift_id": shift_id, "assignment_id": assignment_id},
+                accepted,
             )
             if seats + 1 >= shift["workers_required"]:
                 await mark_filled(conn, shift, now, reason="all_seats_accepted")
@@ -308,7 +319,7 @@ async def accept(user: AuthenticatedUser, shift_id: UUID) -> AssignmentDetail:
                     KIND_LIVE_FILLED,
                     "All workers found",
                     f"Your live shift {shift['job_title']} is fully booked.",
-                    {"shift_id": shift_id},
+                    {"shift_id": shift_id, "live_work": live},
                 )
             return await build_assignment_detail(conn, assignment_id, user)
 

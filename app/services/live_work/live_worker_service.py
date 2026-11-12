@@ -420,6 +420,7 @@ async def cancel(
                     if outcome != "released"
                     else f"{shift['job_title']} · that Worker's share is being refunded.",
                     {"shift_id": shift["id"], "live_work": True},
+                    audience="business",
                 )
         await live_refund_service.process_refunds(refund_ids)
         return await _state(conn, assignment_id)
@@ -454,6 +455,7 @@ async def answer_extension(
                     "Worker accepted the extension",
                     f"Pay to add +{ext['extra_minutes']} min to {ctx['job_title']}.",
                     {**data, "invoice_id": invoice_id},
+                    audience="business",
                 )
             else:
                 await live_work_repository.set_extension_status(conn, extension_id, "declined", now)
@@ -464,5 +466,6 @@ async def answer_extension(
                     "Worker declined the extension",
                     ctx["job_title"],
                     data,
+                    audience="business",
                 )
         return await _state(conn, assignment_id)

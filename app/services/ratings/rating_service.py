@@ -95,5 +95,6 @@ async def rate(user: AuthenticatedUser, assignment_id: UUID, body: RatingCreate)
                 "You got a new rating",
                 f"{body.stars}★ for {ctx['job_title']}",
                 {"assignment_id": assignment_id, "shift_id": ctx["shift_id"]},
+                audience="business" if worker_rates else "worker",
             )
     return _view(row)

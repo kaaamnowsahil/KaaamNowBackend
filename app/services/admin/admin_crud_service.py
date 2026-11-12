@@ -60,6 +60,7 @@ from app.services.admin import admin_schema_cache
 from app.services.admin.admin_coercion import coerce_value
 from app.services.admin.admin_db_errors import translate_db_errors
 from app.services.admin.admin_schema_cache import ResolvedResource
+from app.services.notifications.notification_links import notification_path
 
 # --- Resolution / validation helpers ---
 
@@ -165,10 +166,10 @@ def _prepare_create(resolved: ResolvedResource, values: dict[str, Any]) -> dict[
     if resolved.name == RESOURCE_NOTIFICATIONS and NOTIFICATION_KIND_COLUMN in values:
         data = values.get(NOTIFICATION_DATA_COLUMN) or {}
         if isinstance(data, dict):
-            values[NOTIFICATION_DATA_COLUMN] = {
-                NOTIFICATION_KIND_COLUMN: values[NOTIFICATION_KIND_COLUMN],
-                **data,
-            }
+            kind = values[NOTIFICATION_KIND_COLUMN]
+            merged = {NOTIFICATION_KIND_COLUMN: kind, **data}
+            merged["path"] = notification_path(str(kind), merged)
+            values[NOTIFICATION_DATA_COLUMN] = merged
     return values
 
 

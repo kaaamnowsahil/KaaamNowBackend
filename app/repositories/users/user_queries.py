@@ -119,6 +119,7 @@ ON CONFLICT (user_id, role) DO NOTHING
 """
 
 LANGUAGE_IS_ACTIVE = "SELECT EXISTS (SELECT 1 FROM languages WHERE code = $1 AND is_active)"
+GET_LANGUAGE_CODE = "SELECT language_code FROM users WHERE id = $1"
 
 UPSERT_DEVICE = """
 INSERT INTO user_devices (user_id, platform, push_token, app_version)

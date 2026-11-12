@@ -173,6 +173,7 @@ async def on_deposit_paid(conn: asyncpg.Connection, invoice: asyncpg.Record, now
         "Payment received — finding Workers",
         f"{shift['job_title']} is now visible to available Workers nearby.",
         {"shift_id": shift_id, "live_work": True},
+        audience="business",
     )
     return True
 

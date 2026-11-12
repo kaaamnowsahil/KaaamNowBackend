@@ -416,6 +416,7 @@ async def _release_worker(
         "Live Work cancelled by the Business",
         shift["job_title"],
         {"shift_id": shift["id"], "assignment_id": seat["id"], "live_work": True},
+        audience="worker",
     )
 
 

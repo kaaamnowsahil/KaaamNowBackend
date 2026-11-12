@@ -292,7 +292,13 @@ async def _finish(
         )
     else:
         await notify(
-            conn, ctx["worker_user_id"], KIND_SHIFT_ENDED, "Your shift was ended", worked, data
+            conn,
+            ctx["worker_user_id"],
+            KIND_SHIFT_ENDED,
+            "Your shift was ended",
+            worked,
+            data,
+            audience="worker",
         )
     return minutes
 
@@ -453,6 +459,7 @@ async def request_early_end(
                 f"{asker} wants to end {ctx['job_title']} early",
                 f"Share PIN {pin} only if you agree. Payment is for the time worked.",
                 {"shift_id": ctx["shift_id"], "assignment_id": assignment_id},
+                audience="business" if party == PARTY_WORKER else "worker",
             )
             return await build_assignment_detail(conn, assignment_id, user)
 
@@ -630,6 +637,7 @@ async def respond_extension(
                 f"Extension {'accepted' if accept else 'declined'}",
                 f"{ctx['job_title']} · {extension['extra_minutes']} min",
                 {"shift_id": ctx["shift_id"], "assignment_id": assignment_id},
+                audience="business",
             )
             return await build_assignment_detail(conn, assignment_id, user)
 

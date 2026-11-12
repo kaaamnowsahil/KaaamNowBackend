@@ -672,6 +672,7 @@ async def cancel(
                 f"Shift cancelled: {shift['job_title']}",
                 body.reason,
                 {"shift_id": shift_id},
+                audience="worker",
             )
             return await build_shift_response(conn, scope, shift_id)
 

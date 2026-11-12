@@ -180,7 +180,9 @@ async def test_read_only_resources_and_notifications(
     assert sent.status_code == 201, sent.text
     body = sent.json()
     assert body["push_status"] == "pending"
-    assert body["data"] == {"kind": "admin_message", "x": 1}
+    assert body["data"]["kind"] == "admin_message"
+    assert body["data"]["x"] == 1
+    assert body["data"]["path"] == "/notifications"
     inbox = await app_client.get("/api/v1/notifications", headers=admin.headers)
     assert any(n["id"] == body["id"] for n in inbox.json()["items"])
 

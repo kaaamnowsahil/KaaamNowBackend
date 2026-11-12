@@ -27,7 +27,14 @@ class ScriptedSender:
         self.calls: list[list[str]] = []
 
     async def send(
-        self, push_tokens: list[str], *, title: str, body: str, data: dict[str, Any]
+        self,
+        push_tokens: list[str],
+        *,
+        title: str,
+        body: str,
+        data: dict[str, Any],
+        language: str | None = None,
+        platforms: list[str] | None = None,
     ) -> PushResult:
         self.calls.append(push_tokens)
         delivered = sum(1 for t in push_tokens if self.outcomes.get(t) == "ok")

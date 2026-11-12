@@ -26,9 +26,89 @@ class PushResult:
     retryable: bool = False
 
 
+RING_LANGUAGES = frozenset(
+    {"bn", "en", "gu", "hi", "kn", "ml", "mr", "or", "pa", "ta", "te", "ur"}
+)
+ALERTS_CHANNEL = "kaaamnow_alerts"
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
+def android_channel(
+    kind: object, language: object, data: dict[str, Any] | None = None
+) -> tuple[str, str | None]:
+    """Channel id, and the raw sound name when this push should speak like the web ringtone.
+
+    ``live_request`` is the worker's new-work line. The business "finding Workers" note uses
+    the same kind with ``live_work`` and stays a plain alert. ``live_worker_accepted`` is the
+    business's worker-accepted line. Every other kind stays on the plain alerts channel.
+    """
+    lang = language if isinstance(language, str) and language in RING_LANGUAGES else "en"
+    payload = data or {}
+    if kind == "live_request" and not _truthy(payload.get("live_work")):
+        name = f"ring_{lang}_new_work"
+        return name, name
+    if kind == "live_worker_accepted":
+        name = f"ring_{lang}_worker_accepted"
+        return name, name
+    return ALERTS_CHANNEL, None
+
+
+def _android_notification(data: dict[str, Any], language: str | None) -> dict[str, str]:
+    channel_id, sound = android_channel(data.get("kind"), language, data)
+    note = {"channel_id": channel_id, "notification_priority": "PRIORITY_HIGH"}
+    if sound:
+        note["sound"] = sound
+    return note
+
+
+def _fcm_message(
+    *,
+    token: str,
+    title: str,
+    body: str,
+    data: dict[str, Any],
+    payload_data: dict[str, str],
+    language: str | None,
+    platform: str | None,
+) -> dict[str, Any]:
+    """Android plays a killed-state sound from the notification channel, not from app code.
+
+    Live alerts name the channel whose sound is the spoken file in ``res/raw``. A data-only
+    message never reaches that channel, so Android falls back to the default ding.
+    """
+    _ = platform
+    return {
+        "token": token,
+        "notification": {"title": title, "body": body},
+        "data": payload_data,
+        "android": {
+            "priority": "high",
+            "notification": _android_notification(data, language),
+        },
+        # iOS shows a background push silently unless aps names a sound.
+        "apns": {
+            "headers": {"apns-priority": "10"},
+            "payload": {"aps": {"sound": "default"}},
+        },
+        "webpush": {"headers": {"Urgency": "high"}},
+    }
+
+
 class PushSender(Protocol):
     async def send(
-        self, push_tokens: list[str], *, title: str, body: str, data: dict[str, Any]
+        self,
+        push_tokens: list[str],
+        *,
+        title: str,
+        body: str,
+        data: dict[str, Any],
+        language: str | None = None,
+        platforms: list[str] | None = None,
     ) -> PushResult:
         """``delivered`` counts devices whose message the provider accepted."""
         ...
@@ -39,7 +119,14 @@ class ConsolePushSender:
     reported as not accepted (``failed``) rather than ``sent``."""
 
     async def send(
-        self, push_tokens: list[str], *, title: str, body: str, data: dict[str, Any]
+        self,
+        push_tokens: list[str],
+        *,
+        title: str,
+        body: str,
+        data: dict[str, Any],
+        language: str | None = None,
+        platforms: list[str] | None = None,
     ) -> PushResult:
         log.info(
             "push (console provider)",
@@ -98,7 +185,14 @@ class FcmPushSender:
         return self._access_token
 
     async def send(
-        self, push_tokens: list[str], *, title: str, body: str, data: dict[str, Any]
+        self,
+        push_tokens: list[str],
+        *,
+        title: str,
+        body: str,
+        data: dict[str, Any],
+        language: str | None = None,
+        platforms: list[str] | None = None,
     ) -> PushResult:
         payload_data = {k: str(v) for k, v in data.items() if v is not None}
         delivered = 0
@@ -110,27 +204,22 @@ class FcmPushSender:
             except (httpx.HTTPError, jwt.PyJWTError, KeyError, ValueError) as exc:
                 log.warning("fcm auth failed", extra=log_extra(error=type(exc).__name__))
                 return PushResult(retryable=True)
-            for device in push_tokens:
+            for index, device in enumerate(push_tokens):
+                platform = platforms[index] if platforms and index < len(platforms) else None
                 try:
                     response = await client.post(
                         FCM_SEND_URL.format(project=self._project),
                         headers={"Authorization": f"Bearer {token}"},
                         json={
-                            "message": {
-                                "token": device,
-                                "notification": {"title": title, "body": body},
-                                "data": payload_data,
-                                "android": {
-                                    "priority": "high",
-                                    "notification": {"sound": "default"},
-                                },
-                                # iOS shows a background push silently unless aps names a sound.
-                                "apns": {
-                                    "headers": {"apns-priority": "10"},
-                                    "payload": {"aps": {"sound": "default"}},
-                                },
-                                "webpush": {"headers": {"Urgency": "high"}},
-                            }
+                            "message": _fcm_message(
+                                token=device,
+                                title=title,
+                                body=body,
+                                data=data,
+                                payload_data=payload_data,
+                                language=language,
+                                platform=platform,
+                            )
                         },
                     )
                 except httpx.HTTPError as exc:

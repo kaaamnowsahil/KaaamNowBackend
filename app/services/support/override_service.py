@@ -147,6 +147,7 @@ async def _waive_worker_fee(conn: asyncpg.Connection, booking: asyncpg.Record) -
         f"{_rupees(amount)} fee refunded",
         f"Support waived the fee for {booking['job_title']}.",
         {"shift_id": booking["shift_id"], "assignment_id": booking["id"]},
+        audience="worker",
     )
     return amount
 
@@ -175,6 +176,7 @@ async def _void_strike(
         "A strike was removed",
         f"Support removed the strike for {booking['job_title']}.",
         {"shift_id": booking["shift_id"], "assignment_id": booking["id"]},
+        audience="worker",
     )
 
 
@@ -193,6 +195,7 @@ async def _refund_business(
         f"{_rupees(amount)} refund approved",
         f"Support approved a refund for {booking['job_title']}.",
         {"shift_id": booking["shift_id"], "invoice_id": invoice["id"]},
+        audience="business",
     )
     return amount
 
@@ -215,6 +218,7 @@ async def _unban_worker(
         "Your account is active again",
         "Support reviewed your account. You can find and accept shifts again.",
         {"worker_profile_id": booking["worker_profile_id"]},
+        audience="worker",
     )
 
 

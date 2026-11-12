@@ -110,7 +110,55 @@ async def test_fcm_send_reports_each_device_outcome(
     assert sent[0]["notification"] == {"title": "Hi", "body": "There"}
     assert sent[0]["webpush"] == {"headers": {"Urgency": "high"}}
     assert sent[0]["apns"]["payload"]["aps"]["sound"] == "default"
-    assert sent[0]["android"]["notification"]["sound"] == "default"
+    assert sent[0]["android"]["notification"]["channel_id"] == "kaaamnow_alerts"
+    assert "sound" not in sent[0]["android"]["notification"]
+    assert sent[0]["android"]["priority"] == "high"
+
+
+async def test_fcm_live_request_uses_the_spoken_language_sound(
+    service_account: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent = _mock_client(
+        monkeypatch,
+        {"good": httpx.Response(200, json={"name": "projects/unit-test/messages/1"})},
+    )
+    sender = factory.FcmPushSender(json.loads(service_account.read_text()), "")
+    await sender.send(
+        ["good"],
+        title="Hi",
+        body="There",
+        data={"kind": "live_request"},
+        language="hi",
+        platforms=["android"],
+    )
+    note = sent[0]["android"]["notification"]
+    assert note["channel_id"] == "ring_hi_new_work"
+    assert note["sound"] == "ring_hi_new_work"
+    assert sent[0]["notification"]["title"] == "Hi"
+    assert sent[0]["android"]["priority"] == "high"
+    await sender.send(
+        ["good"],
+        title="Hi",
+        body="There",
+        data={"kind": "live_worker_accepted"},
+        language="xx",
+        platforms=["ios"],
+    )
+    accepted = sent[1]["android"]["notification"]
+    assert accepted["channel_id"] == "ring_en_worker_accepted"
+    assert accepted["sound"] == "ring_en_worker_accepted"
+    assert sent[1]["notification"]["title"] == "Hi"
+    await sender.send(
+        ["good"],
+        title="Hi",
+        body="There",
+        data={"kind": "live_request", "live_work": True},
+        language="hi",
+        platforms=["android"],
+    )
+    assert sent[2]["notification"]["title"] == "Hi"
+    assert sent[2]["android"]["notification"]["channel_id"] == "kaaamnow_alerts"
+    assert "sound" not in sent[2]["android"]["notification"]
 
 
 async def test_fcm_never_reports_sent_when_every_device_fails(

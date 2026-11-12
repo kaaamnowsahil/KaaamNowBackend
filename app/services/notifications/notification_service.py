@@ -18,14 +18,17 @@ from app.schemas.notifications.notification_schemas import (
     UnreadCountResponse,
 )
 from app.security.authenticated_user import AuthenticatedUser
+from app.services.notifications.notification_links import notification_path
 from app.utils.clock import utc_now
 
 
-def _payload(kind: str, data: dict[str, Any] | None) -> dict[str, Any]:
-    return {
+def _payload(kind: str, data: dict[str, Any] | None, audience: str | None) -> dict[str, Any]:
+    body = {
         "kind": kind,
         **{k: str(v) if isinstance(v, UUID) else v for k, v in (data or {}).items()},
     }
+    body["path"] = notification_path(kind, body, audience)
+    return body
 
 
 async def notify(
@@ -35,9 +38,16 @@ async def notify(
     title: str,
     body: str = "",
     data: dict[str, Any] | None = None,
+    *,
+    audience: str | None = None,
 ) -> None:
     await notification_repository.insert_notification(
-        conn, user_id=user_id, kind=kind, title=title, body=body, data=_payload(kind, data)
+        conn,
+        user_id=user_id,
+        kind=kind,
+        title=title,
+        body=body,
+        data=_payload(kind, data, audience),
     )
 
 
@@ -48,9 +58,16 @@ async def notify_many(
     title: str,
     body: str = "",
     data: dict[str, Any] | None = None,
+    *,
+    audience: str | None = None,
 ) -> None:
     await notification_repository.insert_notifications_bulk(
-        conn, user_ids=user_ids, kind=kind, title=title, body=body, data=_payload(kind, data)
+        conn,
+        user_ids=user_ids,
+        kind=kind,
+        title=title,
+        body=body,
+        data=_payload(kind, data, audience),
     )
 
 

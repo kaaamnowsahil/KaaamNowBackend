@@ -341,6 +341,7 @@ async def send_message(
                 f"New message from {sender}",
                 body.body[:140],
                 {"assignment_id": assignment_id, "shift_id": ctx["shift_id"]},
+                audience="business" if party == PARTY_WORKER else "worker",
             )
     return _message_item(row, user)
 
@@ -468,9 +469,13 @@ async def cancel(
                 )
             shift_status = await _reopen_after_cancel(conn, ctx, now, user.user_id, reopen=reopens)
             if party == PARTY_WORKER:
-                recipient, title = ctx["business_user_id"], "A worker cancelled"
+                recipient = ctx["business_user_id"]
+                title = "A worker cancelled"
+                audience = "business"
             else:
-                recipient, title = ctx["worker_user_id"], "Your booking was cancelled"
+                recipient = ctx["worker_user_id"]
+                title = "Your booking was cancelled"
+                audience = "worker"
             await notify(
                 conn,
                 recipient,
@@ -478,6 +483,7 @@ async def cancel(
                 title,
                 f"{ctx['job_title']}{' · ' + body.reason if body.reason else ''}",
                 {"shift_id": ctx["shift_id"], "assignment_id": assignment_id},
+                audience=audience,
             )
     return AssignmentCancelResponse(
         assignment_id=assignment_id,

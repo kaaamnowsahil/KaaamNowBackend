@@ -598,6 +598,7 @@ async def complete_booking(
         "Work completed",
         f"{shift['job_title']} · earnings credited",
         data,
+        audience="worker",
     )
     return refund_ids
 
@@ -694,6 +695,7 @@ async def worker_walk_off(
         f"{shift['job_title']} · you get a full refund and no platform charge on your next "
         "booking.",
         {"shift_id": shift["id"], "assignment_id": assignment["id"], "live_work": True},
+        audience="business",
     )
     return refund_ids
 
@@ -764,6 +766,7 @@ async def worker_no_show(
         f"{shift['job_title']} · you get a full refund and no platform charge on your next "
         "booking.",
         data,
+        audience="business",
     )
     return refund_ids
 
@@ -839,6 +842,7 @@ async def business_force_stop(
         "The Business stopped the work",
         f"{shift['job_title']} · you still get {live_work_billing.rupees(worker_gets)}.",
         {"shift_id": shift["id"], "assignment_id": assignment["id"], "live_work": True},
+        audience="worker",
     )
     return refund_ids
 
@@ -1042,6 +1046,7 @@ async def apply_paid_extension(
             "Extension paid",
             text,
             data,
+            audience="worker",
         )
         await notify(
             conn,
@@ -1050,6 +1055,7 @@ async def apply_paid_extension(
             "Extension added",
             text,
             data,
+            audience="business",
         )
         return []
     if ext["status"] == "applied":
@@ -1076,9 +1082,15 @@ async def business_user_id(conn: asyncpg.Connection, shift: asyncpg.Record) -> U
 
 
 async def notify_cancelled(
-    conn: asyncpg.Connection, user_id: UUID, title: str, body: str, data: dict
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    title: str,
+    body: str,
+    data: dict,
+    *,
+    audience: str,
 ) -> None:
-    await notify(conn, user_id, KIND_SHIFT_CANCELLED, title, body, data)
+    await notify(conn, user_id, KIND_SHIFT_CANCELLED, title, body, data, audience=audience)
 
 
 async def withdraw_offers(conn: asyncpg.Connection, shift_id: UUID) -> None:

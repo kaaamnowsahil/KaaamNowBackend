@@ -44,11 +44,26 @@ async def deliver_pending_pushes(pool: asyncpg.Pool) -> int:
                 if not devices:
                     skipped.append(row["id"])
                     continue
+                language = await user_repository.get_language_code(conn, row["user_id"])
+                payload = dict(row["data"] or {})
+                # The business "finding Workers" row reuses live_request. Leaving kind off
+                # keeps it a normal banner; worker offers and acceptances still carry kind
+                # so the spoken ringtone can play.
+                live_work = payload.get("live_work")
+                live_work_on = live_work is True or (
+                    isinstance(live_work, str)
+                    and live_work.strip().lower() in {"1", "true", "yes"}
+                )
+                finding_workers = row["kind"] == "live_request" and live_work_on
+                if not finding_workers:
+                    payload["kind"] = row["kind"]
                 result = await sender.send(
                     [d["push_token"] for d in devices],
                     title=row["title"],
                     body=row["body"],
-                    data=dict(row["data"] or {}),
+                    data=payload,
+                    language=language,
+                    platforms=[d["platform"] for d in devices],
                 )
                 await user_repository.deactivate_push_tokens(conn, list(result.invalid_tokens))
                 if result.delivered:

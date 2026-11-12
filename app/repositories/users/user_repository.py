@@ -13,6 +13,7 @@ from app.repositories.users.user_queries import (
     DEACTIVATE_USER_ACCOUNT,
     DEACTIVATE_USER_DEVICES,
     GET_AUTH_CREDENTIALS,
+    GET_LANGUAGE_CODE,
     GET_ME,
     GET_PHONE_STATUS,
     GET_PROFILE_IMAGE_URLS,
@@ -147,3 +148,7 @@ async def deactivate_push_tokens(conn: asyncpg.Connection, push_tokens: list[str
 
 async def list_active_push_tokens(conn: asyncpg.Connection, user_id: UUID) -> list[asyncpg.Record]:
     return await conn.fetch(LIST_ACTIVE_PUSH_TOKENS, user_id)
+
+
+async def get_language_code(conn: asyncpg.Connection, user_id: UUID) -> str | None:
+    return await conn.fetchval(GET_LANGUAGE_CODE, user_id)

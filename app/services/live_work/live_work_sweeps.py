@@ -58,6 +58,7 @@ async def cancel_unpaid_bookings(pool: asyncpg.Pool) -> int:
                     "Live Work request closed",
                     f"{shift['job_title']}: payment wasn't completed, so nobody was notified.",
                     {"shift_id": shift_id, "live_work": True},
+                    audience="business",
                 )
                 changed += 1
     return changed
@@ -93,6 +94,7 @@ async def expire_extensions(pool: asyncpg.Pool) -> int:
                         "assignment_id": ext["assignment_id"],
                         "live_work": True,
                     },
+                    audience="business",
                 )
                 changed += 1
     return changed
