@@ -30,6 +30,7 @@ RING_LANGUAGES = frozenset(
     {"bn", "en", "gu", "hi", "kn", "ml", "mr", "or", "pa", "ta", "te", "ur"}
 )
 ALERTS_CHANNEL = "kaaamnow_alerts"
+ALARM_CHANNEL_PREFIX = "kaaamnow_alarm_"
 
 
 def _truthy(value: object) -> bool:
@@ -51,10 +52,10 @@ def android_channel(
     payload = data or {}
     if kind == "live_request" and not _truthy(payload.get("live_work")):
         name = f"ring_{lang}_new_work"
-        return name, name
+        return f"{ALARM_CHANNEL_PREFIX}{name}", name
     if kind == "live_worker_accepted":
         name = f"ring_{lang}_worker_accepted"
-        return name, name
+        return f"{ALARM_CHANNEL_PREFIX}{name}", name
     return ALERTS_CHANNEL, None
 
 

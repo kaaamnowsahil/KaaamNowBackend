@@ -3,6 +3,9 @@
 from app.constants.notifications.notification_route_strings import (
     KIND_APPLICATION_SELECTED,
     KIND_EARNING_CREDITED,
+    KIND_LIVE_ACCEPTED,
+    KIND_LIVE_EXPIRED,
+    KIND_LIVE_FILLED,
     KIND_LIVE_REQUEST,
     KIND_NEW_MESSAGE,
     KIND_PAYMENT_RECEIVED,
@@ -39,6 +42,22 @@ def test_worker_and_business_pages() -> None:
         notification_path(KIND_VERIFICATION_UPDATED, {"profile": "business"}) == "/business/profile"
     )
     assert notification_path(KIND_VERIFICATION_UPDATED, {"profile": "worker"}) == "/worker/profile"
+
+
+def test_live_alerts_do_not_open_the_shift_list() -> None:
+    assert notification_path(KIND_LIVE_FILLED, {"shift_id": "s1"}) == "/business/live"
+    assert notification_path(KIND_LIVE_EXPIRED, {"shift_id": "s1"}) == "/business/live"
+    assert (
+        notification_path(KIND_LIVE_ACCEPTED, {"shift_id": "s1", "assignment_id": "a1"})
+        == "/business/live"
+    )
+    assert (
+        notification_path(
+            KIND_LIVE_ACCEPTED,
+            {"shift_id": "s1", "assignment_id": "a1", "live_work": True},
+        )
+        == "/business/live-work/s1"
+    )
 
 
 def test_ambiguous_kinds_need_an_audience() -> None:

@@ -162,12 +162,12 @@ def _business_path(kind: str, data: dict[str, Any], shift_id: str, assignment_id
         return "/business/shifts"
     if live and shift_id:
         return f"/business/live-work/{shift_id}"
+    if kind in (KIND_LIVE_ACCEPTED, KIND_LIVE_FILLED, KIND_LIVE_EXPIRED, KIND_LIVE_REQUEST):
+        return "/business/live"
     if assignment_id:
         return f"/business/booking/{assignment_id}"
     if shift_id:
         return "/business/shifts"
-    if kind in (KIND_LIVE_ACCEPTED, KIND_LIVE_FILLED, KIND_LIVE_EXPIRED, KIND_LIVE_REQUEST):
-        return "/business/live"
     return "/business/live"
 
 
