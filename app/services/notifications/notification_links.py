@@ -122,11 +122,7 @@ def _payment_path(data: dict[str, Any]) -> str:
 def _worker_path(kind: str, data: dict[str, Any], shift_id: str, assignment_id: str) -> str:
     live = _flag(data, "live_work")
     if kind == KIND_LIVE_REQUEST:
-        # `live_work` on this kind is the Business's own "finding Workers" push, so a Worker
-        # offer uses `live_offer` and still rings.
-        if data.get("live_offer") == "live_work" or not shift_id:
-            return "/worker/live-work"
-        return f"/worker/shift/{shift_id}"
+        return f"/worker/shift/{shift_id}" if shift_id else "/worker/live-work"
     if kind == KIND_EARNING_CREDITED:
         return "/worker/earnings"
     if kind in (KIND_WITHDRAWAL_PAID, KIND_WITHDRAWAL_FAILED):

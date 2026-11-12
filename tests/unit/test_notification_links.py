@@ -20,7 +20,7 @@ def test_worker_and_business_pages() -> None:
         notification_path(
             KIND_LIVE_REQUEST, {"shift_id": "s1", "live_offer": "live_work"}, "worker"
         )
-        == "/worker/live-work"
+        == "/worker/shift/s1"
     )
     assert (
         notification_path(KIND_LIVE_REQUEST, {"shift_id": "s1", "live_work": True})
