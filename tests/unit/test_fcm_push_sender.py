@@ -132,8 +132,9 @@ async def test_fcm_live_request_uses_the_spoken_language_sound(
         platforms=["android"],
     )
     note = sent[0]["android"]["notification"]
-    assert note["channel_id"] == "kaaamnow_alarm_ring_hi_new_work"
-    assert note["sound"] == "ring_hi_new_work"
+    assert note["channel_id"] == "kaaamnow_voice"
+    assert "sound" not in note
+    assert sent[0]["data"]["sound"] == "ring_hi_new_work"
     assert sent[0]["notification"]["title"] == "Hi"
     assert sent[0]["android"]["priority"] == "high"
     await sender.send(
@@ -145,8 +146,9 @@ async def test_fcm_live_request_uses_the_spoken_language_sound(
         platforms=["ios"],
     )
     accepted = sent[1]["android"]["notification"]
-    assert accepted["channel_id"] == "kaaamnow_alarm_ring_en_worker_accepted"
-    assert accepted["sound"] == "ring_en_worker_accepted"
+    assert accepted["channel_id"] == "kaaamnow_voice"
+    assert "sound" not in accepted
+    assert sent[1]["data"]["sound"] == "ring_en_worker_accepted"
     assert sent[1]["notification"]["title"] == "Hi"
     await sender.send(
         ["good"],
@@ -159,6 +161,7 @@ async def test_fcm_live_request_uses_the_spoken_language_sound(
     assert sent[2]["notification"]["title"] == "Hi"
     assert sent[2]["android"]["notification"]["channel_id"] == "kaaamnow_alerts"
     assert "sound" not in sent[2]["android"]["notification"]
+    assert "sound" not in sent[2]["data"]
 
 
 async def test_fcm_never_reports_sent_when_every_device_fails(
