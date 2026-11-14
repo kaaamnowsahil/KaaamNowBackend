@@ -132,7 +132,7 @@ async def test_fcm_live_request_uses_the_spoken_language_sound(
         platforms=["android"],
     )
     note = sent[0]["android"]["notification"]
-    assert note["channel_id"] == "kaaamnow_voice"
+    assert note["channel_id"] == "kaaamnow_alarm_ring_hi_new_work"
     assert "sound" not in note
     assert sent[0]["data"]["sound"] == "ring_hi_new_work"
     assert sent[0]["notification"]["title"] == "Hi"
@@ -146,7 +146,7 @@ async def test_fcm_live_request_uses_the_spoken_language_sound(
         platforms=["ios"],
     )
     accepted = sent[1]["android"]["notification"]
-    assert accepted["channel_id"] == "kaaamnow_voice"
+    assert accepted["channel_id"] == "kaaamnow_alarm_ring_en_worker_accepted"
     assert "sound" not in accepted
     assert sent[1]["data"]["sound"] == "ring_en_worker_accepted"
     assert sent[1]["notification"]["title"] == "Hi"

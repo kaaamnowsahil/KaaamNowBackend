@@ -30,9 +30,11 @@ RING_LANGUAGES = frozenset(
     {"bn", "en", "gu", "hi", "kn", "ml", "mr", "or", "pa", "ta", "te", "ur"}
 )
 ALERTS_CHANNEL = "kaaamnow_alerts"
-# Silent on purpose. Android plays a channel's own sound, and an alarm-stream channel
-# plays the phone's default tone instead of the spoken file. The app plays that file.
+# Silent banner only. The spoken file is played by the app, not by this channel.
 VOICE_CHANNEL = "kaaamnow_voice"
+# Pre-created on the phone with the raw file on the alarm stream. A background or
+# killed app never runs our player, so the system must play this channel's sound.
+ALARM_CHANNEL_PREFIX = "kaaamnow_alarm_"
 
 
 def _truthy(value: object) -> bool:
@@ -48,16 +50,18 @@ def android_channel(
 
     ``live_request`` is the worker's new-work line. The business "finding Workers" note uses
     the same kind with ``live_work`` and stays a plain alert. ``live_worker_accepted`` is the
-    business's worker-accepted line. The spoken file is not the channel sound: a notification
-    channel cannot play it loudly over silent mode, so the app plays ``res/raw`` on the alarm
-    stream. The banner stays on the silent channel so Android does not add its default tone.
+    business's worker-accepted line. The banner uses the alarm channel whose sound is the
+    spoken file, so a background phone still rings. ``data.sound`` lets the open app play
+    the same file itself.
     """
     lang = language if isinstance(language, str) and language in RING_LANGUAGES else "en"
     payload = data or {}
     if kind == "live_request" and not _truthy(payload.get("live_work")):
-        return VOICE_CHANNEL, f"ring_{lang}_new_work"
+        sound = f"ring_{lang}_new_work"
+        return f"{ALARM_CHANNEL_PREFIX}{sound}", sound
     if kind == "live_worker_accepted":
-        return VOICE_CHANNEL, f"ring_{lang}_worker_accepted"
+        sound = f"ring_{lang}_worker_accepted"
+        return f"{ALARM_CHANNEL_PREFIX}{sound}", sound
     return ALERTS_CHANNEL, None
 
 
@@ -71,9 +75,10 @@ def _fcm_message(
     language: str | None,
     platform: str | None,
 ) -> dict[str, Any]:
-    """The banner is a normal FCM notification. Spoken rings name a silent channel and put
-    the raw filename in ``data.sound`` so the app can play that file on the alarm stream.
-    Putting the filename on the channel makes Android play the phone's default tone instead.
+    """The banner is a normal FCM notification. Spoken rings use the alarm channel that
+    already points at the raw file, and repeat that filename in ``data.sound`` for the
+    open app. A ``sound`` field on the FCM notification itself makes Android play the
+    phone's default tone, so it is left off.
     """
     _ = platform
     channel_id, sound = android_channel(data.get("kind"), language, data)

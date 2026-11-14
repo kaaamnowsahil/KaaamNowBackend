@@ -51,6 +51,8 @@ SELECT ap.id AS application_id, ap.status, ap.applied_at, ap.decided_at, ap.resp
        ap.confirm_by, ap.distance_km, ap.cover_note,
        (SELECT sa.id FROM shift_assignments sa WHERE sa.application_id = ap.id
         ORDER BY sa.confirmed_at DESC LIMIT 1) AS assignment_id,
+       (SELECT sa.status FROM shift_assignments sa WHERE sa.application_id = ap.id
+        ORDER BY sa.confirmed_at DESC LIMIT 1) AS assignment_status,
        wp.id AS worker_id, wp.user_id AS worker_user_id, u.full_name, u.photo_url,
        wp.rating_avg, wp.rating_count, wp.completed_shift_count, wp.verification_status
 FROM shift_applications ap
@@ -66,6 +68,8 @@ SELECT ap.id AS application_id, ap.status, ap.applied_at, ap.decided_at, ap.resp
        ap.confirm_by, ap.distance_km, ap.cover_note,
        (SELECT sa.id FROM shift_assignments sa WHERE sa.application_id = ap.id
         ORDER BY sa.confirmed_at DESC LIMIT 1) AS assignment_id,
+       (SELECT sa.status FROM shift_assignments sa WHERE sa.application_id = ap.id
+        ORDER BY sa.confirmed_at DESC LIMIT 1) AS assignment_status,
        wp.id AS worker_id, wp.user_id AS worker_user_id, u.full_name, u.photo_url,
        wp.rating_avg, wp.rating_count, wp.completed_shift_count, wp.verification_status,
        s.id AS shift_id, s.shift_type, s.status AS shift_status, s.job_title,

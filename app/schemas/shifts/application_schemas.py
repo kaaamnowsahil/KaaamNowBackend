@@ -60,6 +60,9 @@ class ApplicantItem(BaseModel):
     cover_note: str
     worker: WorkerSummary
     assignment_id: UUID | None = Field(default=None, description="Set once the seat is booked.")
+    assignment_status: str | None = Field(
+        default=None, description="Seat status once booked: confirmed, checked_in, checked_out, no_show."
+    )
 
 
 class ApplicantList(BaseModel):

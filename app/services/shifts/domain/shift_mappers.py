@@ -182,6 +182,7 @@ def applicant_item(row: asyncpg.Record) -> ApplicantItem:
         cover_note=row["cover_note"],
         worker=worker_summary(row),
         assignment_id=row["assignment_id"],
+        assignment_status=row["assignment_status"],
     )
 
 
